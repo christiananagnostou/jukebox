@@ -15,13 +15,19 @@
       "all": true,
       "fs": {
         "all": true,
-        "scope": ["*"]
+        "scope": ["**"]
       },
       "globalShortcut": {
         "all": true
       },
       "path": {
         "all": true
+      },
+      "shell": {
+        "all": true, 
+        "execute": true, 
+        "sidecar": true, 
+        "open": true
       },
       "protocol": {
         "all": true,
@@ -44,7 +50,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.tauri.dev",
+      "identifier": "Jukebox",
       "longDescription": "",
       "macOS": {
         "entitlements": null,

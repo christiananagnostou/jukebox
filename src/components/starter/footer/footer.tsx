@@ -1,19 +1,25 @@
-import { component$ } from '@builder.io/qwik';
-import { useServerTimeLoader } from '~/routes/layout';
-import styles from './footer.module.css';
+import { component$, useStore } from '@builder.io/qwik'
+import { useServerTimeLoader } from '~/routes/layout'
 
 export default component$(() => {
-  const serverTime = useServerTimeLoader();
+  const serverTime = useServerTimeLoader()
 
+  const store = useStore({ searchValue: '' })
   return (
-    <footer>
-      <div class="container">
-        <a href="https://www.builder.io/" target="_blank" class={styles.anchor}>
-          <span>Made with ♡ by Builder.io</span>
-          <span class={styles.spacer}>|</span>
-          <span>{serverTime.value.date}</span>
-        </a>
-      </div>
+    <footer
+      class="px-2 w-full flex gap-2 items-center border-t border-gray-700 sticky bottom-0 bg-[#17171f]"
+      style={{ height: 30 + 'px' }}
+    >
+      <span>{serverTime.value.date}</span>
+
+      <input
+        type="text"
+        name="Search"
+        id="search-input"
+        value={store.searchValue}
+        onChange$={(e) => (store.searchValue = e.target.value)}
+        class="bg-inherit border border-gray-700 rounded flex-1 px-2 "
+      />
     </footer>
-  );
-});
+  )
+})
