@@ -97,10 +97,12 @@ export default component$(() => {
     state.virtualListHeight = virtualListElem.value?.clientHeight
     state.windowHeight = (await appWindow.outerSize()).height
 
-    const unlistenResize = await appWindow.onResized(({ payload: size }) => {
+    const unlistenResize = await appWindow.onResized(async ({ payload: size }) => {
       if (!virtualListElem.value) return
-      state.virtualListHeight = size.height - RowHeight * 4 - 16 - 2 // 3 rows, .5rem padding, and 2 1px borders to account for
-      state.windowHeight = size.height
+      const factor = await appWindow.scaleFactor()
+      const logical = size.toLogical(factor)
+      state.virtualListHeight = logical.height - RowHeight * 4 - 16 - 2 // 3 rows, .5rem padding, and 2 1px borders to account for
+      state.windowHeight = logical.height
     })
 
     const unlistenFileDrop = await listen('tauri://file-drop', async (event) => {
@@ -154,7 +156,6 @@ export default component$(() => {
             windowHeight={state.virtualListHeight || 0}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
               const song = store.addedSongs[index]
-
               return (
                 <button
                   key={song.title}
