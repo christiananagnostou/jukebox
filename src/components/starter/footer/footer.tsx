@@ -1,8 +1,8 @@
 import { component$, useStore } from '@builder.io/qwik'
-import { useServerTimeLoader } from '~/routes/layout'
+// import { useServerTimeLoader } from '~/routes/layout'
 
 export default component$(() => {
-  const serverTime = useServerTimeLoader()
+  // const serverTime = useServerTimeLoader()
 
   const store = useStore({ searchValue: '' })
   return (
@@ -10,7 +10,7 @@ export default component$(() => {
       class="px-2 w-full flex gap-2 items-center border-t border-gray-700 sticky bottom-0 bg-[#17171f]"
       style={{ height: 30 + 'px' }}
     >
-      <span>{serverTime.value.date}</span>
+      {/* <span>{serverTime.value.date}</span> */}
 
       <input
         type="text"

@@ -1,13 +1,16 @@
 export interface Store {
-  addedSongs: Song[]
+  allSongs: Song[]
   audioDir: string
-  currSong?: Song
-  currAudioElem?: HTMLAudioElement
-  nextAudioElem?: HTMLAudioElement
+  pathPrefix: 'asset://localhost/'
+  player: {
+    currSong?: Song
+    audioElem?: HTMLAudioElement
+    nextAudioElem?: HTMLAudioElement
+  }
 }
 
 export interface Song {
-  id: string // A hash of the filepath
+  id: string
   path: string
   file: string
   title: string

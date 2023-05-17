@@ -57,3 +57,35 @@ body {
   border-radius: 14px;
   border: 3px solid var(--primary);
 }
+
+/*
+
+ Song Control Range
+
+*/
+.song-control__range input {
+  width: 100%;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.song-control__range input:focus {
+  outline: none;
+}
+
+.song-control__range input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+}
+
+.song-control__range input::-moz-range-thumb {
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+}
+
+.time-control p {
+  padding: 1rem;
+}
