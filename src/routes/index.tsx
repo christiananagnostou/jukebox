@@ -10,7 +10,7 @@ import md5 from 'md5'
 import { isAudioFile } from '~/utils/Files'
 import VirtualList from '~/components/Shared/VirtualList'
 import type { Song, ListItemStyle } from '~/App'
-import { PlayerContext } from './layout'
+import { StoreActionsContext, StoreContext } from './layout'
 
 const RowHeight = 30
 
@@ -19,7 +19,8 @@ const RowHeight = 30
 // WINDOW_FILE_DROP_CANCELLED = 'tauri://file-drop-cancelled',
 
 export default component$(() => {
-  const store = useContext(PlayerContext)
+  const store = useContext(StoreContext)
+  const storeActions = useContext(StoreActionsContext)
 
   const virtualListElem = useSignal<Element>()
   const state = useStore({ virtualListHeight: virtualListElem.value?.clientHeight, windowHeight: 0 })
@@ -47,7 +48,7 @@ export default component$(() => {
       isFavorite: false,
     }
 
-    store.addedSongs.push(songToAdd)
+    store.allSongs.push(songToAdd)
   })
 
   const processEntries = $(async (entries: FileEntry[]) => {
@@ -101,7 +102,7 @@ export default component$(() => {
       if (!virtualListElem.value) return
       const factor = await appWindow.scaleFactor()
       const logical = size.toLogical(factor)
-      state.virtualListHeight = logical.height - RowHeight * 4 - 16 - 2 // 3 rows, .5rem padding, and 2 1px borders to account for
+      state.virtualListHeight = logical.height - RowHeight * 3 - 28 // 3 rows plus top bar - 2px
       state.windowHeight = logical.height
     })
 
@@ -119,30 +120,19 @@ export default component$(() => {
     }
   })
 
-  useVisibleTask$(async ({ track }) => {
-    if (!store.currAudioElem) store.currAudioElem = new Audio()
-
-    const currSong = track(() => store.currSong)
-    if (!currSong) return
-
-    const songPath = 'asset://localhost/' + currSong.path
-    if (store.currAudioElem.src !== songPath.replace(/ /g, '%20')) {
-      store.currAudioElem.src = songPath
-      store.currAudioElem.play()
-    }
-  })
-
   return (
-    <div class="w-full p-2 flex flex-col flex-1">
-      <div class="flex justify-between" style={{ height: RowHeight + 'px' }}>
-        <h1>Library</h1>
-        <button onClick$={openDirectoryPicker} class="bg-gray-800 px-2 rounded text-sm">
+    <div class="w-full flex flex-col flex-1">
+      <div class="flex items-center justify-end px-2" style={{ height: RowHeight + 'px' }}>
+        <button onClick$={openDirectoryPicker} class="bg-gray-700 px-4 py-[2px] rounded text-sm">
           Add Music
         </button>
       </div>
 
       <section class="w-full flex flex-col flex-1">
-        <div class="px-2 w-full text-sm grid grid-cols-4 text-left" style={{ height: RowHeight + 'px' }}>
+        <div
+          class="px-2 w-full text-sm grid grid-cols-4 items-center text-left border-b border-t border-gray-800"
+          style={{ height: RowHeight + 'px' }}
+        >
           <span class="truncate">Title</span>
           <span class="truncate">Artist</span>
           <span class="truncate">Album</span>
@@ -150,19 +140,19 @@ export default component$(() => {
 
         <div ref={virtualListElem} class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
-            listWrapClass="border-r border-b border-gray-800"
-            numItems={store.addedSongs.length}
+            numItems={store.allSongs.length}
             itemHeight={RowHeight}
             windowHeight={state.virtualListHeight || 0}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-              const song = store.addedSongs[index]
+              const song = store.allSongs[index]
+
               return (
                 <button
                   key={song.title}
-                  onDblClick$={() => (store.currSong = song)}
+                  onDblClick$={() => storeActions.playSong(song, index)}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  class={`px-2 border-t border-l border-gray-800 w-full text-sm grid grid-cols-4 text-left items-center
-        ${store.currSong?.id === song.id ? 'bg-gray-800' : ''}`}
+                  class={`px-2 border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-4 text-left items-center
+        ${store.player.currSong?.id === song.id ? 'bg-gray-800' : ''}`}
                 >
                   <span class="truncate">{song.title}</span>
                   <span class="truncate">{song.artist}</span>

@@ -1,13 +1,23 @@
 export interface Store {
-  addedSongs: Song[]
+  allSongs: Song[]
+  searchTerm: string
   audioDir: string
-  currSong?: Song
-  currAudioElem?: HTMLAudioElement
-  nextAudioElem?: HTMLAudioElement
+  pathPrefix: 'asset://localhost/'
+  player: {
+    currSong?: Song
+    prevSong?: Song
+    nextSong?: Song
+    currSongIndex: number
+    audioElem?: HTMLAudioElement
+    nextAudioElem?: HTMLAudioElement
+    isPaused: boolean
+    currentTime: number
+    duration: number
+  }
 }
 
 export interface Song {
-  id: string // A hash of the filepath
+  id: string
   path: string
   file: string
   title: string
@@ -22,4 +32,11 @@ export type ListItemStyle = {
   position: 'absolute'
   top: string
   width: '100%'
+}
+
+export interface StoreActions {
+  loadSong: QRL<(song: Song) => void>
+  playSong: QRL<(song: Song, index?: number) => void>
+  nextSong: QRL<() => void>
+  prevSong: QRL<() => void>
 }

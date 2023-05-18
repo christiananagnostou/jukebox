@@ -2,7 +2,7 @@ import { $, component$, useSignal, type QwikUIEvent, type Component, type JSXNod
 import type { ListItemStyle } from '~/App'
 
 type Props = {
-  listWrapClass: string
+  listWrapClass?: string
   numItems: number
   itemHeight: number
   windowHeight: number
@@ -27,10 +27,7 @@ export default component$((props: Props) => {
   ;(async () => {
     for (let i = startIndex; i <= endIndex; i++) {
       const elem = renderItem(
-        {
-          index: i,
-          style: { position: 'absolute', top: `${i * itemHeight}px`, width: '100%' },
-        },
+        { index: i, style: { position: 'absolute', top: `${i * itemHeight}px`, width: '100%' } },
         '' + i,
         0
       )
