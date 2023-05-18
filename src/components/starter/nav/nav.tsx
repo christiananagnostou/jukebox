@@ -1,13 +1,19 @@
-import { $, type QwikChangeEvent, component$, useContext } from '@builder.io/qwik'
+import { $, type QwikChangeEvent, component$, useContext, useSignal } from '@builder.io/qwik'
 import { Link } from '@builder.io/qwik-city'
-import { PlayerContext } from '~/routes/layout'
+import { NextTrack } from '~/components/svg/NextTrack'
+import { Pause } from '~/components/svg/Pause'
+import { Play } from '~/components/svg/Play'
+import { PrevTrack } from '~/components/svg/PrevTrack'
+import { StoreActionsContext, StoreContext } from '~/routes/layout'
 
 const Links = [
   { title: 'Library', url: '/' },
   { title: 'Flower', url: '/demo/flower' },
 ]
 export default component$(() => {
-  const store = useContext(PlayerContext)
+  const store = useContext(StoreContext)
+  const storeActions = useContext(StoreActionsContext)
+  const navWidth = useSignal(192)
 
   const dragHandler = $((e: QwikChangeEvent<HTMLInputElement>) => {
     if (!store.player.audioElem) return
@@ -15,8 +21,15 @@ export default component$(() => {
     store.player.audioElem.currentTime = currentDraggedTime
   })
 
+  const formatSeconds = $((time: number) => {
+    const minutes = Math.floor(time / 60)
+    const seconds = Math.floor(time % 60)
+    const secondsWithZero = String(seconds).padStart(2, '0')
+    return `${minutes}:${secondsWithZero}`
+  })
+
   return (
-    <nav class="w-48 border-r border-gray-700 fixed top-0 h-screen flex flex-col">
+    <nav class="border-r border-gray-700 fixed top-0 h-screen flex flex-col" style={{ width: navWidth.value + 'px' }}>
       <ul class="flex-1">
         {Links.map((link) => (
           <li key={link.title} class="p-1">
@@ -31,73 +44,57 @@ export default component$(() => {
         ))}
       </ul>
 
-      <div class="border-t border-gray-800 text-center text-sm">
-        <p class="h-5">{store.player.currSong?.title || 'No Song Playing'}</p>
+      <div class="border-t border-gray-800 text-center text-sm group/nav-player">
+        {/* Album Art */}
         <div class="w-full px-2 aspect-square bg-gray-800">{/* <img src="" alt="" /> */}</div>
-        <p class="h-5">{store.player.currSong?.artist}</p>
+        {/* Tile */}
+        <p class="h-5 truncate">{store.player.currSong?.title}</p>
+        {/* Artist */}
+        <p class="h-5 truncate">{store.player.currSong?.artist}</p>
 
         {/* Controls */}
-        <div class="flex justify-evenly text-slate-700">
-          {/* Prev */}
-          <svg
-            stroke="currentColor"
-            fill="none"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            height="2rem"
-            width="2rem"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M21 5v14l-8 -7z"></path>
-            <path d="M10 5v14l-8 -7z"></path>
-          </svg>
-          {/* Play */}
-          <svg
-            stroke="currentColor"
-            fill="none"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            height="2rem"
-            width="2rem"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M7 4v16l13 -8z"></path>
-          </svg>
-          {/* Next */}
-          <svg
-            stroke="currentColor"
-            fill="none"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            height="2rem"
-            width="2rem"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M3 5v14l8 -7z"></path>
-            <path d="M14 5v14l8 -7z"></path>
-          </svg>
+        <div class="flex justify-evenly text-slate-500 mt-4">
+          <button onClick$={storeActions.prevSong}>
+            <PrevTrack />
+          </button>
+          {store.player.isPaused ? (
+            <button
+              onClick$={() => {
+                store.player.audioElem?.play()
+                store.player.isPaused = false
+              }}
+            >
+              <Play />
+            </button>
+          ) : (
+            <button
+              onClick$={() => {
+                store.player.audioElem?.pause()
+                store.player.isPaused = true
+              }}
+            >
+              <Pause />
+            </button>
+          )}
+          <button onClick$={storeActions.nextSong}>
+            <NextTrack />
+          </button>
         </div>
 
         {/* Range Slider */}
-        <div class="flex items-center justify-center mb-3">
-          <p class="py-4 px-2">{store.player.audioElem?.currentTime}</p>
+        <div class="">
+          <div class="flex justify-between w-full opacity-0 text-xs text-slate-400 group-hover/nav-player:opacity-100 transition-opacity duration-300">
+            <p class="px-1">{formatSeconds(store.player.currentTime)}</p>
+            <p class="px-1">{formatSeconds(store.player.duration)}</p>
+          </div>
 
-          <div class="flex w-full relative overflow-hidden h-2">
+          <div class="w-full relative overflow-hidden h-2">
             <input
-              class="appearance-none"
+              class="appearance-none w-full block"
               type="range"
               min={0}
-              max={store.player.audioElem?.duration || 1000}
-              value={store.player.audioElem?.currentTime}
+              max={store.player.duration}
+              value={store.player.currentTime}
               onChange$={dragHandler}
 
               // TODO: get color from album art
@@ -107,17 +104,13 @@ export default component$(() => {
             />
             {store.player.audioElem && (
               <div
-                class="bg-white w-full h-full absolute left-0 top-0 pointer-events-none"
+                class="bg-slate-500 w-full h-full absolute left-0 top-0 pointer-events-none"
                 style={{
-                  transform: `translateX(${
-                    (store.player.audioElem?.currentTime / store.player.audioElem?.duration) * 100
-                  }%)`,
+                  transform: `translateX(${(store.player.currentTime / store.player.duration) * 100}%)`,
                 }}
               ></div>
             )}
           </div>
-
-          <p class="py-4 px-2">{store.player.audioElem?.duration || 0}</p>
         </div>
       </div>
     </nav>

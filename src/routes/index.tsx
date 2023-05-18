@@ -10,7 +10,7 @@ import md5 from 'md5'
 import { isAudioFile } from '~/utils/Files'
 import VirtualList from '~/components/Shared/VirtualList'
 import type { Song, ListItemStyle } from '~/App'
-import { PlayerContext } from './layout'
+import { StoreActionsContext, StoreContext } from './layout'
 
 const RowHeight = 30
 
@@ -19,7 +19,8 @@ const RowHeight = 30
 // WINDOW_FILE_DROP_CANCELLED = 'tauri://file-drop-cancelled',
 
 export default component$(() => {
-  const store = useContext(PlayerContext)
+  const store = useContext(StoreContext)
+  const storeActions = useContext(StoreActionsContext)
 
   const virtualListElem = useSignal<Element>()
   const state = useStore({ virtualListHeight: virtualListElem.value?.clientHeight, windowHeight: 0 })
@@ -101,7 +102,7 @@ export default component$(() => {
       if (!virtualListElem.value) return
       const factor = await appWindow.scaleFactor()
       const logical = size.toLogical(factor)
-      state.virtualListHeight = logical.height - RowHeight * 3 - 3 // 3 rows with 3px of border
+      state.virtualListHeight = logical.height - RowHeight * 3 - 28 // 3 rows plus top bar - 2px
       state.windowHeight = logical.height
     })
 
@@ -144,10 +145,11 @@ export default component$(() => {
             windowHeight={state.virtualListHeight || 0}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
               const song = store.allSongs[index]
+
               return (
                 <button
                   key={song.title}
-                  onDblClick$={() => (store.player.currSong = song)}
+                  onDblClick$={() => storeActions.playSong(song, index)}
                   style={{ ...style, height: RowHeight + 'px' }}
                   class={`px-2 border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-4 text-left items-center
         ${store.player.currSong?.id === song.id ? 'bg-gray-800' : ''}`}

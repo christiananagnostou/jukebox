@@ -1,11 +1,18 @@
 export interface Store {
   allSongs: Song[]
+  searchTerm: string
   audioDir: string
   pathPrefix: 'asset://localhost/'
   player: {
     currSong?: Song
+    prevSong?: Song
+    nextSong?: Song
+    currSongIndex: number
     audioElem?: HTMLAudioElement
     nextAudioElem?: HTMLAudioElement
+    isPaused: boolean
+    currentTime: number
+    duration: number
   }
 }
 
@@ -25,4 +32,11 @@ export type ListItemStyle = {
   position: 'absolute'
   top: string
   width: '100%'
+}
+
+export interface StoreActions {
+  loadSong: QRL<(song: Song) => void>
+  playSong: QRL<(song: Song, index?: number) => void>
+  nextSong: QRL<() => void>
+  prevSong: QRL<() => void>
 }

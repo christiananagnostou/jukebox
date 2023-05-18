@@ -1,9 +1,9 @@
-import { component$, createContextId, Slot, useContextProvider, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, createContextId, Slot, useContextProvider, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { routeLoader$ } from '@builder.io/qwik-city'
 
 import Nav from '~/components/starter/nav/nav'
 import Footer from '~/components/starter/footer/footer'
-import type { Store } from '~/App'
+import type { Song, Store, StoreActions } from '~/App'
 
 export const useServerTimeLoader = routeLoader$(() => {
   return {
@@ -11,42 +11,86 @@ export const useServerTimeLoader = routeLoader$(() => {
   }
 })
 
-export const PlayerContext = createContextId<Store>('docs.theme-context')
+export const StoreContext = createContextId<Store>('docs.store-context')
+export const StoreActionsContext = createContextId<StoreActions>('docs.store-actions-context')
 
 export default component$(() => {
   const store = useStore<Store>(
     {
       allSongs: [],
+      searchTerm: '',
       audioDir: '',
       pathPrefix: 'asset://localhost/',
       player: {
         currSong: undefined,
+        currSongIndex: 0,
         audioElem: undefined,
         nextAudioElem: undefined,
+        isPaused: true,
+        currentTime: 0,
+        duration: 0,
       },
     },
     { deep: true }
   )
-  useContextProvider(PlayerContext, store)
+  useContextProvider(StoreContext, store)
 
-  useVisibleTask$(async ({ track }) => {
+  const loadSong = $((song: Song) => {
+    if (!store.player.audioElem) return
+    store.player.audioElem.src = store.pathPrefix + song.path
+    store.player.audioElem.dataset.songId = song.id
+    store.player.audioElem.load()
+  })
+
+  const playSong = $(async (song: Song, index?: number) => {
+    if (!store.player.audioElem) return
+    if (store.player.audioElem.dataset.songId !== song.id) await loadSong(song)
+    store.player.currSong = song
+    store.player.audioElem.play()
+    store.player.isPaused = false
+    if (index) store.player.currSongIndex = index
+  })
+
+  const nextSong = $(() => {
+    const nextIndex = store.player.currSongIndex + 1
+    if (nextIndex === store.allSongs.length) return
+    playSong(store.allSongs[nextIndex], nextIndex)
+  })
+
+  const prevSong = $(() => {
+    const prevIndex = store.player.currSongIndex - 1
+    if (prevIndex < 0) return
+    playSong(store.allSongs[prevIndex], prevIndex)
+  })
+
+  const storeActions = useStore<StoreActions>({
+    loadSong,
+    playSong,
+    nextSong,
+    prevSong,
+  })
+  useContextProvider(StoreActionsContext, storeActions)
+
+  useVisibleTask$(() => {
     // Initialize an audio element
-    if (!store.player.audioElem) store.player.audioElem = new Audio()
+    let interval: NodeJS.Timer
 
-    // Track changes to currSong
-    const currSong = track(() => store.player.currSong)
-    if (!currSong) return
+    if (!store.player.audioElem) {
+      const audioElem = new Audio()
+      // Listen for metadata being loaded into the audio element and set duration
+      audioElem.addEventListener('loadedmetadata', () => (store.player.duration = audioElem.duration), false)
 
-    // If currSong changes, change audioElem src to currSong
-    const currSongPath = store.pathPrefix + currSong.path
-    if (store.player.audioElem?.src !== currSongPath.replace(/ /g, '%20')) {
-      store.player.audioElem.src = currSongPath
-      store.player.audioElem.load()
-      store.player.audioElem.play()
+      // Update currentTime and check to go to the next song
+      interval = setInterval(() => {
+        store.player.currentTime = audioElem.currentTime
+        if (audioElem.ended && !store.player.isPaused) nextSong()
+      }, 500)
 
-      // console.log((store.player.audioElem.duration))
-      // console.log((store.player.audioElem.currentTime = 100))
+      // Set Audio Elem
+      store.player.audioElem = audioElem
     }
+
+    return () => clearInterval(interval)
   })
 
   return (

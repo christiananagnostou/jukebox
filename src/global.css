@@ -17,9 +17,13 @@
 :root {
   --primary: #17171f;
   --secondary: #3f3f59;
+  --navbar-width: 200;
 }
 
 html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
   line-height: 1;
   -webkit-text-size-adjust: 100%;
   -moz-tab-size: 4;
@@ -31,9 +35,14 @@ html {
 body {
   background: #17171f;
   color: #ffffff;
-  overflow-x: hidden;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* overflow-x: hidden; */
   display: flex;
   position: relative;
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Firefox */
