@@ -70,8 +70,6 @@ export default component$(() => {
       defaultPath: store.audioDir,
     })
 
-    console.log(selected)
-
     if (Array.isArray(selected)) {
       // user selected multiple directories
       selected.forEach((dir) => addFolder(dir))
@@ -84,8 +82,12 @@ export default component$(() => {
   })
 
   useVisibleTask$(async () => {
-    // Set audio directory for import dialog
-    store.audioDir = await audioDir()
+    try {
+      // Set audio directory for import dialog
+      store.audioDir = await audioDir()
+    } catch (e) {
+      console.log(e)
+    }
 
     const unlistenFileDrop = await listen('tauri://file-drop', async (event) => {
       if (!event.payload) return
