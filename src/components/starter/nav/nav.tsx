@@ -1,4 +1,4 @@
-import { $, type QwikChangeEvent, component$, useContext, useSignal } from '@builder.io/qwik'
+import { $, type QwikChangeEvent, component$, useContext } from '@builder.io/qwik'
 import { Link } from '@builder.io/qwik-city'
 import { NextTrack } from '~/components/svg/NextTrack'
 import { Pause } from '~/components/svg/Pause'
@@ -13,7 +13,6 @@ const Links = [
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
-  const navWidth = useSignal(192)
 
   const dragHandler = $((e: QwikChangeEvent<HTMLInputElement>) => {
     if (!store.player.audioElem) return
@@ -29,7 +28,7 @@ export default component$(() => {
   })
 
   return (
-    <nav class="border-r border-gray-700 fixed top-0 h-screen flex flex-col" style={{ width: navWidth.value + 'px' }}>
+    <nav class="border-r border-gray-700 fixed top-0 h-screen flex flex-col" style={{ width: 'var(--navbar-width' }}>
       <ul class="flex-1">
         {Links.map((link) => (
           <li key={link.title} class="p-1">

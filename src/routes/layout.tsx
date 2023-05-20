@@ -1,15 +1,8 @@
 import { $, component$, createContextId, Slot, useContextProvider, useStore, useVisibleTask$ } from '@builder.io/qwik'
-import { routeLoader$ } from '@builder.io/qwik-city'
 
 import Nav from '~/components/starter/nav/nav'
 import Footer from '~/components/starter/footer/footer'
 import type { Song, Store, StoreActions } from '~/App'
-
-export const useServerTimeLoader = routeLoader$(() => {
-  return {
-    date: new Date().toISOString(),
-  }
-})
 
 export const StoreContext = createContextId<Store>('docs.store-context')
 export const StoreActionsContext = createContextId<StoreActions>('docs.store-actions-context')
@@ -18,6 +11,7 @@ export default component$(() => {
   const store = useStore<Store>(
     {
       allSongs: [],
+      sorting: '',
       searchTerm: '',
       audioDir: '',
       pathPrefix: 'asset://localhost/',
@@ -38,13 +32,14 @@ export default component$(() => {
   const loadSong = $((song: Song) => {
     if (!store.player.audioElem) return
     store.player.audioElem.src = store.pathPrefix + song.path
-    store.player.audioElem.dataset.songId = song.id
+    store.player.audioElem.dataset.loadedSongId = song.id
     store.player.audioElem.load()
   })
 
   const playSong = $(async (song: Song, index?: number) => {
     if (!store.player.audioElem) return
-    if (store.player.audioElem.dataset.songId !== song.id) await loadSong(song)
+    // Load the new song if not already loaded
+    if (store.player.audioElem.dataset.loadedSongId !== song.id) await loadSong(song)
     store.player.currSong = song
     store.player.audioElem.play()
     store.player.isPaused = false
@@ -58,9 +53,15 @@ export default component$(() => {
   })
 
   const prevSong = $(() => {
-    const prevIndex = store.player.currSongIndex - 1
-    if (prevIndex < 0) return
-    playSong(store.allSongs[prevIndex], prevIndex)
+    if (store.player.currentTime > 10) {
+      // Restart Current Song
+      if (store.player.audioElem) store.player.audioElem.currentTime = 0
+    } else {
+      // Go to Previous Song
+      const prevIndex = store.player.currSongIndex - 1
+      if (prevIndex < 0) return
+      playSong(store.allSongs[prevIndex], prevIndex)
+    }
   })
 
   const storeActions = useStore<StoreActions>({
@@ -97,7 +98,7 @@ export default component$(() => {
     <>
       <Nav />
 
-      <main class="h-screen max-h-screen w-full flex flex-col realtive ml-48">
+      <main class="h-screen max-h-screen w-full flex flex-col realtive" style={{ marginLeft: 'var(--navbar-width)' }}>
         <Slot />
         <Footer />
       </main>

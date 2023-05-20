@@ -1,5 +1,6 @@
 export interface Store {
   allSongs: Song[]
+  sorting: ''
   searchTerm: string
   audioDir: string
   pathPrefix: 'asset://localhost/'

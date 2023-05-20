@@ -17,7 +17,7 @@
 :root {
   --primary: #17171f;
   --secondary: #3f3f59;
-  --navbar-width: 200;
+  --navbar-width: 200px;
 }
 
 html {
@@ -45,6 +45,7 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Overlaying Scrollbar */
 /* Firefox */
 * {
   scrollbar-width: thin;
