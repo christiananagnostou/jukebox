@@ -4,6 +4,8 @@ import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
 import type { ListItemStyle } from '~/App'
 import { StoreActionsContext, StoreContext } from './layout'
+import { ArrowDown } from '~/components/svg/ArrowDown'
+import { ArrowUp } from '~/components/svg/ArrowUp'
 
 const RowHeight = 30
 
@@ -37,22 +39,28 @@ export default component$(() => {
           style={{ height: RowHeight + 'px' }}
         >
           <button
-            class="truncate border-r border-gray-700 h-full"
-            onClick$={() => store.allSongs.sort((s1, s2) => s1.title.localeCompare(s2.title))}
+            class="truncate border-r border-gray-700 h-full flex items-center justify-between px-2"
+            onClick$={() => (store.sorting = store.sorting === 'title-desc' ? 'title-asc' : 'title-desc')}
           >
             Title
+            {store.sorting === 'title-desc' && <ArrowDown />}
+            {store.sorting === 'title-asc' && <ArrowUp />}
           </button>
           <button
-            class="truncate border-r border-gray-700 h-full"
-            onClick$={() => store.allSongs.sort((s1, s2) => s1.artist.localeCompare(s2.artist))}
+            class="truncate border-r border-gray-700 h-full flex items-center justify-between px-2"
+            onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
           >
             Artist
+            {store.sorting === 'artist-desc' && <ArrowDown />}
+            {store.sorting === 'artist-asc' && <ArrowUp />}
           </button>
           <button
-            class="truncate border-r border-gray-700 h-full"
-            onClick$={() => store.allSongs.sort((s1, s2) => s1.album.localeCompare(s2.album))}
+            class="truncate border-r border-gray-700 h-full flex items-center justify-between px-2"
+            onClick$={() => (store.sorting = store.sorting === 'album-desc' ? 'album-asc' : 'album-desc')}
           >
             Album
+            {store.sorting === 'album-desc' && <ArrowDown />}
+            {store.sorting === 'album-asc' && <ArrowUp />}
           </button>
         </div>
 

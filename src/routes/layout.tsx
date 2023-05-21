@@ -1,7 +1,16 @@
-import { $, component$, createContextId, Slot, useContextProvider, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import {
+  $,
+  component$,
+  createContextId,
+  Slot,
+  useContextProvider,
+  useStore,
+  useTask$,
+  useVisibleTask$,
+} from '@builder.io/qwik'
 
-import Nav from '~/components/starter/nav/nav'
-import Footer from '~/components/starter/footer/footer'
+import Nav from '~/components/nav'
+import Footer from '~/components/footer'
 import type { Song, Store, StoreActions } from '~/App'
 
 export const StoreContext = createContextId<Store>('docs.store-context')
@@ -11,7 +20,7 @@ export default component$(() => {
   const store = useStore<Store>(
     {
       allSongs: [],
-      sorting: '',
+      sorting: 'default',
       searchTerm: '',
       audioDir: '',
       pathPrefix: 'asset://localhost/',
@@ -92,6 +101,40 @@ export default component$(() => {
     }
 
     return () => clearInterval(interval)
+  })
+
+  useTask$(({ track }) => {
+    const sorting = track(() => store.sorting)
+    //   const searchTerm = track(() => store.searchTerm)
+    //     .toLowerCase()
+    //     .trim()
+    //   console.log(searchTerm)
+    //   store.allSongs.filter((song) =>
+    //   searchTerm
+    //     ? song.title.toLowerCase().includes(searchTerm) ||
+    //       song.artist.toLowerCase().includes(searchTerm) ||
+    //       song.album.toLowerCase().includes(searchTerm)
+    //     : true
+    // )
+
+    store.allSongs = store.allSongs.sort((song1, song2) => {
+      switch (sorting) {
+        case 'title-desc':
+          return song1.title.localeCompare(song2.title)
+        case 'title-asc':
+          return song2.title.localeCompare(song1.title)
+        case 'artist-desc':
+          return song1.artist.localeCompare(song2.artist)
+        case 'artist-asc':
+          return song2.artist.localeCompare(song1.artist)
+        case 'album-desc':
+          return song1.album.localeCompare(song2.album)
+        case 'album-asc':
+          return song2.album.localeCompare(song1.album)
+        default:
+          return 1
+      }
+    })
   })
 
   return (

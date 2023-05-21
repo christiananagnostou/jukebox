@@ -1,6 +1,6 @@
 export interface Store {
   allSongs: Song[]
-  sorting: ''
+  sorting: 'title-desc' | 'title-asc' | 'artist-desc' | 'artist-asc' | 'album-desc' | 'album-asc' | 'default'
   searchTerm: string
   audioDir: string
   pathPrefix: 'asset://localhost/'
