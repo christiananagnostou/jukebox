@@ -77,8 +77,8 @@ export default component$(() => {
                   key={song.title}
                   onDblClick$={() => storeActions.playSong(song, index)}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  class={`px-2 border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-4 text-left items-center
-        ${store.player.currSong?.id === song.id ? 'bg-gray-800' : ''}`}
+                  class={`px-2 border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-4 text-left items-center hover:bg-[rgba(0,0,0,.15)]
+        ${store.player.currSong?.id === song.id ? '!bg-gray-700' : ''}`}
                 >
                   <span class="truncate">{song.title}</span>
                   <span class="truncate">{song.artist}</span>
