@@ -26,6 +26,7 @@ export interface Song {
   artist: string
   track: number
   side: number
+  startTime: number
   isFavorite: boolean
 }
 

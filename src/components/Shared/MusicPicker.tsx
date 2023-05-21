@@ -36,6 +36,7 @@ export default component$(() => {
       side: parseInt(track ?? side),
       album: splitPath[splitFormat.indexOf('Album')],
       artist: splitPath[splitFormat.indexOf('Artist')],
+      startTime: 0,
       isFavorite: false,
     }
 
