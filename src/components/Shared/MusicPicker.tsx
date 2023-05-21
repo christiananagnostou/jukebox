@@ -1,4 +1,4 @@
-import { $, component$, useContext, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useContext, useOnWindow, useVisibleTask$ } from '@builder.io/qwik'
 import { listen } from '@tauri-apps/api/event'
 import type { FileEntry } from '@tauri-apps/api/fs'
 import { readDir } from '@tauri-apps/api/fs'
@@ -100,6 +100,15 @@ export default component$(() => {
 
     return () => unlistenFileDrop()
   })
+
+  useOnWindow(
+    'keydown',
+    $((e: Event) => {
+      // @ts-ignore
+      const { key, metaKey } = e as { key: string; metaKey: boolean }
+      if (key === 'i' && metaKey) openDirectoryPicker()
+    })
+  )
 
   return (
     <button onClick$={openDirectoryPicker} class="bg-gray-700 py-[2px] px-4 rounded text-sm">
