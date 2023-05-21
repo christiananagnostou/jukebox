@@ -24,9 +24,9 @@
         "all": true
       },
       "shell": {
-        "all": true, 
-        "execute": true, 
-        "sidecar": true, 
+        "all": true,
+        "execute": true,
+        "sidecar": true,
         "open": true
       },
       "protocol": {
@@ -43,13 +43,7 @@
         "depends": []
       },
       "externalBin": [],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
+      "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
       "identifier": "Jukebox",
       "longDescription": "",
       "macOS": {
@@ -80,8 +74,14 @@
         "height": 600,
         "resizable": true,
         "title": "Jukebox",
-        "width": 800
+        "hiddenTitle": true,
+        "width": 800,
+        "transparent": true,
+        "maximized": true,
+        "focus": true,
+        "titleBarStyle": "Overlay"
       }
-    ]
+    ],
+    "macOSPrivateApi": true
   }
 }
