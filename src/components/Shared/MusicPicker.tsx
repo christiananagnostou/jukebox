@@ -105,8 +105,8 @@ export default component$(() => {
     'keydown',
     $((e: Event) => {
       // @ts-ignore
-      const { key, metaKey } = e as { key: string; metaKey: boolean }
-      if (key === 'i' && metaKey) openDirectoryPicker()
+      const { key, ctrlKey } = e as { key: string; ctrlKey: boolean }
+      if (key === 'i' && ctrlKey) openDirectoryPicker()
     })
   )
 
