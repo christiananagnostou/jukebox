@@ -8,8 +8,12 @@ import { StoreActionsContext, StoreContext } from '~/routes/layout'
 
 const Links = [
   { title: 'Library', url: '/' },
-  { title: 'Flower', url: '/demo/flower' },
+  { title: 'Albums', url: '/' },
+  { title: 'Playlists', url: '/' },
+  { title: 'Import', url: '/' },
+  {},
 ]
+
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
@@ -29,7 +33,7 @@ export default component$(() => {
 
   return (
     <nav class="border-r border-gray-700 fixed top-0 h-screen flex flex-col" style={{ width: 'var(--navbar-width' }}>
-      <ul class="flex-1">
+      <ul class="flex-1 mt-[29px] border-y border-gray-700">
         {Links.map((link) => (
           <li key={link.title} class="p-1">
             <Link
@@ -43,9 +47,9 @@ export default component$(() => {
         ))}
       </ul>
 
-      <div class="border-t border-gray-800 text-center text-sm group/nav-player">
+      <div class="text-center text-sm group/nav-player">
         {/* Album Art */}
-        <div class="w-full px-2 aspect-square bg-gray-800">{/* <img src="" alt="" /> */}</div>
+        {/* <div class="w-full px-2 aspect-square bg-gray-800"><img src="" alt="" /></div> */}
         {/* Tile */}
         <p class="h-5 truncate">{store.player.currSong?.title}</p>
         {/* Artist */}

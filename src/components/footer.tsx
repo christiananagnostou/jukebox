@@ -13,6 +13,8 @@ export default component$(() => {
       // @ts-ignore
       const { key } = e as { key: string }
 
+      console.log(key)
+
       if (key === '/') {
         e.preventDefault()
         searchInput.value.focus()
