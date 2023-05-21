@@ -1,71 +1,71 @@
-# Qwik City App ⚡️
+# 🎵 Jukebox 🎵
 
-- [Qwik Docs](https://qwik.builder.io/)
-- [Discord](https://qwik.builder.io/chat)
-- [Qwik GitHub](https://github.com/BuilderIO/qwik)
-- [@QwikDev](https://twitter.com/QwikDev)
-- [Vite](https://vitejs.dev/)
+Jukebox is a music player desktop application capable of managing your precious digital music library. It provides a sleek and intuitive interface for users to manage and play their music collection. Jukebox offers a seamless music playback experience with a host of features to support audiophiles and chill listeners alike.
 
----
+## Features
 
-## Project Structure
+- [x] Cross-platform - Windows, macOS, and Linux.
+- [x] Bulk Music Import
+- [x] Music playback
+- [ ] Advanced Search
+- [ ] Keyboard Shortcuts
+- [ ] Playlists
+- [ ] Remote Library Connection
+- [ ] Audio visualization
 
-This project is using Qwik with [QwikCity](https://qwik.builder.io/qwikcity/overview/). QwikCity is just an extra set of tools on top of Qwik to make it easier to build a full site, including directory-based routing, layouts, and more.
+## Installation
 
-Inside your project, you'll see the following directory structure:
+To install and run Jukebox locally, follow these steps:
 
+1. Clone the repository:
 ```
-├── public/
-│   └── ...
-└── src/
-    ├── components/
-    │   └── ...
-    └── routes/
-        └── ...
+git clone https://github.com/ChristianAnagnostou/jukebox.git
 ```
 
-- `src/routes`: Provides the directory based routing, which can include a hierarchy of `layout.tsx` layout files, and an `index.tsx` file as the page. Additionally, `index.ts` files are endpoints. Please see the [routing docs](https://qwik.builder.io/qwikcity/routing/overview/) for more info.
-
-- `src/components`: Recommended directory for components.
-
-- `public`: Any static assets, like images, can be placed in the public directory. Please see the [Vite public directory](https://vitejs.dev/guide/assets.html#the-public-directory) for more info.
-
-## Add Integrations and deployment
-
-Use the `npm run qwik add` command to add additional integrations. Some examples of integrations include: Cloudflare, Netlify or Express server, and the [Static Site Generator (SSG)](https://qwik.builder.io/qwikcity/guides/static-site-generation/).
-
-```shell
-npm run qwik add # or `yarn qwik add`
-```
-
-## Development
-
-Development mode uses [Vite's development server](https://vitejs.dev/). During development, the `dev` command will server-side render (SSR) the output.
-
-```shell
-npm start # or `yarn start`
-```
-
-> Note: during dev mode, Vite may request a significant number of `.js` files. This does not represent a Qwik production build.
-
-## Preview
-
-The preview command will create a production build of the client modules, a production build of `src/entry.preview.tsx`, and run a local server. The preview server is only for convenience to locally preview a production build, and it should not be used as a production server.
-
-```shell
-npm run preview # or `yarn preview`
-```
-
-## Production
-
-The production build will generate client and server modules by running both client and server build commands. Additionally, the build command will use Typescript to run a type check on the source code.
-
-```shell
-npm run build # or `yarn build`
-```
-
-## Static Site Generator (Node.js)
+2. Navigate to the project directory:
 
 ```
-npm run build.server
+cd jukebox
 ```
+
+3. Install the required node dependencies:
+```
+npm install
+```
+
+5. Start the Tauri application for development or production:
+```
+npm run tauri dev
+```
+```
+npm run tauri build
+```
+
+Now you should have Jukebox up and running on your local machine.
+
+## Configuration
+
+Jukebox can be configured using the `~/.jukebox.json` file located your home directory. You can customize settings such as the music library path, theme, and default audio output.
+
+## Contributing
+
+Contributions to Jukebox are welcome! If you want to contribute to the project, please follow these steps:
+
+1. Fork the repository on GitHub.
+2. Create a new branch from the `master` branch.
+3. Make your changes and commit them with descriptive messages.
+4. Push your changes to your forked repository.
+5. Submit a pull request to the `master` branch of the original repository.
+
+Please ensure that your contributions align with the project's coding style.
+
+## License
+
+Jukebox is licensed under the [MIT License](LICENSE). Feel free to modify and distribute the application as per the terms of the license.
+
+## Acknowledgments
+
+Jukebox is built using the following open-source libraries and frameworks:
+
+- [Tauri](https://tauri.app/): A framework for creating lightweight and secure desktop applications using web technologies.
+- [Qwik](https://qwik.dev/): A fast and efficient framework for building web applications using Typescript and server-side rendering.
