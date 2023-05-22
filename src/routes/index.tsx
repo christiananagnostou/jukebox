@@ -1,4 +1,4 @@
-import { component$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useContext, useSignal, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
 import { type DocumentHead } from '@builder.io/qwik-city'
 import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
@@ -6,6 +6,7 @@ import type { ListItemStyle } from '~/App'
 import { StoreActionsContext, StoreContext } from './layout'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
+import { LibraryRow } from '~/components/library/LibraryRow'
 
 const RowHeight = 30
 
@@ -24,11 +25,27 @@ export default component$(() => {
       if (!virtualListElem.value) return
       const factor = await appWindow.scaleFactor()
       const logical = size.toLogical(factor)
-      state.virtualListHeight = logical.height - RowHeight * 2 - 28 // 3 rows plus top bar - 28px
+      state.virtualListHeight = logical.height - RowHeight * 2 // 2 rows plus top bar - 28px
       state.windowHeight = logical.height
     })
 
     return () => unlistenResize()
+  })
+
+  const displayedSongs = useSignal(store.allSongs)
+
+  useTask$(({ track }) => {
+    const searchTerm = track(() => store.searchTerm).toLowerCase()
+    const allSongs = track(() => store.allSongs)
+
+    displayedSongs.value = searchTerm
+      ? allSongs.filter(
+          ({ title, artist, album }) =>
+            title.toLowerCase().includes(searchTerm) ||
+            artist.toLowerCase().includes(searchTerm) ||
+            album.toLowerCase().includes(searchTerm)
+        )
+      : allSongs
   })
 
   return (
@@ -66,24 +83,19 @@ export default component$(() => {
 
         <div ref={virtualListElem} class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
-            numItems={store.allSongs.length}
+            numItems={displayedSongs.value.length}
             itemHeight={RowHeight}
             windowHeight={state.virtualListHeight || 0}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-              const song = store.allSongs[index]
+              const song = displayedSongs.value[index]
 
               return (
-                <button
-                  key={song.title}
-                  onDblClick$={() => storeActions.playSong(song, index)}
+                <LibraryRow
+                  song={song}
+                  onDblClick={$(() => storeActions.playSong(song, index))}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  class={`px-2 border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-4 text-left items-center hover:bg-[rgba(0,0,0,.15)]
-        ${store.player.currSong?.id === song.id ? '!bg-gray-700' : ''}`}
-                >
-                  <span class="truncate">{song.title}</span>
-                  <span class="truncate">{song.artist}</span>
-                  <span class="truncate">{song.album}</span>
-                </button>
+                  classes={store.player.currSong?.id === song.id ? '!bg-gray-700' : ''}
+                />
               )
             })}
           />
