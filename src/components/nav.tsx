@@ -5,10 +5,10 @@ import { Pause } from '~/components/svg/Pause'
 import { Play } from '~/components/svg/Play'
 import { PrevTrack } from '~/components/svg/PrevTrack'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
-import { Backspace } from './svg/backspace'
-import { Command } from './svg/command'
-import { Shift } from './svg/shift'
-import { Keyboard } from './svg/keyboard'
+import { Backspace } from './svg/Backspace'
+import { Command } from './svg/Command'
+import { Shift } from './svg/Shift'
+import { Keyboard } from './svg/Keyboard'
 
 const Links = [
   { title: 'Library', url: '/' },
