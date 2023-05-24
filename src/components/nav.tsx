@@ -33,7 +33,7 @@ const KeyboardCommands = [
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
-  const state = useStore({ showKeyShortcuts: true })
+  const state = useStore({ showKeyShortcuts: false })
 
   const dragHandler = $((e: QwikChangeEvent<HTMLInputElement>) => {
     if (!store.player.audioElem) return
