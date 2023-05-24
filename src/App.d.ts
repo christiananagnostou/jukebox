@@ -1,9 +1,15 @@
 export interface Store {
   allSongs: Song[]
+  displayedSongs: Song[]
   sorting: 'title-desc' | 'title-asc' | 'artist-desc' | 'artist-asc' | 'album-desc' | 'album-asc' | 'default'
   searchTerm: string
   audioDir: string
   pathPrefix: 'asset://localhost/'
+  highlightedIndex: number
+  isTyping: boolean
+
+  queue: Song[]
+
   player: {
     currSong?: Song
     prevSong?: Song
@@ -39,6 +45,8 @@ export type ListItemStyle = {
 export interface StoreActions {
   loadSong: QRL<(song: Song) => void>
   playSong: QRL<(song: Song, index?: number) => void>
+  pauseSong: QRL<() => void>
+  resumeSong: QRL<() => void>
   nextSong: QRL<() => void>
   prevSong: QRL<() => void>
 }

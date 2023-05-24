@@ -13,24 +13,31 @@ export default component$(() => {
       // @ts-ignore
       const { key } = e as { key: string }
 
-      console.log(key)
-
       if (key === '/') {
         e.preventDefault()
         searchInput.value.focus()
-        store.searchTerm = ''
       }
       if (key === 'Escape') {
         e.preventDefault()
         searchInput.value.blur()
-        store.searchTerm = ''
+      }
+      if (key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        searchInput.value.blur()
       }
     })
   )
 
+  const handleSearchInput = $((e: InputEvent) => {
+    // @ts-ignore
+    store.searchTerm = e?.target?.value || ''
+    store.highlightedIndex = 0
+  })
+
   return (
     <footer
-      class="px-1 w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[#17171f]"
+      class="px-1 w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-background)]"
       style={{ minHeight: 30 + 'px' }}
     >
       <input
@@ -38,10 +45,13 @@ export default component$(() => {
         type="text"
         name="Search"
         id="search-input"
-        placeholder="Title, Artist, Album, Year.."
+        placeholder="Search"
         value={store.searchTerm}
-        /* @ts-ignore */
-        onInput$={(e) => (store.searchTerm = e?.target?.value || '')}
+        autoComplete="false"
+        autoCorrect="false"
+        onInput$={handleSearchInput}
+        onBlur$={() => (store.isTyping = false)}
+        onFocus$={() => (store.isTyping = true)}
         class="bg-inherit border border-gray-700 rounded flex-1 px-2 text-sm placeholder:text-slate-600"
       />
 

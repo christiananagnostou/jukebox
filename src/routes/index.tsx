@@ -1,4 +1,4 @@
-import { $, component$, useContext, useSignal, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { type DocumentHead } from '@builder.io/qwik-city'
 import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
@@ -30,22 +30,6 @@ export default component$(() => {
     })
 
     return () => unlistenResize()
-  })
-
-  const displayedSongs = useSignal(store.allSongs)
-
-  useTask$(({ track }) => {
-    const searchTerm = track(() => store.searchTerm).toLowerCase()
-    const allSongs = track(() => store.allSongs)
-
-    displayedSongs.value = searchTerm
-      ? allSongs.filter(
-          ({ title, artist, album }) =>
-            title.toLowerCase().includes(searchTerm) ||
-            artist.toLowerCase().includes(searchTerm) ||
-            album.toLowerCase().includes(searchTerm)
-        )
-      : allSongs
   })
 
   return (
@@ -83,18 +67,19 @@ export default component$(() => {
 
         <div ref={virtualListElem} class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
-            numItems={displayedSongs.value.length}
+            numItems={store.displayedSongs.length}
             itemHeight={RowHeight}
             windowHeight={state.virtualListHeight || 0}
+            scrollToRow={store.highlightedIndex}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-              const song = displayedSongs.value[index]
-
+              const song = store.displayedSongs[index]
               return (
                 <LibraryRow
                   song={song}
                   onDblClick={$(() => storeActions.playSong(song, index))}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  classes={store.player.currSong?.id === song.id ? '!bg-gray-700' : ''}
+                  highlighted={store.highlightedIndex === index}
+                  selected={store.player.currSong?.id === song.id}
                 />
               )
             })}

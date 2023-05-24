@@ -4,6 +4,7 @@ import {
   createContextId,
   Slot,
   useContextProvider,
+  useOnWindow,
   useStore,
   useTask$,
   useVisibleTask$,
@@ -20,10 +21,16 @@ export default component$(() => {
   const store = useStore<Store>(
     {
       allSongs: [],
+      displayedSongs: [],
       sorting: 'default',
       searchTerm: '',
       audioDir: '',
       pathPrefix: 'asset://localhost/',
+      highlightedIndex: 0,
+      isTyping: false,
+
+      queue: [],
+
       player: {
         currSong: undefined,
         currSongIndex: 0,
@@ -55,10 +62,19 @@ export default component$(() => {
     if (index) store.player.currSongIndex = index
   })
 
+  const pauseSong = $(() => {
+    store.player.audioElem?.pause()
+    store.player.isPaused = true
+  })
+
+  const resumeSong = $(() => {
+    store.player.audioElem?.play()
+    store.player.isPaused = false
+  })
+
   const nextSong = $(() => {
-    const nextIndex = store.player.currSongIndex + 1
-    if (nextIndex === store.allSongs.length) return
-    playSong(store.allSongs[nextIndex], nextIndex)
+    const nextIndex = store.player.currSongIndex >= store.displayedSongs.length - 1 ? 0 : store.player.currSongIndex + 1
+    playSong(store.displayedSongs[nextIndex], nextIndex)
   })
 
   const prevSong = $(() => {
@@ -66,16 +82,18 @@ export default component$(() => {
       // Restart Current Song
       if (store.player.audioElem) store.player.audioElem.currentTime = 0
     } else {
-      // Go to Previous Song
-      const prevIndex = store.player.currSongIndex - 1
-      if (prevIndex < 0) return
-      playSong(store.allSongs[prevIndex], prevIndex)
+      const prevIndex =
+        store.player.currSongIndex <= 0 ? store.displayedSongs.length - 1 : store.player.currSongIndex - 1
+
+      playSong(store.displayedSongs[prevIndex], prevIndex)
     }
   })
 
   const storeActions = useStore<StoreActions>({
     loadSong,
     playSong,
+    pauseSong,
+    resumeSong,
     nextSong,
     prevSong,
   })
@@ -103,19 +121,9 @@ export default component$(() => {
     return () => clearInterval(interval)
   })
 
+  // Song Sorting
   useTask$(({ track }) => {
     const sorting = track(() => store.sorting)
-    //   const searchTerm = track(() => store.searchTerm)
-    //     .toLowerCase()
-    //     .trim()
-    //   console.log(searchTerm)
-    //   store.allSongs.filter((song) =>
-    //   searchTerm
-    //     ? song.title.toLowerCase().includes(searchTerm) ||
-    //       song.artist.toLowerCase().includes(searchTerm) ||
-    //       song.album.toLowerCase().includes(searchTerm)
-    //     : true
-    // )
 
     store.allSongs = store.allSongs.sort((song1, song2) => {
       switch (sorting) {
@@ -136,6 +144,42 @@ export default component$(() => {
       }
     })
   })
+
+  useTask$(({ track }) => {
+    const searchTerm = track(() => store.searchTerm)
+      .toLowerCase()
+      .trim()
+    const allSongs = track(() => store.allSongs)
+
+    store.displayedSongs = searchTerm
+      ? allSongs.filter(
+          ({ title, artist, album }) =>
+            title.toLowerCase().includes(searchTerm) ||
+            artist.toLowerCase().includes(searchTerm) ||
+            album.toLowerCase().includes(searchTerm)
+        )
+      : allSongs
+  })
+
+  useOnWindow(
+    'keydown',
+    $((e: Event) => {
+      if (store.isTyping) return
+      // @ts-ignore
+      const { key } = e as { key: string }
+
+      if (key === 'j')
+        store.highlightedIndex =
+          store.highlightedIndex >= store.displayedSongs.length - 1 ? 0 : store.highlightedIndex + 1
+      if (key === 'k')
+        store.highlightedIndex =
+          store.highlightedIndex <= 0 ? store.displayedSongs.length - 1 : store.highlightedIndex - 1
+      if (key === 'Enter') playSong(store.displayedSongs[store.highlightedIndex], store.highlightedIndex)
+      if (key === 'n') nextSong()
+      if (key === 'N') prevSong()
+      if (key === 'p') store.player.isPaused ? resumeSong() : pauseSong()
+    })
+  )
 
   return (
     <>

@@ -1,4 +1,4 @@
-import { $, component$, useSignal, type QwikUIEvent, type Component, type JSXNode } from '@builder.io/qwik'
+import { $, component$, useSignal, type QwikUIEvent, type Component, type JSXNode, useTask$ } from '@builder.io/qwik'
 import type { ListItemStyle } from '~/App'
 
 type Props = {
@@ -8,15 +8,20 @@ type Props = {
   windowHeight: number
   renderItem: Component<{ index: number; style: ListItemStyle }>
   overscan?: number
+  scrollToRow?: number
 }
 
 export default component$((props: Props) => {
-  const { numItems, itemHeight, renderItem, windowHeight, overscan = 10, listWrapClass } = props
+  const { numItems, itemHeight, renderItem, windowHeight, overscan = 10, listWrapClass, scrollToRow } = props
 
   const scrollTop = useSignal(0)
+  const scrollRef = useSignal<HTMLDivElement>()
 
+  // Height calculated from size of input
   const innerHeight = numItems * itemHeight
+  // Calc index of first shown element
   const startIndex = Math.max(0, Math.floor(scrollTop.value / itemHeight) - overscan)
+  // Calc index of last shown element
   const endIndex = Math.min(
     numItems - 1, // don't render past the end of the list
     Math.floor((scrollTop.value + windowHeight) / itemHeight) + overscan
@@ -35,10 +40,33 @@ export default component$((props: Props) => {
     }
   })()
 
+  useTask$(({ track }) => {
+    const toRow = track(() => scrollToRow)
+
+    // Calc index of first shown element
+    const visibleStart = Math.max(0, Math.floor(scrollTop.value / itemHeight))
+    // Calc index of last shown element
+    const visibleEnd = Math.min(
+      numItems - 1, // don't render past the end of the list
+      Math.floor((scrollTop.value + windowHeight) / itemHeight)
+    )
+
+    if (toRow != undefined && (toRow >= visibleEnd || toRow <= visibleStart)) {
+      const startDiff = Math.abs(visibleStart - toRow)
+      const endDiff = Math.abs(visibleEnd - toRow)
+      const isCloserToTop = startDiff < endDiff
+
+      scrollRef.value?.scrollTo({
+        top: isCloserToTop ? toRow * itemHeight : toRow * itemHeight - (windowHeight - itemHeight),
+        behavior: 'auto',
+      })
+    }
+  })
+
   const onScroll = $((_: QwikUIEvent<HTMLDivElement>, element: HTMLDivElement) => (scrollTop.value = element.scrollTop))
 
   return (
-    <div class="scroll overflow-auto w-full h-full" onScroll$={onScroll}>
+    <div class="scroll overflow-auto w-full h-full" onScroll$={onScroll} ref={scrollRef}>
       <div class={`inner relative ${listWrapClass}`} style={{ height: `${innerHeight}px` }}>
         {items}
       </div>
