@@ -19,6 +19,7 @@
   --secondary: #3f3f59;
   --navbar-width: 200px;
   --body-background: rgba(23, 23, 31, 0.85);
+  --modal-background: rgba(0, 0, 0, 0.5);
 }
 
 html {
@@ -100,4 +101,67 @@ body {
 
 .time-control p {
   padding: 1rem;
+}
+
+.sound-wave {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.sound-wave .bar {
+  display: block;
+  width: 2px;
+  margin-right: 1px;
+  height: 10px;
+  background: #7c93bf;
+  animation: sound 0ms -800ms linear infinite alternate;
+  transition: height 0.8s;
+}
+
+@keyframes sound {
+  0% {
+    opacity: 0.35;
+    height: 6px;
+  }
+  100% {
+    opacity: 1;
+    height: 20px;
+  }
+}
+
+@keyframes sound2 {
+  0% {
+    opacity: 0.35;
+    height: 6px;
+  }
+  100% {
+    opacity: 1;
+    height: 18px;
+  }
+}
+.bar:nth-child(1) {
+  height: 2px;
+  animation-duration: 474ms;
+}
+
+.bar:nth-child(2) {
+  height: 10px;
+  animation-duration: 433ms;
+}
+
+.bar:nth-child(3) {
+  height: 18px;
+  animation-duration: 407ms;
+}
+
+.bar:nth-child(4) {
+  height: 26px;
+  animation-duration: 458ms;
+}
+
+.bar:nth-child(5) {
+  height: 30px;
+  animation-duration: 400ms;
 }
