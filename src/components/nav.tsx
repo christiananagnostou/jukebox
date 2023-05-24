@@ -82,7 +82,7 @@ export default component$(() => {
             onClick$={() => (state.showKeyShortcuts = !state.showKeyShortcuts)}
           >
             {/* Modal */}
-            <div class="px-8 w-max h-max border border-slate-700 rounded bg-[var(--body-background)]">
+            <div class="px-8 w-max h-max border border-slate-700 rounded bg-[var(--body-bg-solid)]">
               {KeyboardCommands.map((shortcut) => (
                 <span key={shortcut.command} class="flex justify-between my-3 w-48">
                   <span>{shortcut.command}</span>{' '}

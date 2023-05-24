@@ -20,6 +20,7 @@ export default component$(() => {
       if (key === 'Escape') {
         e.preventDefault()
         searchInput.value.blur()
+        store.searchTerm = ''
       }
       if (key === 'Enter') {
         e.preventDefault()
@@ -37,7 +38,7 @@ export default component$(() => {
 
   return (
     <footer
-      class="px-1 w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-background)]"
+      class="px-1 w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg)]"
       style={{ minHeight: 30 + 'px' }}
     >
       <input

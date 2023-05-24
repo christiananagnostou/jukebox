@@ -18,7 +18,8 @@
   --primary: #17171f;
   --secondary: #3f3f59;
   --navbar-width: 200px;
-  --body-background: rgba(23, 23, 31, 0.85);
+  --body-bg: rgba(23, 23, 31, 0.85);
+  --body-bg-solid: rgb(23, 23, 31);
   --modal-background: rgba(0, 0, 0, 0.5);
 }
 
@@ -36,7 +37,7 @@ html {
     'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
 body {
-  background: var(--body-background);
+  background: var(--body-bg);
   color: #ffffff;
   width: 100%;
   height: 100%;

@@ -44,7 +44,7 @@ export type ListItemStyle = {
 
 export interface StoreActions {
   loadSong: QRL<(song: Song) => void>
-  playSong: QRL<(song: Song, index?: number) => void>
+  playSong: QRL<(song: Song, index: number) => void>
   pauseSong: QRL<() => void>
   resumeSong: QRL<() => void>
   nextSong: QRL<() => void>

@@ -5,8 +5,8 @@ export const Keyboard = () => {
       fill="none"
       stroke-width="0"
       viewBox="0 0 15 15"
-      height="1.25rem"
-      width="1.25rem"
+      height="1.25em"
+      width="1.25em"
       xmlns="http://www.w3.org/2000/svg"
     >
       <path

@@ -52,14 +52,14 @@ export default component$(() => {
     store.player.audioElem.load()
   })
 
-  const playSong = $(async (song: Song, index?: number) => {
+  const playSong = $(async (song: Song, index: number) => {
     if (!store.player.audioElem) return
     // Load the new song if not already loaded
     if (store.player.audioElem.dataset.loadedSongId !== song.id) await loadSong(song)
     store.player.currSong = song
+    store.player.currSongIndex = index
     store.player.audioElem.play()
     store.player.isPaused = false
-    if (index) store.player.currSongIndex = index
   })
 
   const pauseSong = $(() => {
