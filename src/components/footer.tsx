@@ -1,5 +1,4 @@
 import { $, component$, useContext, useOnWindow, useSignal } from '@builder.io/qwik'
-import MusicPicker from '~/components/Shared/MusicPicker'
 import { StoreContext } from '~/routes/layout'
 
 export default component$(() => {
@@ -38,7 +37,7 @@ export default component$(() => {
 
   return (
     <footer
-      class="px-1 w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg)]"
+      class="w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg)]"
       style={{ minHeight: 30 + 'px' }}
     >
       <input
@@ -50,13 +49,12 @@ export default component$(() => {
         value={store.searchTerm}
         autoComplete="false"
         autoCorrect="false"
+        aria-autocomplete="none"
         onInput$={handleSearchInput}
         onBlur$={() => (store.isTyping = false)}
         onFocus$={() => (store.isTyping = true)}
-        class="bg-inherit border border-gray-700 rounded flex-1 px-2 text-sm placeholder:text-slate-600"
+        class="bg-inherit h-full flex-1 px-2 text-sm placeholder:text-slate-600 focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5)] focus:outline-none"
       />
-
-      <MusicPicker />
     </footer>
   )
 })

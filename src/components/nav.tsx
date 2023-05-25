@@ -5,6 +5,7 @@ import { Backspace } from './svg/Backspace'
 import { Command } from './svg/Command'
 import { Shift } from './svg/Shift'
 import AudioControls from './AudioControls'
+import MusicPicker from './Shared/MusicPicker'
 
 const Links = [
   { title: 'Library', url: '/', shortcut: 'L' },
@@ -60,6 +61,10 @@ export default component$(() => {
               </Link>
             </li>
           ))}
+
+          <li class="p-1">
+            <MusicPicker />
+          </li>
 
           <li class="p-1">
             <button

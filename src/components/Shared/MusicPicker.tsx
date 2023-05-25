@@ -111,8 +111,12 @@ export default component$(() => {
   )
 
   return (
-    <button onClick$={openDirectoryPicker} class="bg-gray-700 py-[2px] px-4 rounded text-sm">
+    <button
+      onClick$={openDirectoryPicker}
+      class="w-full flex items-center justify-between py-1 px-2 border border-transparent hover:border-gray-700 rounded"
+    >
       Add Music
+      <span class="text-xs text-gray-500">I</span>
     </button>
   )
 })
