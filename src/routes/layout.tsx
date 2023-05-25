@@ -4,7 +4,6 @@ import {
   createContextId,
   Slot,
   useContextProvider,
-  useOnWindow,
   useStore,
   useTask$,
   useVisibleTask$,
@@ -13,6 +12,7 @@ import {
 import Nav from '~/components/nav'
 import Footer from '~/components/footer'
 import type { Song, Store, StoreActions } from '~/App'
+import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
 
 export const StoreContext = createContextId<Store>('docs.store-context')
 export const StoreActionsContext = createContextId<StoreActions>('docs.store-actions-context')
@@ -28,6 +28,7 @@ export default component$(() => {
       pathPrefix: 'asset://localhost/',
       highlightedIndex: 0,
       isTyping: false,
+      showKeyShortcuts: false,
 
       queue: [],
 
@@ -99,6 +100,8 @@ export default component$(() => {
   })
   useContextProvider(StoreActionsContext, storeActions)
 
+  useKeyboardShortcuts(store, storeActions)
+
   useVisibleTask$(() => {
     // Initialize an audio element
     let interval: NodeJS.Timer
@@ -124,6 +127,7 @@ export default component$(() => {
   // Song Sorting
   useTask$(({ track }) => {
     const sorting = track(() => store.sorting)
+    track(() => store.searchTerm)
 
     store.allSongs = store.allSongs.sort((song1, song2) => {
       switch (sorting) {
@@ -161,32 +165,20 @@ export default component$(() => {
       : allSongs
   })
 
-  useOnWindow(
-    'keydown',
-    $((e: Event) => {
-      if (store.isTyping) return
-      // @ts-ignore
-      const { key } = e as { key: string }
-
-      if (key === 'j')
-        store.highlightedIndex =
-          store.highlightedIndex >= store.displayedSongs.length - 1 ? 0 : store.highlightedIndex + 1
-      if (key === 'k')
-        store.highlightedIndex =
-          store.highlightedIndex <= 0 ? store.displayedSongs.length - 1 : store.highlightedIndex - 1
-      if (key === 'Enter') playSong(store.displayedSongs[store.highlightedIndex], store.highlightedIndex)
-      if (key === 'n') nextSong()
-      if (key === 'N') prevSong()
-      if (key === 'p') store.player.isPaused ? resumeSong() : pauseSong()
-    })
-  )
-
   return (
     <>
       <Nav />
 
-      <main class="h-screen max-h-screen w-full flex flex-col realtive" style={{ marginLeft: 'var(--navbar-width)' }}>
-        <Slot />
+      <main
+        class="h-screen max-h-screen w-full flex flex-col realtive transition-[margin]"
+        style={{
+          marginLeft: 'var(--navbar-width)',
+          marginRight: store.player.currSong ? 'var(--audio-sidebar-width)' : '0',
+        }}
+      >
+        <div class="w-full flex flex-col flex-1">
+          <Slot />
+        </div>
         <Footer />
       </main>
     </>

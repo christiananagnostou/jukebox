@@ -7,6 +7,7 @@ export interface Store {
   pathPrefix: 'asset://localhost/'
   highlightedIndex: number
   isTyping: boolean
+  showKeyShortcuts: boolean
 
   queue: Song[]
 
