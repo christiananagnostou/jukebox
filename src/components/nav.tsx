@@ -1,172 +1,129 @@
-import { $, type QwikChangeEvent, component$, useContext, useStore } from '@builder.io/qwik'
-import { Link } from '@builder.io/qwik-city'
-import { NextTrack } from '~/components/svg/NextTrack'
-import { Pause } from '~/components/svg/Pause'
-import { Play } from '~/components/svg/Play'
-import { PrevTrack } from '~/components/svg/PrevTrack'
-import { StoreActionsContext, StoreContext } from '~/routes/layout'
+import { component$, useContext } from '@builder.io/qwik'
+import { Link, useLocation } from '@builder.io/qwik-city'
+import { StoreContext } from '~/routes/layout'
 import { Backspace } from './svg/Backspace'
 import { Command } from './svg/Command'
 import { Shift } from './svg/Shift'
-import { Keyboard } from './svg/Keyboard'
+import AudioControls from './AudioControls'
 
 const Links = [
-  { title: 'Library', url: '/' },
-  { title: 'Albums', url: '/' },
-  { title: 'Playlists', url: '/' },
-  { title: 'Import', url: '/' },
+  { title: 'Library', url: '/', shortcut: 'L' },
+  { title: 'Albums', url: '/albums/', shortcut: 'A' },
+  { title: 'Playlists', url: '/playlists/', shortcut: 'P' },
 ]
 
 const KeyboardCommands = [
-  // { key: '⇧ Click', command: 'Move' },
-  // { key: 'F Click', command: 'Bring to Front' },
-  // { key: '⌘ Scroll', command: 'Zoom' },
-  { key: '^ i', command: 'Import Files' },
-  { key: 'j', command: 'Down' },
-  { key: 'k', command: 'up' },
+  { type: 'header', title: 'Movement' },
+  { key: 'j', command: 'Highlight Down' },
+  { key: 'k', command: 'Highlight Up' },
+
+  { type: 'header', title: 'Audio Control' },
   { key: 'n', command: 'Next Song' },
-  { key: 'N', command: 'Prev Song' },
+  { key: '⇧ N', command: 'Prev Song' },
   { key: 'p', command: 'Pause/Play' },
+  { key: 's', command: 'Seek Forward' },
+  { key: '⇧ S', command: 'Seek Back' },
+
+  { type: 'header', title: 'Pages' },
+  { key: '⇧ L', command: 'Library' },
+  { key: '⇧ A', command: 'Albums' },
+  { key: '⇧ P', command: 'Playlists' },
+
+  { type: 'header', title: 'Utility' },
   { key: '/', command: 'Search' },
+  { key: '⇧ I', command: 'Import Files' },
+  { key: '?', command: 'Toggle Shortcuts' },
 ]
 
 export default component$(() => {
   const store = useContext(StoreContext)
-  const storeActions = useContext(StoreActionsContext)
-  const state = useStore({ showKeyShortcuts: false })
-
-  const dragHandler = $((e: QwikChangeEvent<HTMLInputElement>) => {
-    if (!store.player.audioElem) return
-    const currentDraggedTime = parseInt(e.target.value)
-    store.player.audioElem.currentTime = currentDraggedTime
-  })
-
-  const formatSeconds = $((time: number) => {
-    const minutes = Math.floor(time / 60)
-    const seconds = Math.floor(time % 60)
-    const secondsWithZero = String(seconds).padStart(2, '0')
-    return `${minutes}:${secondsWithZero}`
-  })
+  const location = useLocation()
 
   return (
-    <nav
-      class="border-r border-gray-700 fixed top-0 h-screen flex z-20 flex-col text-sm"
-      style={{ width: 'var(--navbar-width' }}
-    >
-      <ul class="flex-1 mt-[29px] border-t border-gray-700">
-        {Links.map((link) => (
-          <li key={link.title} class="p-1">
-            <Link
-              href={link.url}
-              title={link.title}
-              class="block py-1 px-2 border border-transparent hover:border-gray-700 rounded"
+    <>
+      <nav
+        class="border-r border-gray-700 fixed top-0 left-0 h-screen flex z-20 flex-col text-sm"
+        style={{ width: 'var(--navbar-width)' }}
+      >
+        <ul class="flex-1 mt-[29px] border-t border-gray-700">
+          {Links.map((link) => (
+            <li key={link.title} class="p-1">
+              <Link
+                href={link.url}
+                title={link.title}
+                class={`w-full flex items-center justify-between py-1 px-2 border border-transparent hover:border-gray-700 rounded 
+              ${location?.url?.pathname === link.url ? '!border-gray-700' : ''}`}
+              >
+                {link.title}
+
+                <span class="text-[.6rem] text-gray-500">{link.shortcut}</span>
+              </Link>
+            </li>
+          ))}
+
+          <li class="p-1">
+            <button
+              class="w-full flex items-center justify-between py-1 px-2 border border-transparent hover:border-gray-700 rounded"
+              onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
             >
-              {link.title}
-            </Link>
+              Shortcuts
+              <span class="text-xs text-gray-500">?</span>
+            </button>
           </li>
-        ))}
-      </ul>
+        </ul>
+      </nav>
 
-      <div class="border-b border-gray-700 p-1">
-        <button
-          class="flex items-center w-full py-1 px-2 border border-transparent hover:border-gray-700 rounded"
-          onClick$={() => (state.showKeyShortcuts = !state.showKeyShortcuts)}
+      <aside
+        class="border-l border-gray-700 fixed top-0 right-0 h-screen flex z-20 flex-col text-sm transition-all"
+        style={{
+          right: store.player.currSong ? '0' : 'calc(var(--audio-sidebar-width) * -1)',
+          width: 'var(--audio-sidebar-width)',
+        }}
+      >
+        <div class="mt-[29px] border-t border-gray-700">
+          <AudioControls />
+        </div>
+      </aside>
+
+      {store.showKeyShortcuts && (
+        <div
+          class="fixed z-30 inset-0 h-full w-full grid place-items-center bg-[var(--modal-background)]"
+          onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
         >
-          <Keyboard />
-          <span class="pl-2">Shortcuts</span>
-        </button>
-
-        {state.showKeyShortcuts && (
-          <div
-            class="fixed inset-0 h-full w-full grid place-items-center bg-[var(--modal-background)]"
-            onClick$={() => (state.showKeyShortcuts = !state.showKeyShortcuts)}
-          >
-            {/* Modal */}
-            <div class="px-8 w-max h-max border border-slate-700 rounded bg-[var(--body-bg-solid)]">
-              {KeyboardCommands.map((shortcut) => (
-                <span key={shortcut.command} class="flex justify-between my-3 w-48">
-                  <span>{shortcut.command}</span>{' '}
-                  <span class="flex align-center">
-                    {shortcut.key.split(' ').map((key) => (
-                      <kbd
-                        key={key}
-                        class="ml-1 text-[10px] leading-[110%] py-[4px] px-[3px] min-w-[20px] inline-grid place-items-center text-center rounded bg-gray-700"
-                      >
-                        {(() => {
-                          if (key === '⇧') return <Shift />
-                          if (key === '⌘') return <Command />
-                          if (key === '⌫') return <Backspace />
-                          return key
-                        })()}
-                      </kbd>
-                    ))}
+          {/* Modal */}
+          <div class="px-4 w-max h-max border border-slate-700 rounded bg-[var(--body-bg-solid)]">
+            {KeyboardCommands.map((shortcut) => (
+              <span key={shortcut.command} class="flex justify-between my-4 w-64 text-sm">
+                {shortcut.type === 'header' ? (
+                  <span class="pb-1 -mb-1 border-b border-slate-700 w-full text-gray-200 text-center">
+                    {shortcut.title}
                   </span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+                ) : (
+                  <>
+                    <span>{shortcut.command}</span>
 
-      <div class="text-center text-sm group/nav-player">
-        {/* Album Art */}
-        {/* <div class="w-full px-2 aspect-square bg-gray-800"><img src="" alt="" /></div> */}
-        {/* Tile */}
-        <p class="h-5 truncate">{store.player.currSong?.title}</p>
-        {/* Artist */}
-        <p class="h-5 truncate">{store.player.currSong?.artist}</p>
-
-        {/* Controls */}
-        <div class="flex justify-evenly text-slate-500 mt-4">
-          <button onClick$={storeActions.prevSong}>
-            <PrevTrack />
-          </button>
-          {store.player.isPaused ? (
-            <button onClick$={storeActions.resumeSong}>
-              <Play />
-            </button>
-          ) : (
-            <button onClick$={storeActions.pauseSong}>
-              <Pause />
-            </button>
-          )}
-          <button onClick$={storeActions.nextSong}>
-            <NextTrack />
-          </button>
-        </div>
-
-        {/* Range Slider */}
-        <div>
-          <div class="flex justify-between w-full opacity-0 text-xs text-slate-400 group-hover/nav-player:opacity-100 transition-opacity duration-300">
-            <p class="px-1">{formatSeconds(store.player.currentTime)}</p>
-            <p class="px-1">{formatSeconds(store.player.duration)}</p>
-          </div>
-
-          <div class="w-full relative overflow-hidden h-2">
-            <input
-              class="appearance-none w-full block"
-              type="range"
-              min={0}
-              max={store.player.duration}
-              value={store.player.currentTime}
-              onChange$={dragHandler}
-
-              // TODO: get color from album art
-              // style={{
-              //   background: `linear-gradient(to right, ${store.player.currSong.color[0]}, ${store.player.currentSong.color[1]})`,
-              // }}
-            />
-            {store.player.audioElem && (
-              <div
-                class="bg-slate-500 w-full h-full absolute left-0 top-0 pointer-events-none"
-                style={{
-                  transform: `translateX(${(store.player.currentTime / store.player.duration) * 100}%)`,
-                }}
-              ></div>
-            )}
+                    <span class="flex align-center">
+                      {shortcut.key?.split(' ').map((key) => (
+                        <kbd
+                          key={key}
+                          class="ml-1 text-[10px] leading-[110%] py-[4px] px-[3px] min-w-[20px] inline-grid place-items-center text-center rounded bg-gray-700"
+                        >
+                          {(() => {
+                            if (key === '⇧') return <Shift />
+                            if (key === '⌘') return <Command />
+                            if (key === '⌫') return <Backspace />
+                            return key
+                          })()}
+                        </kbd>
+                      ))}
+                    </span>
+                  </>
+                )}
+              </span>
+            ))}
           </div>
         </div>
-      </div>
-    </nav>
+      )}
+    </>
   )
 })
