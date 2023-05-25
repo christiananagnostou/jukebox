@@ -15,22 +15,19 @@ export default component$(() => {
 
   const virtualListElem = useSignal<Element>()
   const state = useStore({
-    virtualListHeight: virtualListElem.value?.clientHeight,
+    virtualListHeight: 0,
     windowHeight: 0,
   })
 
   useVisibleTask$(async () => {
-    state.virtualListHeight = virtualListElem.value?.clientHeight
-    state.windowHeight = (await appWindow.outerSize()).height
-
-    const unlistenResize = await appWindow.onResized(async ({ payload: size }) => {
-      if (!virtualListElem.value) return
+    const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
-      const logical = size.toLogical(factor)
-      state.virtualListHeight = logical.height - RowHeight * 2 // 2 rows (col titles + footer)
-      state.windowHeight = logical.height
-    })
-
+      const { height } = (await appWindow.innerSize()).toLogical(factor)
+      state.virtualListHeight = height - RowHeight * 2 // 2 rows (col titles + footer)
+      state.windowHeight = height
+    }
+    sizeVirtualList()
+    const unlistenResize = await appWindow.onResized(sizeVirtualList)
     return () => unlistenResize()
   })
 

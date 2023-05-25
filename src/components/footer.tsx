@@ -37,7 +37,7 @@ export default component$(() => {
 
   return (
     <footer
-      class="w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg)]"
+      class="w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg-solid)]"
       style={{ minHeight: 30 + 'px' }}
     >
       <input

@@ -19,10 +19,10 @@
   --secondary: #3f3f59;
   --navbar-width: 200px;
   --audio-sidebar-width: 200px;
-  --body-bg: rgba(23, 23, 31, 0.85);
+  --body-bg: rgba(23, 23, 31, 0.95);
   --body-bg-solid: rgb(23, 23, 31);
   --modal-background: rgba(0, 0, 0, 0.5);
-  --scrollbar-width: 15px;
+  --scrollbar-width: 8px;
 }
 
 html {
@@ -51,36 +51,25 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Overlaying Scrollbar */
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--secondary) var(--primary);
-}
-
 /* Chrome, Edge, and Safari */
 *::-webkit-scrollbar {
   width: var(--scrollbar-width);
 }
 
 *::-webkit-scrollbar-track {
-  background: var(--primary);
+  background: var(--body-bg);
   border-radius: 5px;
 }
 
 *::-webkit-scrollbar-thumb {
   background-color: var(--secondary);
   border-radius: 14px;
-  border: 3px solid var(--primary);
 }
 
-/*
-
- Song Control Range
-
-*/
+/* Song Control Range */
 .song-control__range input {
   width: 100%;
+  appearance: none;
   -webkit-appearance: none;
   background: transparent;
 }
@@ -97,6 +86,7 @@ body {
 }
 
 .song-control__range input::-moz-range-thumb {
+  appearance: none;
   -webkit-appearance: none;
   background: transparent;
   border: none;
