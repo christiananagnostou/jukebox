@@ -15,11 +15,11 @@ export const LibraryRow = component$<LibraryRowProps>(({ song, onDblClick, style
       key={song.title}
       onDblClick$={onDblClick}
       style={style}
-      class={`px-1 border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr] gap-1 text-left items-center hover:bg-[rgba(0,0,0,.15)] 
+      class={`border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr] text-left items-center hover:bg-[rgba(0,0,0,.15)] 
       ${highlighted && '!bg-gray-800'}
       ${selected && '!bg-gray-700'}`}
     >
-      <div class="sound-wave">
+      <div class="sound-wave pl-2">
         {selected && (
           <>
             <i class="bar"></i>
@@ -30,9 +30,9 @@ export const LibraryRow = component$<LibraryRowProps>(({ song, onDblClick, style
         )}
       </div>
 
-      <span class="truncate">{song.title}</span>
-      <span class="truncate">{song.artist}</span>
-      <span class="truncate">{song.album}</span>
+      <span class="truncate pl-1">{song.title}</span>
+      <span class="truncate pl-2">{song.artist}</span>
+      <span class="truncate pl-2">{song.album}</span>
     </button>
   )
 })

@@ -22,6 +22,7 @@
   --body-bg: rgba(23, 23, 31, 0.85);
   --body-bg-solid: rgb(23, 23, 31);
   --modal-background: rgba(0, 0, 0, 0.5);
+  --scrollbar-width: 15px;
 }
 
 html {
@@ -59,7 +60,7 @@ body {
 
 /* Chrome, Edge, and Safari */
 *::-webkit-scrollbar {
-  width: 15px;
+  width: var(--scrollbar-width);
 }
 
 *::-webkit-scrollbar-track {

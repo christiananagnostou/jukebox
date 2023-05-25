@@ -66,7 +66,7 @@ export default component$((props: Props) => {
   const onScroll = $((_: QwikUIEvent<HTMLDivElement>, element: HTMLDivElement) => (scrollTop.value = element.scrollTop))
 
   return (
-    <div class="scroll overflow-auto w-full h-full" onScroll$={onScroll} ref={scrollRef}>
+    <div class="scroll overflow-y-scroll overflow-x-hidden w-full h-full" onScroll$={onScroll} ref={scrollRef}>
       <div class={`inner relative ${listWrapClass}`} style={{ height: `${innerHeight}px` }}>
         {items}
       </div>

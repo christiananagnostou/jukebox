@@ -14,7 +14,10 @@ export default component$(() => {
   const storeActions = useContext(StoreActionsContext)
 
   const virtualListElem = useSignal<Element>()
-  const state = useStore({ virtualListHeight: virtualListElem.value?.clientHeight, windowHeight: 0 })
+  const state = useStore({
+    virtualListHeight: virtualListElem.value?.clientHeight,
+    windowHeight: 0,
+  })
 
   useVisibleTask$(async () => {
     state.virtualListHeight = virtualListElem.value?.clientHeight
@@ -24,7 +27,7 @@ export default component$(() => {
       if (!virtualListElem.value) return
       const factor = await appWindow.scaleFactor()
       const logical = size.toLogical(factor)
-      state.virtualListHeight = logical.height - RowHeight * 2 // 2 rows plus top bar - 28px
+      state.virtualListHeight = logical.height - RowHeight * 2 // 2 rows (col titles + footer)
       state.windowHeight = logical.height
     })
 
@@ -34,28 +37,30 @@ export default component$(() => {
   return (
     <section class="w-full flex flex-col flex-1">
       <div
-        class="px-1 w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr] gap-1 text-left items-center border-b border-gray-700"
-        style={{ height: RowHeight + 'px' }}
+        class="w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr] text-left items-center border-b border-gray-700"
+        style={{ height: RowHeight + 'px', paddingRight: 'var(--scrollbar-width)' }}
       >
-        <span></span>
+        <span />
         <button
-          class="truncate border-r border-gray-700 h-full flex items-center justify-between px-2"
+          class="truncate h-full flex items-center justify-between pl-1 pr-2 relative"
           onClick$={() => (store.sorting = store.sorting === 'title-desc' ? 'title-asc' : 'title-desc')}
         >
           Title
           {store.sorting === 'title-desc' && <ArrowDown />}
           {store.sorting === 'title-asc' && <ArrowUp />}
+          <span class="h-full w-[1px] bg-gray-700 absolute right-0 cursor-pointer" />
         </button>
         <button
-          class="truncate border-r border-gray-700 h-full flex items-center justify-between px-2"
+          class="truncate h-full flex items-center justify-between px-2 relative"
           onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
         >
           Artist
           {store.sorting === 'artist-desc' && <ArrowDown />}
           {store.sorting === 'artist-asc' && <ArrowUp />}
+          <span class="h-full w-[1px] bg-gray-700 absolute right-0 cursor-pointer" />
         </button>
         <button
-          class="truncate h-full flex items-center justify-between px-2"
+          class="truncate h-full flex items-center justify-between px-2 relative"
           onClick$={() => (store.sorting = store.sorting === 'album-desc' ? 'album-asc' : 'album-desc')}
         >
           Album
