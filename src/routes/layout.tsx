@@ -13,6 +13,7 @@ import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
 import Nav from '~/components/nav'
 import Footer from '~/components/footer'
 import AudioSidebar from '~/components/audio-sidebar'
+import { convertFileSrc } from '@tauri-apps/api/tauri'
 
 export const StoreContext = createContextId<Store>('docs.store-context')
 export const StoreActionsContext = createContextId<StoreActions>('docs.store-actions-context')
@@ -25,13 +26,10 @@ export default component$(() => {
       sorting: 'default',
       searchTerm: '',
       audioDir: '',
-      pathPrefix: 'asset://localhost/',
       highlightedIndex: 0,
       isTyping: false,
       showKeyShortcuts: false,
-
       queue: [],
-
       player: {
         currSong: undefined,
         currSongIndex: 0,
@@ -48,7 +46,7 @@ export default component$(() => {
 
   const loadSong = $((song: Song) => {
     if (!store.player.audioElem) return
-    store.player.audioElem.src = store.pathPrefix + song.path
+    store.player.audioElem.src = convertFileSrc(song.path)
     store.player.audioElem.dataset.loadedSongId = song.id
     store.player.audioElem.load()
   })

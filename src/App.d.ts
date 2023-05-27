@@ -4,7 +4,6 @@ export interface Store {
   sorting: 'title-desc' | 'title-asc' | 'artist-desc' | 'artist-asc' | 'album-desc' | 'album-asc' | 'default'
   searchTerm: string
   audioDir: string
-  pathPrefix: 'asset://localhost/'
   highlightedIndex: number
   isTyping: boolean
   showKeyShortcuts: boolean
@@ -46,12 +45,11 @@ export interface Song {
 export interface Metadata {
   codec: string
   duration: string
-  file_name: string
-  file_size: number
-
-  meta_tags: { [key: string]: string }
   path_name: string
+  file_name: string
   sample_rate: string
+  file_size: number
+  meta_tags: { [key: string]: string }
 }
 
 export type ListItemStyle = {
