@@ -4,8 +4,10 @@ import type { FileEntry } from '@tauri-apps/api/fs'
 import { readDir } from '@tauri-apps/api/fs'
 import { audioDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/api/dialog'
+import { invoke } from '@tauri-apps/api/tauri'
 import md5 from 'md5'
-import type { Song } from '~/App'
+
+import type { Metadata, Song } from '~/App'
 import { StoreContext } from '~/routes/layout'
 import { isAudioFile } from '~/utils/Files'
 
@@ -18,24 +20,29 @@ export default component$(() => {
 
   const addSong = $(async (filePath: string, fileName: string) => {
     if (!isAudioFile(filePath)) return
-    const format = 'Artist/Album/[side-track]Title'
-    const splitFormat = format.split('/')
-    const splitPath = filePath.split('/').slice(-3)
 
-    const [first, ...rest] = splitPath[splitFormat.indexOf('[side-track]Title')].split(' ')
-    const [side, track] = first.split('-')
+    const data = await invoke<string>('get_metadata', { filePath })
+    if (!data) return
 
-    const title = rest.join(' ').substring(0, rest.join(' ').lastIndexOf('.'))
+    const metadata = JSON.parse(data) as Metadata
+
+    const { meta_tags } = metadata
 
     const songToAdd: Song = {
       id: md5(filePath),
       path: filePath,
       file: fileName,
-      title: title,
-      track: parseInt(track || side),
-      side: parseInt(track ?? side),
-      album: splitPath[splitFormat.indexOf('Album')],
-      artist: splitPath[splitFormat.indexOf('Artist')],
+      title: meta_tags.TrackTitle || '',
+      trackNumber: parseInt(meta_tags.TrackNumber) || 0,
+      side: parseInt(meta_tags.Side),
+      album: meta_tags.Album || '',
+      artist: meta_tags.Artist || '',
+      genre: meta_tags.Genre || '',
+      bpm: parseInt(meta_tags.Bpm) || 0,
+      compilation: parseInt(meta_tags.Compilation) || 0,
+      date: meta_tags.Date || '',
+      encoder: meta_tags.Encoder || '',
+      trackTotal: parseInt(meta_tags.TrackTotal) || 0,
       startTime: 0,
       isFavorite: false,
     }
