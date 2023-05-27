@@ -31,10 +31,27 @@ export interface Song {
   title: string
   album: string
   artist: string
-  track: number
+  genre: string
+  bpm: number
+  compilation: number
+  date: string
+  encoder: string
+  trackTotal: number
+  trackNumber: number
   side: number
   startTime: number
   isFavorite: boolean
+}
+
+export interface Metadata {
+  codec: string
+  duration: string
+  file_name: string
+  file_size: number
+
+  meta_tags: { [key: string]: string }
+  path_name: string
+  sample_rate: string
 }
 
 export type ListItemStyle = {
