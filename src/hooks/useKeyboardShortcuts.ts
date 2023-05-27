@@ -21,8 +21,14 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       if (key === 'k')
         store.highlightedIndex =
           store.highlightedIndex <= 0 ? store.displayedSongs.length - 1 : store.highlightedIndex - 1
+      // Move Hightlight to Top
+      if (key === 'g') store.highlightedIndex = 0
+      // Move Hightlight to Bottom
+      if (key === 'G') store.highlightedIndex = store.displayedSongs.length - 1
       // Play Highlighted Song
       if (key === 'Enter') storeActions.playSong(store.displayedSongs[store.highlightedIndex], store.highlightedIndex)
+      // Play Highlighted Song
+      if (key === 'q') store.queue.push(store.displayedSongs[store.highlightedIndex])
       // Next Song
       if (key === 'n') storeActions.nextSong()
       // Previous Song

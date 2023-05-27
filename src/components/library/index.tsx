@@ -78,6 +78,7 @@ export default component$(() => {
               <LibraryRow
                 song={song}
                 onDblClick={$(() => storeActions.playSong(song, index))}
+                onClick={$(() => (store.highlightedIndex = index))}
                 style={{ ...style, height: RowHeight + 'px' }}
                 highlighted={store.highlightedIndex === index}
                 selected={store.player.currSong?.id === song.id}

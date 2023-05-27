@@ -8,11 +8,11 @@ import {
   useTask$,
   useVisibleTask$,
 } from '@builder.io/qwik'
-
-import Nav from '~/components/nav'
-import Footer from '~/components/footer'
 import type { Song, Store, StoreActions } from '~/App'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
+import Nav from '~/components/nav'
+import Footer from '~/components/footer'
+import AudioSidebar from '~/components/audio-sidebar'
 
 export const StoreContext = createContextId<Store>('docs.store-context')
 export const StoreActionsContext = createContextId<StoreActions>('docs.store-actions-context')
@@ -74,8 +74,16 @@ export default component$(() => {
   })
 
   const nextSong = $(() => {
-    const nextIndex = store.player.currSongIndex >= store.displayedSongs.length - 1 ? 0 : store.player.currSongIndex + 1
-    playSong(store.displayedSongs[nextIndex], nextIndex)
+    if (store.queue.length) {
+      // Next Song in Queue
+      const nextSong = store.queue.shift()
+      if (nextSong) playSong(nextSong, store.player.currSongIndex) // After queue, songs will continue from next song before queue started
+    } else {
+      // Next Song in Order
+      const nextIndex =
+        store.player.currSongIndex >= store.displayedSongs.length - 1 ? 0 : store.player.currSongIndex + 1
+      playSong(store.displayedSongs[nextIndex], nextIndex)
+    }
   })
 
   const prevSong = $(() => {
@@ -176,6 +184,7 @@ export default component$(() => {
           marginRight: store.player.currSong ? 'var(--audio-sidebar-width)' : '0',
         }}
       >
+        <AudioSidebar />
         <div class="w-full flex flex-col flex-1">
           <Slot />
         </div>

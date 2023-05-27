@@ -4,7 +4,6 @@ import { StoreContext } from '~/routes/layout'
 import { Backspace } from './svg/Backspace'
 import { Command } from './svg/Command'
 import { Shift } from './svg/Shift'
-import AudioControls from './AudioControls'
 import MusicPicker from './Shared/MusicPicker'
 
 const Links = [
@@ -17,13 +16,16 @@ const KeyboardCommands = [
   { type: 'header', title: 'Movement' },
   { key: 'j', command: 'Highlight Down' },
   { key: 'k', command: 'Highlight Up' },
+  { key: 'g', command: 'Highlight to Top' },
+  { key: 'G', command: 'Highlight to Bottom' },
 
   { type: 'header', title: 'Audio Control' },
   { key: 'n', command: 'Next Song' },
   { key: '⇧ N', command: 'Prev Song' },
   { key: 'p', command: 'Pause/Play' },
-  { key: 's', command: 'Seek Forward' },
-  { key: '⇧ S', command: 'Seek Back' },
+  { key: 'q', command: 'Add Song to Queue' },
+  // { key: 's', command: 'Seek Forward' },
+  // { key: '⇧ S', command: 'Seek Back' },
 
   { type: 'header', title: 'Pages' },
   { key: '⇧ L', command: 'Library' },
@@ -77,18 +79,6 @@ export default component$(() => {
           </li>
         </ul>
       </nav>
-
-      <aside
-        class="border-l border-gray-700 fixed top-0 right-0 h-screen flex z-20 flex-col text-sm transition-all"
-        style={{
-          right: store.player.currSong ? '0' : 'calc(var(--audio-sidebar-width) * -1)',
-          width: 'var(--audio-sidebar-width)',
-        }}
-      >
-        <div class="mt-[29px] border-t border-gray-700">
-          <AudioControls />
-        </div>
-      </aside>
 
       {store.showKeyShortcuts && (
         <div
