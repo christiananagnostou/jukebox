@@ -12,8 +12,6 @@ export interface Store {
 
   player: {
     currSong?: Song
-    prevSong?: Song
-    nextSong?: Song
     currSongIndex: number
     audioElem?: HTMLAudioElement
     nextAudioElem?: HTMLAudioElement
@@ -37,6 +35,10 @@ export interface Song {
   encoder: string
   trackTotal: number
   trackNumber: number
+  codec: string
+  duration: string
+  sampleRate: string
+
   side: number
   startTime: number
   isFavorite: boolean
@@ -45,9 +47,9 @@ export interface Song {
 export interface Metadata {
   codec: string
   duration: string
+  sample_rate: string
   path_name: string
   file_name: string
-  sample_rate: string
   file_size: number
   meta_tags: { [key: string]: string }
 }

@@ -83,13 +83,42 @@ export default component$<IndexProps>(() => {
         </button>
       </div>
 
-      <div class="text-left flex flex-col gap-3 p-2 my-2">
-        {/* Tile */}
+      <div class="text-left flex flex-col gap-3 p-2 my-2 border-b border-slate-700">
         <p class="truncate text-lg">{store.player.currSong?.title}</p>
-        {/* Album */}
-        <p class="truncate">{store.player.currSong?.album}</p>
-        {/* Artist */}
-        <p class="truncate">{store.player.currSong?.artist}</p>
+
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Album</span>
+          {store.player.currSong?.album}
+        </p>
+
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Artist</span>
+          {store.player.currSong?.artist}
+        </p>
+
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Genre</span>
+          {store.player.currSong?.genre || '-'}
+        </p>
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Date</span>
+          {store.player.currSong?.date || '-'}
+        </p>
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Track</span>
+          {store.player.currSong?.trackNumber || '-'}
+          {store.player.currSong?.trackTotal ? ' of ' + store.player.currSong.trackTotal : ''}
+        </p>
+
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Codec</span>
+          {store.player.currSong?.codec || '-'}
+        </p>
+
+        <p class="truncate">
+          <span class="text-xs block text-gray-400">Sample Rate</span>
+          {store.player.currSong?.sampleRate || '-'}
+        </p>
       </div>
     </div>
   )

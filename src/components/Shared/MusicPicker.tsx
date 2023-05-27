@@ -43,6 +43,10 @@ export default component$(() => {
       date: meta_tags.Date || '',
       encoder: meta_tags.Encoder || '',
       trackTotal: parseInt(meta_tags.TrackTotal) || 0,
+      codec: metadata.codec,
+      duration: metadata.duration,
+      sampleRate: metadata.sample_rate,
+
       startTime: 0,
       isFavorite: false,
     }

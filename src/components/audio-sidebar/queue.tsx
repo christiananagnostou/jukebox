@@ -15,12 +15,12 @@ export default component$<QueueProps>(() => {
   const next5Displayed = getCircularWindow(store.displayedSongs, store.player.currSongIndex + 1)
 
   return (
-    <div class="px-2 pt-4">
-      <span class="text-gray-300 text-xs pb-1 border-b border-slate-700 w-full block">Queue</span>
+    <div class="p-2">
+      <span class="text-gray-400 text-xs pb-1 block">Queue</span>
 
       <ol>
         {(store.queue.length ? store.queue : next5Displayed).map((song) => (
-          <li class="py-3 border-b border-slate-700" key={'queued-song-' + song.id}>
+          <li class="py-3" key={'queued-song-' + song.id}>
             <span class="block truncate">{song.title}</span>
             <span class="text-xs truncate">{song.artist}</span>
           </li>
