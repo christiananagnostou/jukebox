@@ -84,16 +84,16 @@ export default component$<IndexProps>(() => {
       </div>
 
       <div class="text-left flex flex-col gap-3 p-2 my-2 border-b border-slate-700">
-        <p class="truncate text-lg">{store.player.currSong?.title}</p>
+        <p class="truncate text-lg">{store.player.currSong?.title || '-'}</p>
 
         <p class="truncate">
           <span class="text-xs block text-gray-400">Album</span>
-          {store.player.currSong?.album}
+          {store.player.currSong?.album || '-'}
         </p>
 
         <p class="truncate">
           <span class="text-xs block text-gray-400">Artist</span>
-          {store.player.currSong?.artist}
+          {store.player.currSong?.artist || '-'}
         </p>
 
         <p class="truncate">
