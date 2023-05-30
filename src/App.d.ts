@@ -1,13 +1,27 @@
 export interface Store {
   allSongs: Song[]
-  displayedSongs: Song[]
+  filteredSongs: Song[]
+  playlist: Song[]
   sorting: 'title-desc' | 'title-asc' | 'artist-desc' | 'artist-asc' | 'album-desc' | 'album-asc' | 'default'
   searchTerm: string
   audioDir: string
-  highlightedIndex: number
+
+  libraryView: {
+    cursorIdx: number
+  }
+  artistView: {
+    artistIdx: number
+    albumIdx: number
+    trackIdx: number
+    cursorCol: number
+
+    artists: Artist[]
+    albums: Album[]
+    tracks: Song[]
+  }
+
   isTyping: boolean
   showKeyShortcuts: boolean
-
   queue: Song[]
 
   player: {
@@ -19,6 +33,16 @@ export interface Store {
     currentTime: number
     duration: number
   }
+}
+
+export interface Album {
+  title: string
+  tracks: Song[]
+}
+
+export interface Artist {
+  name: string
+  albums: Album[]
 }
 
 export interface Song {

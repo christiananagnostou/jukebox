@@ -28,7 +28,7 @@ export default component$(() => {
 
     const { meta_tags } = metadata
 
-    const songToAdd: Song = {
+    const song: Song = {
       id: md5(filePath),
       path: filePath,
       file: fileName,
@@ -53,7 +53,23 @@ export default component$(() => {
       visual_info: metadata.visual_info
     }
 
-    store.allSongs.push(songToAdd)
+    // Find the index to insert the new song
+    let insertIndex = 0
+    while (insertIndex < store.allSongs.length && store.allSongs[insertIndex].album < song.album) {
+      insertIndex++
+    }
+
+    // Find the correct position within the album
+    while (
+      insertIndex < store.allSongs.length &&
+      store.allSongs[insertIndex].album === song.album &&
+      store.allSongs[insertIndex].trackNumber < song.trackNumber
+    ) {
+      insertIndex++
+    }
+
+    // Insert the new song at the determined index
+    store.allSongs.splice(insertIndex, 0, song)
   })
 
   const processEntries = $(async (entries: FileEntry[]) => {
