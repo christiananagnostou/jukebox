@@ -32,7 +32,10 @@ export default component$(() => {
   const handleSearchInput = $((e: InputEvent) => {
     // @ts-ignore
     store.searchTerm = e?.target?.value || ''
-    store.highlightedIndex = 0
+    store.libraryView.cursorIdx = 0
+    store.artistView.artistIdx = 0
+    store.artistView.albumIdx = 0
+    store.artistView.trackIdx = 0
   })
 
   return (

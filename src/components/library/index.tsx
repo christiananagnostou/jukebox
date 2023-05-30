@@ -1,4 +1,4 @@
-import { $, component$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
 import type { ListItemStyle } from '~/App'
@@ -13,7 +13,6 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
-  const virtualListElem = useSignal<Element>()
   const state = useStore({
     virtualListHeight: 0,
     windowHeight: 0,
@@ -66,21 +65,26 @@ export default component$(() => {
         </button>
       </div>
 
-      <div ref={virtualListElem} class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
+      <div class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
         <VirtualList
-          numItems={store.displayedSongs.length}
+          numItems={store.filteredSongs.length}
           itemHeight={RowHeight}
           windowHeight={state.virtualListHeight || 0}
-          scrollToRow={store.highlightedIndex}
+          scrollToRow={store.libraryView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-            const song = store.displayedSongs[index]
+            const song = store.filteredSongs[index]
             return (
               <LibraryRow
+                key={song.id}
+                data-song-index={index}
                 song={song}
-                onDblClick={$(() => storeActions.playSong(song, index))}
-                onClick={$(() => (store.highlightedIndex = index))}
+                onDblClick={$(() => {
+                  store.playlist = store.filteredSongs
+                  storeActions.playSong(song, index)
+                })}
+                onClick={$(() => (store.libraryView.cursorIdx = index))}
                 style={{ ...style, height: RowHeight + 'px' }}
-                highlighted={store.highlightedIndex === index}
+                isCursor={store.libraryView.cursorIdx === index}
                 selected={store.player.currSong?.id === song.id}
               />
             )

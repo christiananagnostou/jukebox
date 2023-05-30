@@ -8,8 +8,8 @@ import MusicPicker from './Shared/MusicPicker'
 
 const Links = [
   { title: 'Library', url: '/', shortcut: 'L' },
-  { title: 'Albums', url: '/albums/', shortcut: 'A' },
-  { title: 'Playlists', url: '/playlists/', shortcut: 'P' },
+  { title: 'Artists', url: '/artists/', shortcut: 'A' },
+  // { title: 'Playlists', url: '/playlists/', shortcut: 'P' },
 ]
 
 const KeyboardCommands = [
@@ -29,7 +29,7 @@ const KeyboardCommands = [
 
   { type: 'header', title: 'Pages' },
   { key: '⇧ L', command: 'Library' },
-  { key: '⇧ A', command: 'Albums' },
+  { key: '⇧ A', command: 'Artists' },
   { key: '⇧ P', command: 'Playlists' },
 
   { type: 'header', title: 'Utility' },

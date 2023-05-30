@@ -21,15 +21,32 @@ export const StoreActionsContext = createContextId<StoreActions>('docs.store-act
 export default component$(() => {
   const store = useStore<Store>(
     {
+      audioDir: '',
       allSongs: [],
-      displayedSongs: [],
+      filteredSongs: [],
+      playlist: [],
+      queue: [],
+
       sorting: 'default',
       searchTerm: '',
-      audioDir: '',
-      highlightedIndex: 0,
+
+      libraryView: {
+        cursorIdx: 0,
+      },
+
+      artistView: {
+        artistIdx: 0,
+        albumIdx: 0,
+        trackIdx: 0,
+        cursorCol: 0,
+        artists: [],
+        albums: [],
+        tracks: [],
+      },
+
       isTyping: false,
       showKeyShortcuts: false,
-      queue: [],
+
       player: {
         currSong: undefined,
         currSongIndex: 0,
@@ -78,9 +95,8 @@ export default component$(() => {
       if (nextSong) playSong(nextSong, store.player.currSongIndex) // After queue, songs will continue from next song before queue started
     } else {
       // Next Song in Order
-      const nextIndex =
-        store.player.currSongIndex >= store.displayedSongs.length - 1 ? 0 : store.player.currSongIndex + 1
-      playSong(store.displayedSongs[nextIndex], nextIndex)
+      const nextIndex = store.player.currSongIndex >= store.playlist.length - 1 ? 0 : store.player.currSongIndex + 1
+      playSong(store.playlist[nextIndex], nextIndex)
     }
   })
 
@@ -89,10 +105,9 @@ export default component$(() => {
       // Restart Current Song
       if (store.player.audioElem) store.player.audioElem.currentTime = 0
     } else {
-      const prevIndex =
-        store.player.currSongIndex <= 0 ? store.displayedSongs.length - 1 : store.player.currSongIndex - 1
+      const prevIndex = store.player.currSongIndex <= 0 ? store.playlist.length - 1 : store.player.currSongIndex - 1
 
-      playSong(store.displayedSongs[prevIndex], prevIndex)
+      playSong(store.playlist[prevIndex], prevIndex)
     }
   })
 
@@ -135,7 +150,7 @@ export default component$(() => {
     const sorting = track(() => store.sorting)
     track(() => store.searchTerm)
 
-    store.allSongs = store.allSongs.sort((song1, song2) => {
+    store.filteredSongs.sort((song1, song2) => {
       switch (sorting) {
         case 'title-desc':
           return song1.title.localeCompare(song2.title)
@@ -144,9 +159,23 @@ export default component$(() => {
         case 'artist-desc':
           return song1.artist.localeCompare(song2.artist)
         case 'artist-asc':
-          return song2.artist.localeCompare(song1.artist)
+          // First, compare the artists
+          if (song2.artist < song1.artist) return -1
+          else if (song2.artist > song1.artist) return 1
+          // If the artists are the same, compare the track numbers
+          if (song2.trackNumber < song1.trackNumber) return -1
+          else if (song2.trackNumber > song1.trackNumber) return 1
+          // If both artist and track number are the same, preserve the original order
+          return 0
         case 'album-desc':
-          return song1.album.localeCompare(song2.album)
+          // First, compare the artists
+          if (song1.artist < song2.artist) return -1
+          else if (song1.artist > song2.artist) return 1
+          // If the artists are the same, compare the track numbers
+          if (song1.trackNumber < song2.trackNumber) return -1
+          else if (song1.trackNumber > song2.trackNumber) return 1
+          // If both artist and track number are the same, preserve the original order
+          return 0
         case 'album-asc':
           return song2.album.localeCompare(song1.album)
         default:
@@ -161,7 +190,7 @@ export default component$(() => {
       .trim()
     const allSongs = track(() => store.allSongs)
 
-    store.displayedSongs = searchTerm
+    store.filteredSongs = searchTerm
       ? allSongs.filter(
           ({ title, artist, album }) =>
             title.toLowerCase().includes(searchTerm) ||
