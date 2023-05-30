@@ -27,7 +27,7 @@
         "all": true,
         "execute": true,
         "sidecar": true,
-        "open": true
+        "open": ".*"
       },
       "protocol": {
         "all": true,

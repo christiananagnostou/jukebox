@@ -38,10 +38,13 @@ export interface Song {
   codec: string
   duration: string
   sampleRate: string
-
   side: number
   startTime: number
   isFavorite: boolean
+  visual_info: {
+    media_type: string
+    media_data: number[]
+  }
 }
 
 export interface Metadata {

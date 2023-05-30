@@ -49,6 +49,8 @@ export default component$(() => {
 
       startTime: 0,
       isFavorite: false,
+
+      visual_info: metadata.visual_info
     }
 
     store.allSongs.push(songToAdd)
