@@ -12,7 +12,7 @@ export default component$<QueueProps>(() => {
     return start <= end ? arr.slice(start, end) : [...arr.slice(start), ...arr.slice(0, end)]
   }
 
-  const next5Displayed = getCircularWindow(store.displayedSongs, store.player.currSongIndex + 1)
+  const next5Displayed = getCircularWindow(store.playlist, store.player.currSongIndex + 1)
 
   return (
     <div class="p-2">
