@@ -27,12 +27,20 @@ export default component$((props: Props) => {
     Math.floor((scrollTop.value + windowHeight) / itemHeight) + overscan
   )
 
+  // Elements to be rendered
   const items: JSXNode[] = []
 
   ;(async () => {
     for (let i = startIndex; i <= endIndex; i++) {
       const elem = renderItem(
-        { index: i, style: { position: 'absolute', top: `${i * itemHeight}px`, width: '100%' } },
+        {
+          index: i,
+          style: {
+            position: 'absolute',
+            top: `${i * itemHeight}px`,
+            width: '100%',
+          },
+        },
         '' + i,
         0
       )
@@ -51,7 +59,8 @@ export default component$((props: Props) => {
       Math.floor((scrollTop.value + windowHeight) / itemHeight)
     )
 
-    if (toRow != undefined && (toRow >= visibleEnd || toRow <= visibleStart)) {
+    // Scroll to a new element if scrollToRow is set and out of view
+    if (toRow != undefined && (toRow <= visibleStart || toRow >= visibleEnd)) {
       const startDiff = Math.abs(visibleStart - toRow)
       const endDiff = Math.abs(visibleEnd - toRow)
       const isCloserToTop = startDiff < endDiff
@@ -63,7 +72,9 @@ export default component$((props: Props) => {
     }
   })
 
-  const onScroll = $((_: QwikUIEvent<HTMLDivElement>, element: HTMLDivElement) => (scrollTop.value = element.scrollTop))
+  const onScroll = $((_: QwikUIEvent<HTMLDivElement>, element: HTMLDivElement) => {
+    scrollTop.value = element.scrollTop
+  })
 
   return (
     <div class="scroll overflow-y-scroll overflow-x-hidden w-full h-full" onScroll$={onScroll} ref={scrollRef}>
