@@ -1,5 +1,6 @@
 import { component$, useContext } from '@builder.io/qwik'
 import { Link, useLocation } from '@builder.io/qwik-city'
+import { KeyboardCommands } from '~/hooks/useKeyboardShortcuts'
 import { StoreContext } from '~/routes/layout'
 import { Backspace } from './svg/Backspace'
 import { Command } from './svg/Command'
@@ -9,33 +10,7 @@ import MusicPicker from './Shared/MusicPicker'
 const Links = [
   { title: 'Library', url: '/', shortcut: 'L' },
   { title: 'Artists', url: '/artists/', shortcut: 'A' },
-  // { title: 'Playlists', url: '/playlists/', shortcut: 'P' },
-]
-
-const KeyboardCommands = [
-  { type: 'header', title: 'Movement' },
-  { key: 'j', command: 'Highlight Down' },
-  { key: 'k', command: 'Highlight Up' },
-  { key: 'g', command: 'Highlight to Top' },
-  { key: 'G', command: 'Highlight to Bottom' },
-
-  { type: 'header', title: 'Audio Control' },
-  { key: 'n', command: 'Next Song' },
-  { key: '⇧ N', command: 'Prev Song' },
-  { key: 'p', command: 'Pause/Play' },
-  { key: 'q', command: 'Add Song to Queue' },
-  // { key: 's', command: 'Seek Forward' },
-  // { key: '⇧ S', command: 'Seek Back' },
-
-  { type: 'header', title: 'Pages' },
-  { key: '⇧ L', command: 'Library' },
-  { key: '⇧ A', command: 'Artists' },
-  { key: '⇧ P', command: 'Playlists' },
-
-  { type: 'header', title: 'Utility' },
-  { key: '/', command: 'Search' },
-  { key: '⇧ I', command: 'Import Files' },
-  { key: '?', command: 'Toggle Shortcuts' },
+  { title: 'Storage', url: '/storage/', shortcut: 'O' },
 ]
 
 export default component$(() => {

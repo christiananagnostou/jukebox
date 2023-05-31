@@ -2,6 +2,34 @@ import { $, useOnWindow } from '@builder.io/qwik'
 import { useLocation, useNavigate } from '@builder.io/qwik-city'
 import type { Album, Song, Store, StoreActions } from '~/App'
 
+export const KeyboardCommands = [
+  { type: 'header', title: 'Movement' },
+  { key: 'j', command: 'Down' },
+  { key: 'k', command: 'Move Up' },
+  { key: 'h', command: 'Left' },
+  { key: 'l', command: 'Right' },
+  { key: 'g', command: 'To List Top' },
+  { key: 'G', command: 'To List Bottom' },
+
+  { type: 'header', title: 'Audio Control' },
+  { key: 'n', command: 'Next Song' },
+  { key: '⇧ N', command: 'Prev Song' },
+  { key: 'p', command: 'Pause/Play' },
+  { key: 'q', command: 'Add Song to Queue' },
+  // { key: 's', command: 'Seek Forward' },
+  // { key: '⇧ S', command: 'Seek Back' },
+
+  { type: 'header', title: 'Pages' },
+  { key: '⇧ L', command: 'Library' },
+  { key: '⇧ A', command: 'Artists' },
+  { key: '⇧ P', command: 'Playlists' },
+
+  { type: 'header', title: 'Utility' },
+  { key: '/', command: 'Search' },
+  { key: '⇧ I', command: 'Import Files' },
+  { key: '?', command: 'Toggle Shortcuts' },
+]
+
 export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
   const nav = useNavigate()
   const location = useLocation()
