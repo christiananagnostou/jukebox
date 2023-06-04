@@ -41,12 +41,13 @@ export default component$(() => {
   )
   useContextProvider(StoreContext, store)
 
-  const storeActions = useAudioPlayer(store)
-  //
-  useContextProvider(StoreActionsContext, storeActions)
+  const audioActions = useAudioPlayer(store)
+
+  // Provide audio controls to the app
+  useContextProvider(StoreActionsContext, audioActions)
 
   // Listen for Keyboard Shortcuts
-  useKeyboardShortcuts(store, storeActions)
+  useKeyboardShortcuts(store, audioActions)
 
   useVisibleTask$(() => {
     // Initialize an audio element
@@ -60,7 +61,7 @@ export default component$(() => {
       // Update currentTime and check to go to the next song
       interval = setInterval(() => {
         store.player.currentTime = audioElem.currentTime
-        if (audioElem.ended && !store.player.isPaused) storeActions.nextSong()
+        if (audioElem.ended && !store.player.isPaused) audioActions.nextSong()
       }, 500)
 
       // Set Audio Elem
