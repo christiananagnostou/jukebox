@@ -36,6 +36,7 @@ export default component$(() => {
     store.artistView.artistIdx = 0
     store.artistView.albumIdx = 0
     store.artistView.trackIdx = 0
+    store.storageView.cursorIdx = 0
   })
 
   return (
