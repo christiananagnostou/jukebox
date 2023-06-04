@@ -35,11 +35,7 @@ export default component$((props: Props) => {
       const elem = renderItem(
         {
           index: i,
-          style: {
-            position: 'absolute',
-            top: `${i * itemHeight}px`,
-            width: '100%',
-          },
+          style: { position: 'absolute', top: `${i * itemHeight}px`, width: '100%' },
         },
         '' + i,
         0

@@ -85,7 +85,7 @@ export default component$(() => {
                 onClick={$(() => (store.libraryView.cursorIdx = index))}
                 style={{ ...style, height: RowHeight + 'px' }}
                 isCursor={store.libraryView.cursorIdx === index}
-                selected={store.player.currSong?.id === song.id}
+                isPlaying={store.player.currSong?.id === song.id}
               />
             )
           })}
