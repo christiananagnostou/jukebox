@@ -1,10 +1,67 @@
 import { $, useOnWindow } from '@builder.io/qwik'
 import { useLocation, useNavigate } from '@builder.io/qwik-city'
-import type { Album, Song, Store, StoreActions } from '~/App'
+import type { Store, StoreActions } from '~/App'
+import { useStoragePage } from './useStoragePage'
+import { useArtistPage } from './useArtistPage'
+import { useLibraryPage } from './useLibraryPage'
+
+export const KeyboardCommands = [
+  {
+    type: 'header',
+    title: 'Movement',
+    commands: [
+      { key: 'j', command: 'Down' },
+      { key: 'k', command: 'Move Up' },
+      { key: 'h', command: 'Left' },
+      { key: 'l', command: 'Right' },
+      { key: 'g', command: 'To List Top' },
+      { key: 'G', command: 'To List Bottom' },
+    ],
+  },
+
+  {
+    type: 'header',
+    title: 'Audio Control',
+    commands: [
+      { key: 'Enter', command: 'Play Song' },
+      { key: 'n', command: 'Next Song' },
+      { key: '⇧ N', command: 'Prev Song' },
+      { key: 'p', command: 'Pause/Play' },
+      { key: 'q', command: 'Add Song to Queue' },
+      // { key: 's', command: 'Seek Forward' },
+      // { key: '⇧ S', command: 'Seek Back' },
+    ],
+  },
+
+  {
+    type: 'header',
+    title: 'Pages',
+    commands: [
+      { key: '⇧ L', command: 'Library' },
+      { key: '⇧ A', command: 'Artists' },
+      // { key: '⇧ P', command: 'Playlists' },
+      // { key: '⇧ B', command: 'Albums' },
+      { key: '⇧ O', command: 'Storage' },
+    ],
+  },
+
+  {
+    type: 'header',
+    title: 'Utility',
+    commands: [
+      { key: '/', command: 'Search' },
+      { key: '⇧ I', command: 'Import Files' },
+      { key: '?', command: 'Toggle Shortcuts' },
+    ],
+  },
+]
 
 export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
   const nav = useNavigate()
   const location = useLocation()
+  const storageActions = useStoragePage(store, storeActions)
+  const artistActions = useArtistPage(store, storeActions)
+  const libraryActions = useLibraryPage(store, storeActions)
 
   useOnWindow(
     'keydown',
@@ -13,97 +70,46 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       // @ts-ignore
       const { key } = e as { key: string }
 
-      console.log(key)
-      console.log(location.url)
-
       // Library View Specific
       if (location.url.pathname == '/') {
         // Move Hightlight Down
-        if (key === 'j')
-          store.libraryView.cursorIdx =
-            store.libraryView.cursorIdx >= store.filteredSongs.length - 1 ? 0 : store.libraryView.cursorIdx + 1
+        if (key === 'j') libraryActions.highlightDown()
 
         // Move Hightlight Up
-        if (key === 'k')
-          store.libraryView.cursorIdx =
-            store.libraryView.cursorIdx <= 0 ? store.filteredSongs.length - 1 : store.libraryView.cursorIdx - 1
+        if (key === 'k') libraryActions.highlightUp()
 
         // Play Highlighted Song
-        if (key === 'Enter') {
-          store.playlist = store.filteredSongs
-          storeActions.playSong(store.filteredSongs[store.libraryView.cursorIdx], store.libraryView.cursorIdx)
-        }
+        if (key === 'Enter') libraryActions.playHighlighted()
       }
 
       // Artists View Specific
       if (location.url.pathname == '/artists/') {
         // Move Hightlight Down
-        if (key === 'j') {
-          // Artist Col
-          if (store.artistView.cursorCol === 0) {
-            store.artistView.artistIdx < store.artistView.artists.length - 1 && store.artistView.artistIdx++
-            store.artistView.albumIdx = 0
-            store.artistView.trackIdx = 0
-          }
-          // Albums Col
-          if (store.artistView.cursorCol === 1) {
-            store.artistView.albumIdx < store.artistView.albums.length - 1 && store.artistView.albumIdx++
-            store.artistView.trackIdx = 0
-          }
-          // Tracks Col
-          if (store.artistView.cursorCol === 2) {
-            store.artistView.trackIdx < store.artistView.tracks.length - 1 && store.artistView.trackIdx++
-          }
-        }
+        if (key === 'j') artistActions.moveCursorDown()
 
         // Move Hightlight Up
-        if (key === 'k') {
-          // Artist Col
-          if (store.artistView.cursorCol === 0) {
-            store.artistView.artistIdx > 0 && store.artistView.artistIdx--
-            store.artistView.albumIdx = 0
-            store.artistView.trackIdx = 0
-          }
-          // Albums Col
-          if (store.artistView.cursorCol === 1) {
-            store.artistView.albumIdx > 0 && store.artistView.albumIdx--
-            store.artistView.trackIdx = 0
-          }
-          // Tracks Col
-          if (store.artistView.cursorCol === 2) {
-            store.artistView.trackIdx > 0 && store.artistView.trackIdx--
-          }
-        }
+        if (key === 'k') artistActions.moveCursorUp()
 
         // Move Hightlight Right
-        if (key === 'l') if (store.artistView.cursorCol < 2) store.artistView.cursorCol++
+        if (key === 'l') artistActions.moveCursorRight()
 
         // Move Hightlight Left
-        if (key === 'h') if (store.artistView.cursorCol > 0) store.artistView.cursorCol--
+        if (key === 'h') artistActions.moveCursorLeft()
 
         // Play Highlighted Song
+        if (key === 'Enter') artistActions.playHighlighted()
+      }
+
+      // Storage View Specific
+      if (location.url.pathname == '/storage/') {
+        // Move Hightlight Down
+        if (key === 'j') storageActions.highlightDown()
+        // Move Hightlight Up
+        if (key === 'k') storageActions.highlightUp()
+        // Play Highlighted Song
         if (key === 'Enter') {
-          // Play all albums from selected artist
-          if (store.artistView.cursorCol === 0) {
-            // Reset album index
-            store.artistView.albumIdx = 0
-            // Get all songs from all playlists
-            store.playlist = store.artistView.albums.reduce(
-              (result: Song[], current: Album) => result.concat(...current.tracks),
-              []
-            )
-            storeActions.playSong(store.playlist[0], 0)
-          }
-          // Play all tracks from selected album
-          if (store.artistView.cursorCol === 1) {
-            store.playlist = store.artistView.tracks
-            storeActions.playSong(store.artistView.tracks[0], 0)
-          }
-          // Play selected track and set curr album to playlist
-          if (store.artistView.cursorCol === 2) {
-            store.playlist = store.artistView.tracks
-            storeActions.playSong(store.artistView.tracks[store.artistView.trackIdx], store.artistView.trackIdx)
-          }
+          const file = store.storageView.pathIndexMap[store.storageView.cursorIdx]
+          storageActions.playFile(file)
         }
       }
 
@@ -125,11 +131,14 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       // Pause/Play
       if (key === 'p') store.player.isPaused ? storeActions.resumeSong() : storeActions.pauseSong()
 
-      // Navigate to Albums Page
-      if (key === 'A') nav('/artists')
-
       // Navigate to Home (Library) Page
       if (key === 'L') nav('/')
+
+      // Navigate to Artists Page
+      if (key === 'A') nav('/artists')
+
+      // Navigate to Storage Page
+      if (key === 'O') nav('/storage')
 
       // Toggle Keyboard Shortcuts Modal
       if (key === '?') store.showKeyShortcuts = !store.showKeyShortcuts

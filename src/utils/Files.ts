@@ -1,3 +1,5 @@
+import { FileNode, Song } from '~/App'
+
 interface ContentFileType {
   type: 'audio' | 'video' | 'txt' | 'image' | 'unsupported'
   extension: string
@@ -44,4 +46,29 @@ export function getContentFileType(filename: string): ContentFileType {
     type: 'unsupported',
     extension,
   }
+}
+
+export function organizeFiles(songs: Song[]): FileNode {
+  const root: FileNode = { name: '/', children: [], level: 0, isClosed: false, hidden: false }
+
+  for (const song of songs) {
+    const pathParts = song.path.split('/')
+    let currentNode = root
+    let level = 0
+
+    for (const part of pathParts) {
+      if (!part) continue
+      let childNode = currentNode.children.find((node) => node.name === part)
+      level++
+
+      if (!childNode) {
+        childNode = { name: part, children: [], level, isClosed: false, hidden: false }
+        if (song.file === part) childNode.song = song
+        currentNode.children.push(childNode)
+      }
+
+      currentNode = childNode
+    }
+  }
+  return root
 }
