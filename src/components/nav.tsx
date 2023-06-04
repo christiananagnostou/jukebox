@@ -1,11 +1,8 @@
 import { component$, useContext } from '@builder.io/qwik'
 import { Link, useLocation } from '@builder.io/qwik-city'
-import { KeyboardCommands } from '~/hooks/useKeyboardShortcuts'
 import { StoreContext } from '~/routes/layout'
-import { Backspace } from './svg/Backspace'
-import { Command } from './svg/Command'
-import { Shift } from './svg/Shift'
 import MusicPicker from './Shared/MusicPicker'
+import { ShortcutsModal } from './Shared/ShortcutsModal'
 
 const Links = [
   { title: 'Library', url: '/', shortcut: 'L' },
@@ -39,6 +36,8 @@ export default component$(() => {
             </li>
           ))}
 
+          <hr class="border-slate-700" />
+
           <li class="p-1">
             <MusicPicker />
           </li>
@@ -55,45 +54,7 @@ export default component$(() => {
         </ul>
       </nav>
 
-      {store.showKeyShortcuts && (
-        <div
-          class="fixed z-30 inset-0 h-full w-full grid place-items-center bg-[var(--modal-background)]"
-          onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
-        >
-          {/* Modal */}
-          <div class="px-4 w-max h-max border border-slate-700 rounded bg-[var(--body-bg-solid)]">
-            {KeyboardCommands.map((shortcut) => (
-              <span key={shortcut.command} class="flex justify-between my-4 w-64 text-sm">
-                {shortcut.type === 'header' ? (
-                  <span class="pb-1 -mb-1 border-b border-slate-700 w-full text-gray-200 text-center">
-                    {shortcut.title}
-                  </span>
-                ) : (
-                  <>
-                    <span>{shortcut.command}</span>
-
-                    <span class="flex align-center">
-                      {shortcut.key?.split(' ').map((key) => (
-                        <kbd
-                          key={key}
-                          class="ml-1 text-[10px] leading-[110%] py-[4px] px-[3px] min-w-[20px] inline-grid place-items-center text-center rounded bg-gray-700"
-                        >
-                          {(() => {
-                            if (key === '⇧') return <Shift />
-                            if (key === '⌘') return <Command />
-                            if (key === '⌫') return <Backspace />
-                            return key
-                          })()}
-                        </kbd>
-                      ))}
-                    </span>
-                  </>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {store.showKeyShortcuts && <ShortcutsModal />}
     </>
   )
 })
