@@ -7,11 +7,9 @@ import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
 import { SoundBars } from '~/components/Shared/SoundBars'
 
-interface AlbumsProps {}
-
 const RowHeight = 30
 
-export default component$<AlbumsProps>(() => {
+export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
@@ -31,22 +29,21 @@ export default component$<AlbumsProps>(() => {
         obj = obj[elem]
       }
 
-      obj[path[len - 1]] = song
+      if (obj[path[len - 1]]) obj[path[len - 1]].push(song)
+      else obj[path[len - 1]] = [song]
     }
 
     for (const song of store.filteredSongs) {
-      setNestedKey(artistMap, [song.artist || '-', song.album || '-', song.title || '-'], song)
+      setNestedKey(artistMap, [song.artist || '-', song.album || '-'], song)
     }
 
-    const artistArr = Object.entries(artistMap).map(([artist, album]) => ({
+    store.artistView.artists = Object.entries(artistMap).map(([artist, album]) => ({
       name: artist,
       albums: Object.entries(album).map(([album, songs]) => ({
         title: album,
-        tracks: Object.values(songs),
+        tracks: songs,
       })),
     }))
-
-    store.artistView.artists = artistArr
   })
 
   useTask$(({ track }) => {
@@ -54,6 +51,7 @@ export default component$<AlbumsProps>(() => {
     const artistIdx = track(() => store.artistView.artistIdx)
     store.artistView.albums = artists[artistIdx]?.albums || []
   })
+
   useTask$(({ track }) => {
     const albums = track(() => store.artistView.albums)
     const albumIdx = track(() => store.artistView.albumIdx)
@@ -110,9 +108,9 @@ export default component$<AlbumsProps>(() => {
       <div class="grid grid-cols-[1fr_1fr_1fr]">
         <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
-            numItems={store.artistView.artists.length}
             itemHeight={RowHeight}
             windowHeight={state.virtualListHeight || 0}
+            numItems={store.artistView.artists.length}
             scrollToRow={store.artistView.artistIdx}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
               const artist = store.artistView.artists[index]
@@ -149,9 +147,9 @@ export default component$<AlbumsProps>(() => {
         {/* Albums */}
         <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
-            numItems={store.artistView.albums.length}
             itemHeight={RowHeight}
             windowHeight={state.virtualListHeight || 0}
+            numItems={store.artistView.albums.length}
             scrollToRow={store.artistView.albumIdx}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
               const album = store.artistView.albums[index]
@@ -182,16 +180,16 @@ export default component$<AlbumsProps>(() => {
         {/* Songs */}
         <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
-            numItems={store.artistView.tracks?.length}
             itemHeight={RowHeight}
             windowHeight={state.virtualListHeight || 0}
+            numItems={store.artistView.tracks?.length}
             scrollToRow={store.artistView.trackIdx}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
               const song = store.artistView.tracks[index]
 
               const highlighted = store.artistView.trackIdx === index
               const isCursor = store.artistView.cursorCol === 2 && highlighted
-              const selected = store.player.currSong?.id === song.id
+              const isPlaying = store.player.currSong?.id === song.id
 
               return (
                 <button
@@ -208,7 +206,7 @@ export default component$<AlbumsProps>(() => {
                 >
                   {song.title || '-'}
 
-                  <SoundBars show={selected} />
+                  <SoundBars show={isPlaying} />
                 </button>
               )
             })}
