@@ -81,7 +81,7 @@ export default component$(() => {
   useVisibleTask$(async () => {
     // Load All Songs From Database
     const db = new DB(DB_FILE)
-    const songs = ((await db.get('allSongs')) || []) as Song[]
+    const songs = (await db.values()) as Song[]
     songs.forEach((song) => addSongInOrder(song))
 
     // Used for debugging purposes

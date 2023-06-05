@@ -16,13 +16,11 @@ import { isAudioFile } from '~/utils/Files'
 // WINDOW_FILE_DROP_HOVER = 'tauri://file-drop-hover',
 // WINDOW_FILE_DROP_CANCELLED = 'tauri://file-drop-cancelled',
 
-const db = new DB(DB_FILE)
-
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
-  const addSong = $(async (filePath: string, fileName: string) => {
+  const addSong = $(async (filePath: string, fileName: string, db: DB) => {
     if (!isAudioFile(filePath)) return
 
     const data = await invoke<string>('get_metadata', { filePath })
@@ -60,12 +58,14 @@ export default component$(() => {
   })
 
   const processEntries = $(async (entries: FileEntry[]) => {
+    const db = new DB(DB_FILE)
+
     const process = async (ent: FileEntry[]) => {
       for (const entry of ent.values()) {
         if (entry.children) {
           process(entry.children.filter((e) => !e.name?.startsWith('.')))
         } else if (entry.name && entry.path) {
-          addSong(entry.path, entry.name)
+          addSong(entry.path, entry.name, db)
         }
       }
     }
