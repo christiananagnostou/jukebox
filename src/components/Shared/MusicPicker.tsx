@@ -6,17 +6,21 @@ import { audioDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/api/dialog'
 import { invoke } from '@tauri-apps/api/tauri'
 import md5 from 'md5'
+import { Store as DB } from 'tauri-plugin-store-api'
 
 import type { Metadata, Song } from '~/App'
-import { StoreContext } from '~/routes/layout'
+import { DB_FILE, StoreActionsContext, StoreContext } from '~/routes/layout'
 import { isAudioFile } from '~/utils/Files'
 
 // WINDOW_FILE_DROP = 'tauri://file-drop',
 // WINDOW_FILE_DROP_HOVER = 'tauri://file-drop-hover',
 // WINDOW_FILE_DROP_CANCELLED = 'tauri://file-drop-cancelled',
 
+const db = new DB(DB_FILE)
+
 export default component$(() => {
   const store = useContext(StoreContext)
+  const storeActions = useContext(StoreActionsContext)
 
   const addSong = $(async (filePath: string, fileName: string) => {
     if (!isAudioFile(filePath)) return
@@ -51,23 +55,8 @@ export default component$(() => {
       isFavorite: false,
     }
 
-    // Find the index to insert the new song
-    let insertIndex = 0
-    while (insertIndex < store.allSongs.length && store.allSongs[insertIndex].album < song.album) {
-      insertIndex++
-    }
-
-    // Find the correct position within the album
-    while (
-      insertIndex < store.allSongs.length &&
-      store.allSongs[insertIndex].album === song.album &&
-      store.allSongs[insertIndex].trackNumber < song.trackNumber
-    ) {
-      insertIndex++
-    }
-
-    // Insert the new song at the determined index
-    store.allSongs.splice(insertIndex, 0, song)
+    storeActions.addSongInOrder(song)
+    await db.set(song.id, song)
   })
 
   const processEntries = $(async (entries: FileEntry[]) => {
@@ -99,12 +88,12 @@ export default component$(() => {
     })
 
     if (Array.isArray(selected)) {
-      // user selected multiple directories
+      // User selected multiple directories
       selected.forEach((dir) => addFolder(dir))
     } else if (selected === null) {
-      // user cancelled the selection
+      // User cancelled the selection
     } else {
-      // user selected a single directory
+      // User selected a single directory
       addFolder(selected)
     }
   })

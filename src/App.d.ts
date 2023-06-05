@@ -99,6 +99,8 @@ export interface StoreActions {
   resumeSong: QRL<() => void>
   nextSong: QRL<() => void>
   prevSong: QRL<() => void>
+
+  addSongInOrder: QRL<(song: Song) => void>
 }
 
 export interface FileNode {

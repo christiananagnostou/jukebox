@@ -1,4 +1,5 @@
 import {
+  $,
   component$,
   createContextId,
   Slot,
@@ -7,7 +8,9 @@ import {
   useTask$,
   useVisibleTask$,
 } from '@builder.io/qwik'
-import type { Store, StoreActions } from '~/App'
+import { Store as DB } from 'tauri-plugin-store-api'
+
+import type { Song, Store, StoreActions } from '~/App'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
 import Nav from '~/components/nav'
 import Footer from '~/components/footer'
@@ -17,8 +20,10 @@ import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
 import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
 
-export const StoreContext = createContextId<Store>('docs.store-context')
-export const StoreActionsContext = createContextId<StoreActions>('docs.store-actions-context')
+export const StoreContext = createContextId<Store>('store-context')
+export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
+
+export const DB_FILE = '.jukebox.dat'
 
 export default component$(() => {
   const store = useStore<Store>(
@@ -41,15 +46,47 @@ export default component$(() => {
   )
   useContextProvider(StoreContext, store)
 
-  const audioActions = useAudioPlayer(store)
+  const addSongInOrder = $((song: Song) => {
+    // Find the index to insert the new song
+    let insertIndex = 0
+    while (insertIndex < store.allSongs.length && store.allSongs[insertIndex].album < song.album) {
+      insertIndex++
+    }
 
+    // Find the correct position within the album
+    while (
+      insertIndex < store.allSongs.length &&
+      store.allSongs[insertIndex].album === song.album &&
+      store.allSongs[insertIndex].trackNumber < song.trackNumber
+    ) {
+      insertIndex++
+    }
+
+    // Insert the new song at the determined index
+    store.allSongs.splice(insertIndex, 0, song)
+  })
+
+  const audioActions = useAudioPlayer(store)
   // Provide audio controls to the app
-  useContextProvider(StoreActionsContext, audioActions)
+  useContextProvider(StoreActionsContext, { ...audioActions, addSongInOrder })
 
   // Listen for Keyboard Shortcuts
-  useKeyboardShortcuts(store, audioActions)
+  useKeyboardShortcuts(store, { ...audioActions, addSongInOrder })
 
-  useVisibleTask$(() => {
+  /**
+   *
+   * Runs as soon as the window is visible
+   *
+   */
+  useVisibleTask$(async () => {
+    // Load All Songs From Database
+    const db = new DB(DB_FILE)
+    const songs = ((await db.get('allSongs')) || []) as Song[]
+    songs.forEach((song) => addSongInOrder(song))
+
+    // Used for debugging purposes
+    // db.clear()
+
     // Initialize an audio element
     let interval: NodeJS.Timer
 
@@ -71,10 +108,22 @@ export default component$(() => {
     return () => clearInterval(interval)
   })
 
-  // Song Sorting
+  /**
+   *
+   * Song Sorting
+   *
+   */
   useTask$(({ track }) => {
     const sorting = track(() => store.sorting)
     track(() => store.searchTerm)
+
+    /**
+     *
+     * TODO:
+     * Reproduce: searching -> any sort -> exits sort
+     * Result: list is not in displayed sort and ascending can happen before descending
+     *
+     */
 
     store.filteredSongs.sort((song1, song2) => {
       switch (sorting) {
@@ -83,26 +132,34 @@ export default component$(() => {
         case 'title-asc':
           return song2.title.localeCompare(song1.title)
         case 'artist-desc':
-          return song1.artist.localeCompare(song2.artist)
-        case 'artist-asc':
           // First, compare the artists
-          if (song2.artist < song1.artist) return -1
-          else if (song2.artist > song1.artist) return 1
-          // If the artists are the same, compare the track numbers
-          if (song2.trackNumber < song1.trackNumber) return -1
-          else if (song2.trackNumber > song1.trackNumber) return 1
+          if (song1.artist < song2.artist) return -1
+          else if (song1.artist > song2.artist) return 1
+          // If the artists are the same, compare the albums
+          if (song1.album < song2.album) return -1
+          else if (song1.album > song2.album) return 1
+          // If the albums are the same, compare the track numbers
+          if (song1.trackNumber < song2.trackNumber) return -1
+          else if (song1.trackNumber > song2.trackNumber) return 1
           // If both artist and track number are the same, preserve the original order
           return 0
+        case 'artist-asc':
+          // Ascending doesn't need complex sort because it always happens after a descending sort
+          return song2.artist.localeCompare(song1.artist)
         case 'album-desc':
           // First, compare the artists
           if (song1.artist < song2.artist) return -1
           else if (song1.artist > song2.artist) return 1
-          // If the artists are the same, compare the track numbers
+          // If the artists are the same, compare the albums
+          if (song1.album < song2.album) return -1
+          else if (song1.album > song2.album) return 1
+          // If the albums are the same, compare the track numbers
           if (song1.trackNumber < song2.trackNumber) return -1
           else if (song1.trackNumber > song2.trackNumber) return 1
           // If both artist and track number are the same, preserve the original order
           return 0
         case 'album-asc':
+          // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.album.localeCompare(song1.album)
         default:
           return 1
@@ -110,6 +167,11 @@ export default component$(() => {
     })
   })
 
+  /**
+   *
+   * Search Filtering
+   *
+   */
   useTask$(({ track }) => {
     const searchTerm = track(() => store.searchTerm)
       .toLowerCase()
