@@ -1,4 +1,4 @@
-import { FileNode, Song } from '~/App'
+import type { FileNode, Song } from '~/App'
 
 interface ContentFileType {
   type: 'audio' | 'video' | 'txt' | 'image' | 'unsupported'

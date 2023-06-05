@@ -39,9 +39,9 @@ export const KeyboardCommands = [
     commands: [
       { key: '⇧ L', command: 'Library' },
       { key: '⇧ A', command: 'Artists' },
+      { key: '⇧ O', command: 'Storage' },
       // { key: '⇧ P', command: 'Playlists' },
       // { key: '⇧ B', command: 'Albums' },
-      { key: '⇧ O', command: 'Storage' },
     ],
   },
 
