@@ -4,11 +4,11 @@ Jukebox is a music player desktop application capable of managing your precious 
 
 ## Features
 
-- [x] Cross-platform - Windows, macOS, and Linux.
+- [x] Cross-platform - Windows, MacOS, and Linux.
 - [x] Bulk Music Import
 - [x] Music playback
-- [ ] Advanced Search
-- [ ] Keyboard Shortcuts
+- [x] Advanced Search
+- [x] Keyboard Shortcuts
 - [ ] Playlists
 - [ ] Remote Library Connection
 - [ ] Audio visualization
