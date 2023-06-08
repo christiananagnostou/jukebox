@@ -1,5 +1,5 @@
 import type { QwikChangeEvent } from '@builder.io/qwik'
-import { $, component$, useContext } from '@builder.io/qwik'
+import { $, useComputed$, component$, useContext } from '@builder.io/qwik'
 import { StoreContext, StoreActionsContext } from '~/routes/layout'
 import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
@@ -25,17 +25,21 @@ export default component$<IndexProps>(() => {
     return `${minutes}:${secondsWithZero}`
   })
 
+  const blob = useComputed$(() => {
+    const imgType = store.player.currSong?.visualInfo.mediaType
+    const byteArray = store.player.currSong?.visualInfo.mediaData
+    if (!byteArray || !imgType) return ''
+
+    const content = new Uint8Array(byteArray)
+    return URL.createObjectURL(new Blob([content.buffer], { type: imgType }))
+  })
+
   return (
     <div class="text-center text-sm group/nav-player">
       <div class="max-w-[250px] m-auto">
         {/* Album Art */}
         <div class="w-full aspect-square bg-slate-800">
-          <img src={
-              "data:image/png;base64," +
-              btoa(String.fromCharCode.apply(null, new Uint8Array(store.player.currSong?.visual_info?.media_data)))
-            }
-            alt={store.player.currSong?.title}
-          />
+          <img src={blob.value} alt={store.player.currSong?.title} width={250} height={250} />
         </div>
 
         {/* Range Slider */}

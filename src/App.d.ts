@@ -73,9 +73,10 @@ export interface Song {
   side: number
   startTime: number
   isFavorite: boolean
-  visual_info: {
-    media_type: string
-    media_data: number[]
+
+  visualInfo: {
+    mediaType: string
+    mediaData: number[]
   }
 }
 
@@ -87,6 +88,10 @@ export interface Metadata {
   file_name: string
   file_size: number
   meta_tags: { [key: string]: string }
+  visual_info: {
+    media_type: string
+    media_data: number[]
+  }
 }
 
 export type ListItemStyle = {

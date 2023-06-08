@@ -52,7 +52,10 @@ export default component$(() => {
       startTime: 0,
       isFavorite: false,
 
-      visual_info: metadata.visual_info
+      visualInfo: {
+        mediaData: metadata.visual_info.media_data,
+        mediaType: metadata.visual_info.media_type,
+      },
     }
 
     storeActions.addSongInOrder(song)
