@@ -9,6 +9,7 @@ export interface Store {
   libraryView: {
     cursorIdx: number
   }
+
   artistView: {
     artistIdx: number
     albumIdx: number
@@ -18,6 +19,13 @@ export interface Store {
     artists: Artist[]
     albums: Album[]
     tracks: Song[]
+  }
+
+  storageView: {
+    cursorIdx: number
+    rootFile: FileNode
+    pathIndexMap: PathIndexMap
+    nodeCount: number
   }
 
   isTyping: boolean
@@ -94,4 +102,19 @@ export interface StoreActions {
   resumeSong: QRL<() => void>
   nextSong: QRL<() => void>
   prevSong: QRL<() => void>
+
+  addSongInOrder: QRL<(song: Song) => void>
+}
+
+export interface FileNode {
+  name: string
+  children: FileNode[]
+  song?: Song
+  level: number
+  isClosed: boolean
+  hidden: boolean
+}
+
+export interface PathIndexMap {
+  [index: number]: FileNode
 }

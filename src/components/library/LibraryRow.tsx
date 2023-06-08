@@ -8,10 +8,10 @@ export interface LibraryRowProps {
   onClick: (event: QwikMouseEvent<HTMLButtonElement, MouseEvent>, element: HTMLButtonElement) => any
   style: Record<string, string | number | undefined>
   isCursor: boolean
-  selected: boolean
+  isPlaying: boolean
 }
 
-export const LibraryRow = component$<LibraryRowProps>(({ song, onDblClick, onClick, style, isCursor, selected }) => {
+export const LibraryRow = component$<LibraryRowProps>(({ song, onDblClick, onClick, style, isCursor, isPlaying }) => {
   return (
     <button
       key={song.title}
@@ -20,9 +20,9 @@ export const LibraryRow = component$<LibraryRowProps>(({ song, onDblClick, onCli
       style={style}
       class={`border-t first:border-t-0 border-r border-gray-800 w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr] text-left items-center hover:bg-[rgba(0,0,0,.15)] 
       ${isCursor && '!bg-gray-800'}
-      ${selected && '!bg-gray-700'}`}
+      ${isPlaying && '!bg-gray-700'}`}
     >
-      <SoundBars show={selected} />
+      <SoundBars show={isPlaying} />
 
       <span class="truncate pl-1">{song.title}</span>
       <span class="truncate pl-2">{song.artist}</span>
