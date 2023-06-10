@@ -80,7 +80,6 @@ impl Metadata {
             //     }
         }
 
-        // let visuals = metadata_rev.visuals();
         for cue in format.cues() {
             for tag in &cue.tags {
                 println!("cue tag:\t{:?}", tag);
@@ -92,13 +91,14 @@ impl Metadata {
             media_data: Vec::new(),
         };
         let binding = format.metadata();
-        let metadata_rev = binding.current().unwrap();
-        let visuals = metadata_rev.visuals();
-        for visual in visuals.iter() {
-            visual_info = VisualInfo {
-                media_type: visual.media_type.clone(),
-                media_data: visual.data.to_vec(),
-            };
+        if let Some(metadata_rev) = binding.current() {
+            let visuals = metadata_rev.visuals();
+            for visual in visuals.iter() {
+                visual_info = VisualInfo {
+                    media_type: visual.media_type.clone(),
+                    media_data: visual.data.to_vec(),
+                };
+            }
         }
 
         Self {
