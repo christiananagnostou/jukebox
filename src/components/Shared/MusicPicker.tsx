@@ -20,6 +20,12 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
+  /**
+   *
+   * If file is an accepted audio file,
+   * get metadata from backend and store it in the DB
+   *
+   */
   const addSong = $(async (filePath: string, fileName: string, db: DB) => {
     if (!isAudioFile(filePath)) return
 
@@ -58,10 +64,19 @@ export default component$(() => {
       },
     }
 
-    storeActions.addSongInOrder(song)
+    // If song exists in DB, replace it in allSongs, else add in order
+    if (await db.has(song.id)) store.allSongs[store.allSongs.findIndex((s) => s.id === song.id)] = song
+    else storeActions.addSongInOrder(song)
+
+    // Always store latest to DB
     await db.set(song.id, song)
   })
 
+  /**
+   *
+   * Recursively read through entries and process each entry or it's children
+   *
+   */
   const processEntries = $(async (entries: FileEntry[]) => {
     const db = new DB(DB_FILE)
 
@@ -77,15 +92,22 @@ export default component$(() => {
     process(entries)
   })
 
-  const addFolder = $(async (folderPath: string) => {
-    const entries = await readDir(folderPath, {
-      recursive: true,
-    })
+  /**
+   *
+   * Create a tree of file entries from the selected directory
+   *
+   */
+  const addDir = $(async (folderPath: string) => {
+    const entries = await readDir(folderPath, { recursive: true })
     await processEntries(entries.filter((e) => !e.name?.startsWith('.')))
   })
 
+  /**
+   *
+   * Open a import dialog for directories and add selected
+   *
+   */
   const openDirectoryPicker = $(async () => {
-    // Open a selection dialog for directories
     const selected = await open({
       directory: true,
       multiple: true,
@@ -94,18 +116,24 @@ export default component$(() => {
 
     if (Array.isArray(selected)) {
       // User selected multiple directories
-      selected.forEach((dir) => addFolder(dir))
+      selected.forEach((dir) => addDir(dir))
     } else if (selected === null) {
       // User cancelled the selection
     } else {
       // User selected a single directory
-      addFolder(selected)
+      addDir(selected)
     }
   })
 
+  /**
+   *
+   * Set audio directroy for import dialog
+   * and
+   * Add listener for file drop on the app
+   *
+   */
   useVisibleTask$(async () => {
     try {
-      // Set audio directory for import dialog
       store.audioDir = await audioDir()
     } catch (e) {
       console.log(e)
@@ -122,6 +150,11 @@ export default component$(() => {
     return () => unlistenFileDrop()
   })
 
+  /**
+   *
+   * Add keyboard event for Shift + I to open import dialog
+   *
+   */
   useOnWindow(
     'keydown',
     $((e: Event) => {
