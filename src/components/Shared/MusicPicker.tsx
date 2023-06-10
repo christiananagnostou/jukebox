@@ -9,7 +9,7 @@ import md5 from 'md5'
 import { Store as DB } from 'tauri-plugin-store-api'
 
 import type { Metadata, Song } from '~/App'
-import { DB_FILE, StoreActionsContext, StoreContext } from '~/routes/layout'
+import { ALBUM_ART_DB, METADATA_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
 import { isAudioFile } from '~/utils/Files'
 
 // WINDOW_FILE_DROP = 'tauri://file-drop',
@@ -26,7 +26,7 @@ export default component$(() => {
    * get metadata from backend and store it in the DB
    *
    */
-  const addSong = $(async (filePath: string, fileName: string, db: DB) => {
+  const addSong = $(async (filePath: string, fileName: string, metadataDB: DB, albumArtDB: DB) => {
     if (!isAudioFile(filePath)) return
 
     const data = await invoke<string>('get_metadata', { filePath })
@@ -54,22 +54,20 @@ export default component$(() => {
       codec: metadata.codec,
       duration: metadata.duration,
       sampleRate: metadata.sample_rate,
-
       startTime: 0,
       isFavorite: false,
-
-      visualInfo: {
-        mediaData: metadata.visual_info.media_data,
-        mediaType: metadata.visual_info.media_type,
-      },
     }
 
     // If song exists in DB, replace it in allSongs, else add in order
-    if (await db.has(song.id)) store.allSongs[store.allSongs.findIndex((s) => s.id === song.id)] = song
+    if (await metadataDB.has(song.id)) store.allSongs[store.allSongs.findIndex((s) => s.id === song.id)] = song
     else storeActions.addSongInOrder(song)
 
     // Always store latest to DB
-    await db.set(song.id, song)
+    await metadataDB.set(song.id, song)
+    await albumArtDB.set(song.id, {
+      mediaData: metadata.visual_info.media_data,
+      mediaType: metadata.visual_info.media_type,
+    })
   })
 
   /**
@@ -78,14 +76,15 @@ export default component$(() => {
    *
    */
   const processEntries = $(async (entries: FileEntry[]) => {
-    const db = new DB(DB_FILE)
+    const metadataDB = new DB(METADATA_DB)
+    const albumArtDB = new DB(ALBUM_ART_DB)
 
     const process = async (ent: FileEntry[]) => {
       for (const entry of ent.values()) {
         if (entry.children) {
           process(entry.children.filter((e) => !e.name?.startsWith('.')))
         } else if (entry.name && entry.path) {
-          addSong(entry.path, entry.name, db)
+          addSong(entry.path, entry.name, metadataDB, albumArtDB)
         }
       }
     }

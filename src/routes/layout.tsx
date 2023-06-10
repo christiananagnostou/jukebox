@@ -23,7 +23,8 @@ import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
 
-export const DB_FILE = '.jukebox.dat'
+export const METADATA_DB = 'metadata.dat'
+export const ALBUM_ART_DB = 'album-art.dat'
 
 export default component$(() => {
   const store = useStore<Store>(
@@ -80,7 +81,7 @@ export default component$(() => {
    */
   useVisibleTask$(async () => {
     // Load All Songs From Database
-    const db = new DB(DB_FILE)
+    const db = new DB(METADATA_DB)
     const songs = (await db.values()) as Song[]
     songs.forEach((song) => addSongInOrder(song))
 

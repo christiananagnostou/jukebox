@@ -1,10 +1,12 @@
 import type { QwikChangeEvent } from '@builder.io/qwik'
 import { $, useComputed$, component$, useContext } from '@builder.io/qwik'
-import { StoreContext, StoreActionsContext } from '~/routes/layout'
+import { Store as DB } from 'tauri-plugin-store-api'
+import { StoreContext, StoreActionsContext, ALBUM_ART_DB } from '~/routes/layout'
 import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
+import type { AlbumArt } from '~/App'
 
 interface IndexProps {}
 
@@ -25,13 +27,15 @@ export default component$<IndexProps>(() => {
     return `${minutes}:${secondsWithZero}`
   })
 
-  const blob = useComputed$(() => {
-    const imgType = store.player.currSong?.visualInfo.mediaType
-    const byteArray = store.player.currSong?.visualInfo.mediaData
-    if (!byteArray || !imgType) return ''
+  const albumArt = useComputed$(async () => {
+    const albumArtDB = new DB(ALBUM_ART_DB)
+    if (!store.player.currSong?.id) return ''
 
-    const content = new Uint8Array(byteArray)
-    return URL.createObjectURL(new Blob([content.buffer], { type: imgType }))
+    const visualInfo = (await albumArtDB.get(store.player.currSong.id)) as AlbumArt
+    if (!visualInfo.mediaData || !visualInfo.mediaType) return ''
+
+    const content = new Uint8Array(visualInfo.mediaData)
+    return URL.createObjectURL(new Blob([content.buffer], { type: visualInfo.mediaType }))
   })
 
   return (
@@ -39,7 +43,7 @@ export default component$<IndexProps>(() => {
       <div class="max-w-[250px] m-auto">
         {/* Album Art */}
         <div class="w-full aspect-square bg-slate-800">
-          <img src={blob.value} alt={store.player.currSong?.title} width={250} height={250} />
+          {albumArt.value && <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />}
         </div>
 
         {/* Range Slider */}
