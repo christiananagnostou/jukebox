@@ -20,7 +20,7 @@ export default component$<QueueProps>(() => {
 
       <ol>
         {(store.queue.length ? store.queue : next5Displayed).map((song) => (
-          <li class="py-3" key={'queued-song-' + song.id}>
+          <li class="pb-3" key={'queued-song-' + song.id}>
             <span class="block truncate">{song.title}</span>
             <span class="text-xs truncate">{song.artist}</span>
           </li>

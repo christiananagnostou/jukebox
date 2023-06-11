@@ -90,6 +90,7 @@ export interface Metadata {
 }
 
 export interface AlbumArt {
+  objectUrl: string
   mediaType: string
   mediaData: number[]
 }
