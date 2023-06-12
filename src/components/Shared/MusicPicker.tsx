@@ -55,7 +55,7 @@ export default component$(() => {
       duration: metadata.duration,
       sampleRate: metadata.sample_rate,
       startTime: 0,
-      isFavorite: false,
+      favorRating: 0,
     }
 
     // If song exists in DB, replace it in allSongs, else add in order

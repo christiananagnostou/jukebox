@@ -76,13 +76,11 @@
         "fullscreen": false,
         "height": 600,
         "resizable": true,
-        "title": "Jukebox",
-        "hiddenTitle": true,
+        "title": " ",
         "width": 800,
         "transparent": true,
         "maximized": true,
-        "focus": true,
-        "titleBarStyle": "Overlay"
+        "focus": true
       }
     ],
     "macOSPrivateApi": true

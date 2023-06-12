@@ -30,7 +30,7 @@ export default component$<AlbumsProps>(() => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 // 2 rows (col titles + footer)
+      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
       state.windowHeight = height
     }
     sizeVirtualList()

@@ -2,7 +2,22 @@ export interface Store {
   allSongs: Song[]
   filteredSongs: Song[]
   playlist: Song[]
-  sorting: 'title-desc' | 'title-asc' | 'artist-desc' | 'artist-asc' | 'album-desc' | 'album-asc' | 'default'
+  sorting:
+    | 'title-desc'
+    | 'title-asc'
+    | 'artist-desc'
+    | 'artist-asc'
+    | 'album-desc'
+    | 'album-asc'
+    | 'track-asc'
+    | 'track-desc'
+    | 'hertz-asc'
+    | 'hertz-desc'
+    | 'date-asc'
+    | 'date-desc'
+    | 'fave-asc'
+    | 'fave-desc'
+    | 'default'
   searchTerm: string
   audioDir: string
 
@@ -72,7 +87,7 @@ export interface Song {
   sampleRate: string
   side: number
   startTime: number
-  isFavorite: boolean
+  favorRating: 0 | 1 | 2
 }
 
 export interface Metadata {

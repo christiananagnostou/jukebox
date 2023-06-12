@@ -1,4 +1,3 @@
-import type { QwikChangeEvent } from '@builder.io/qwik'
 import { $, useComputed$, component$, useContext, useStore } from '@builder.io/qwik'
 import { Store as DB } from 'tauri-plugin-store-api'
 import { StoreContext, StoreActionsContext, ALBUM_ART_DB } from '~/routes/layout'
@@ -14,14 +13,12 @@ export default component$<IndexProps>(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
+  const progressBarWidth = (store.player.currentTime / store.player.duration) * 250 + 'px'
+
   const state = useStore({
     isEditing: false,
-  })
-
-  const dragHandler = $((e: QwikChangeEvent<HTMLInputElement>) => {
-    if (!store.player.audioElem) return
-    const currentDraggedTime = parseInt(e.target.value)
-    store.player.audioElem.currentTime = currentDraggedTime
+    isHovered: false,
+    cursorXPos: 0,
   })
 
   const formatSeconds = $((time: number) => {
@@ -51,45 +48,50 @@ export default component$<IndexProps>(() => {
         </div>
 
         {/* Range Slider */}
-        <div class="w-full relative overflow-hidden h-2 song-control__range cursor-pointer">
-          <input
-            class="appearance-none w-full block"
-            type="range"
-            min={0}
-            max={store.player.duration}
-            value={store.player.currentTime}
-            onChange$={dragHandler}
-
-            // TODO: get color from album art
-            // style={{
-            //   background: `linear-gradient(to right, ${store.player.currSong.color[0]}, ${store.player.currentSong.color[1]})`,
-            // }}
-          />
+        <div
+          class="w-full relative overflow-hidden h-6 -mb-2 song-control__range cursor-pointer"
+          onMouseMove$={(e) => {
+            // @ts-ignore
+            state.cursorXPos = e.offsetX
+            state.isHovered = true
+          }}
+          onMouseLeave$={() => (state.isHovered = false)}
+          onClick$={() => {
+            if (store.player.audioElem?.currentTime)
+              store.player.audioElem.currentTime = (state.cursorXPos / 250) * store.player.duration
+          }}
+        >
           {store.player.audioElem && (
             <>
+              {/* Time Elapsed */}
+              <div class="bg-slate-500 w-full h-2 absolute left-0 top-0 pointer-events-none" />
+
+              {/* Time Remaining */}
               <div
-                class="bg-slate-500 w-full h-1 absolute left-0 top-0 pointer-events-none"
+                class="bg-slate-700 w-full h-2 absolute left-0 top-0 pointer-events-none"
                 style={{
-                  transform: `translateX(${(store.player.currentTime / store.player.duration) * 250}px)`,
+                  transform: `translateX(${progressBarWidth})`,
                 }}
               />
 
+              {/* Cursor */}
               <span
-                class="absolute left-0 top-0 w-[2px] h-1 bg-slate-400"
+                class="absolute left-0 top-0 w-[2px] h-2 bg-slate-400 pointer-events-none"
                 style={{
-                  transform: `translateX(${(store.player.currentTime / store.player.duration) * 250}px)`,
+                  transform: `translateX(${state.isHovered ? state.cursorXPos + 'px' : progressBarWidth})`,
                 }}
-              >
-                {/* {store.player.currentTime} */}
-              </span>
+              />
             </>
           )}
         </div>
       </div>
 
       {/* Time */}
-      <div class="flex justify-between w-full opacity-0 text-xs text-slate-400 group-hover/nav-player:opacity-100 transition-opacity duration-300">
+      <div class="flex justify-between w-full opacity-0 text-xs text-slate-400 group-hover/nav-player:opacity-100 transition-opacity duration-300 pointer-events-none">
         <p class="px-1">{formatSeconds(store.player.currentTime)}</p>
+        <p class={`px-1 transition-opacity duration-300 ${state.isHovered ? 'opacity-1' : 'opacity-0'}`}>
+          {formatSeconds((state.cursorXPos / 250) * store.player.duration)}
+        </p>
         <p class="px-1">{formatSeconds(store.player.duration)}</p>
       </div>
 

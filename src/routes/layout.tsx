@@ -121,17 +121,13 @@ export default component$(() => {
     /**
      *
      * TODO:
-     * Reproduce: searching -> any sort -> exits sort
-     * Result: list is not in displayed sort and ascending can happen before descending
+     * Reproduce: search a term -> init any sort -> exit searching
+     * Result: list is not sorted anymore and ascending can happen before descending
      *
      */
 
     store.filteredSongs.sort((song1, song2) => {
       switch (sorting) {
-        case 'title-desc':
-          return song1.title.localeCompare(song2.title)
-        case 'title-asc':
-          return song2.title.localeCompare(song1.title)
         case 'artist-desc':
           // First, compare the artists
           if (song1.artist < song2.artist) return -1
@@ -144,14 +140,10 @@ export default component$(() => {
           else if (song1.trackNumber > song2.trackNumber) return 1
           // If both artist and track number are the same, preserve the original order
           return 0
-        case 'artist-asc':
-          // Ascending doesn't need complex sort because it always happens after a descending sort
-          return song2.artist.localeCompare(song1.artist)
+
         case 'album-desc':
-          // First, compare the artists
-          if (song1.artist < song2.artist) return -1
-          else if (song1.artist > song2.artist) return 1
-          // If the artists are the same, compare the albums
+        case 'track-desc':
+          // First, compare the albums
           if (song1.album < song2.album) return -1
           else if (song1.album > song2.album) return 1
           // If the albums are the same, compare the track numbers
@@ -159,6 +151,32 @@ export default component$(() => {
           else if (song1.trackNumber > song2.trackNumber) return 1
           // If both artist and track number are the same, preserve the original order
           return 0
+
+        case 'track-asc':
+          // First, compare the albums
+          if (song1.album < song2.album) return -1
+          else if (song1.album > song2.album) return 1
+          // If the albums are the same, compare the track numbers
+          if (song1.trackNumber > song2.trackNumber) return -1
+          else if (song1.trackNumber < song2.trackNumber) return 1
+          // If both artist and track number are the same, preserve the original order
+          return 0
+
+        case 'title-desc':
+          return song1.title.localeCompare(song2.title)
+        case 'title-asc':
+          return song2.title.localeCompare(song1.title)
+        case 'hertz-desc':
+          return parseInt(song1.sampleRate) - parseInt(song2.sampleRate)
+        case 'hertz-asc':
+          return parseInt(song2.sampleRate) - parseInt(song1.sampleRate)
+        case 'fave-desc':
+          return song1.favorRating - song2.favorRating
+        case 'fave-asc':
+          return song2.favorRating - song1.favorRating
+        case 'artist-asc':
+          // Ascending doesn't need complex sort because it always happens after a descending sort
+          return song2.artist.localeCompare(song1.artist)
         case 'album-asc':
           // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.album.localeCompare(song1.album)
