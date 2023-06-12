@@ -10,7 +10,7 @@ export default component$<IndexProps>(() => {
 
   return (
     <aside
-      class="border-l border-gray-700 fixed top-0 right-0 h-screen flex z-20 flex-col text-sm transition-all overflow-auto"
+      class="border-l border-gray-700 fixed top-0 right-0 h-screen flex z-20 flex-col text-sm transition-all overflow-y-auto overflow-x-hidden"
       style={{
         right: store.player.currSong ? '0' : 'calc(var(--audio-sidebar-width) * -1)',
         width: 'var(--audio-sidebar-width)',

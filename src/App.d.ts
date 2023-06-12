@@ -2,7 +2,22 @@ export interface Store {
   allSongs: Song[]
   filteredSongs: Song[]
   playlist: Song[]
-  sorting: 'title-desc' | 'title-asc' | 'artist-desc' | 'artist-asc' | 'album-desc' | 'album-asc' | 'default'
+  sorting:
+    | 'title-desc'
+    | 'title-asc'
+    | 'artist-desc'
+    | 'artist-asc'
+    | 'album-desc'
+    | 'album-asc'
+    | 'track-asc'
+    | 'track-desc'
+    | 'hertz-asc'
+    | 'hertz-desc'
+    | 'date-asc'
+    | 'date-desc'
+    | 'fave-asc'
+    | 'fave-desc'
+    | 'default'
   searchTerm: string
   audioDir: string
 
@@ -70,10 +85,9 @@ export interface Song {
   codec: string
   duration: string
   sampleRate: string
-
   side: number
   startTime: number
-  isFavorite: boolean
+  favorRating: 0 | 1 | 2
 }
 
 export interface Metadata {
@@ -84,6 +98,16 @@ export interface Metadata {
   file_name: string
   file_size: number
   meta_tags: { [key: string]: string }
+  visual_info: {
+    media_type: string
+    media_data: number[]
+  }
+}
+
+export interface AlbumArt {
+  objectUrl: string
+  mediaType: string
+  mediaData: number[]
 }
 
 export type ListItemStyle = {

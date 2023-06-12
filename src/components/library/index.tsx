@@ -22,7 +22,7 @@ export default component$(() => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 // 2 rows (col titles + footer)
+      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
       state.windowHeight = height
     }
     sizeVirtualList()
@@ -33,10 +33,11 @@ export default component$(() => {
   return (
     <section class="w-full flex flex-col flex-1">
       <div
-        class="w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr] text-left items-center border-b border-gray-700"
+        class="w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_70px] text-left items-center border-b border-gray-700"
         style={{ height: RowHeight + 'px', paddingRight: 'var(--scrollbar-width)' }}
       >
         <span />
+
         <button
           class="truncate h-full flex items-center justify-between pl-1 pr-2 relative"
           onClick$={() => (store.sorting = store.sorting === 'title-desc' ? 'title-asc' : 'title-desc')}
@@ -44,24 +45,60 @@ export default component$(() => {
           Title
           {store.sorting === 'title-desc' && <ArrowDown />}
           {store.sorting === 'title-asc' && <ArrowUp />}
-          <span class="h-full w-[1px] bg-gray-700 absolute right-0 cursor-pointer" />
         </button>
+
         <button
-          class="truncate h-full flex items-center justify-between px-2 relative"
+          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
           onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
         >
           Artist
           {store.sorting === 'artist-desc' && <ArrowDown />}
           {store.sorting === 'artist-asc' && <ArrowUp />}
-          <span class="h-full w-[1px] bg-gray-700 absolute right-0 cursor-pointer" />
         </button>
+
         <button
-          class="truncate h-full flex items-center justify-between px-2 relative"
+          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
           onClick$={() => (store.sorting = store.sorting === 'album-desc' ? 'album-asc' : 'album-desc')}
         >
           Album
           {store.sorting === 'album-desc' && <ArrowDown />}
           {store.sorting === 'album-asc' && <ArrowUp />}
+        </button>
+
+        <button
+          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
+          onClick$={() => (store.sorting = store.sorting === 'track-desc' ? 'track-asc' : 'track-desc')}
+        >
+          Track
+          {store.sorting === 'track-desc' && <ArrowDown />}
+          {store.sorting === 'track-asc' && <ArrowUp />}
+        </button>
+
+        <button
+          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
+          onClick$={() => (store.sorting = store.sorting === 'hertz-desc' ? 'hertz-asc' : 'hertz-desc')}
+        >
+          Hertz
+          {store.sorting === 'hertz-desc' && <ArrowDown />}
+          {store.sorting === 'hertz-asc' && <ArrowUp />}
+        </button>
+
+        <button
+          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
+          onClick$={() => (store.sorting = store.sorting === 'date-desc' ? 'date-asc' : 'date-desc')}
+        >
+          Date
+          {store.sorting === 'date-desc' && <ArrowDown />}
+          {store.sorting === 'date-asc' && <ArrowUp />}
+        </button>
+
+        <button
+          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
+          onClick$={() => (store.sorting = store.sorting === 'fave-desc' ? 'fave-asc' : 'fave-desc')}
+        >
+          Fave
+          {store.sorting === 'fave-desc' && <ArrowDown />}
+          {store.sorting === 'fave-asc' && <ArrowUp />}
         </button>
       </div>
 

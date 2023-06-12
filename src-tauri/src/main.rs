@@ -8,7 +8,7 @@ mod metadata;
 
 #[command]
 fn get_metadata(file_path: String) -> String {
-    let song_metadata = Metadata::build(file_path);
+    let song_metadata = Metadata::new(file_path);
     let song_metadata_json = serde_json::to_string(&song_metadata).unwrap();
 
     song_metadata_json

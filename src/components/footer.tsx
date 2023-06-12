@@ -57,7 +57,7 @@ export default component$(() => {
         onInput$={handleSearchInput}
         onBlur$={() => (store.isTyping = false)}
         onFocus$={() => (store.isTyping = true)}
-        class="bg-inherit h-full flex-1 px-2 text-sm placeholder:text-slate-600 focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5)] focus:outline-none"
+        class="bg-inherit h-full flex-1 px-2 text-sm placeholder:text-slate-600 focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)] focus:outline-none"
       />
     </footer>
   )
