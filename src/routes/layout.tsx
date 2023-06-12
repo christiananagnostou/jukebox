@@ -170,6 +170,10 @@ export default component$(() => {
           return parseInt(song1.sampleRate) - parseInt(song2.sampleRate)
         case 'hertz-asc':
           return parseInt(song2.sampleRate) - parseInt(song1.sampleRate)
+        case 'date-desc':
+          return parseInt(song1.date || '0') - parseInt(song2.date || '0')
+        case 'date-asc':
+          return parseInt(song2.date || '0') - parseInt(song1.date || '0')
         case 'fave-desc':
           return song1.favorRating - song2.favorRating
         case 'fave-asc':
