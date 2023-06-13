@@ -41,7 +41,7 @@ export const KeyboardCommands = [
       { key: '⇧ A', command: 'Artists' },
       { key: '⇧ O', command: 'Storage' },
       // { key: '⇧ P', command: 'Playlists' },
-      // { key: '⇧ B', command: 'Albums' },
+      { key: '⇧ M', command: 'Albums' },
     ],
   },
 
@@ -139,6 +139,9 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
 
       // Navigate to Storage Page
       if (key === 'O') nav('/storage')
+
+      // Navigate to Albums Page
+      if (key === 'M') nav('/albums')
 
       // Toggle Keyboard Shortcuts Modal
       if (key === '?') store.showKeyShortcuts = !store.showKeyShortcuts

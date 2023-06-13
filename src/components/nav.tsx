@@ -8,6 +8,7 @@ const Links = [
   { title: 'Library', url: '/', shortcut: 'L' },
   { title: 'Artists', url: '/artists/', shortcut: 'A' },
   { title: 'Storage', url: '/storage/', shortcut: 'O' },
+  { title: 'Albums', url: '/albums/', shortcut: 'M' },
 ]
 
 export default component$(() => {
