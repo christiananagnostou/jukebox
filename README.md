@@ -4,9 +4,10 @@ Jukebox is a music player desktop application capable of managing your precious 
 
 ## Features
 
-- [x] Cross-platform - Windows, MacOS, and Linux.
+- [x] Cross-platform - Windows, MacOS, and Linux
 - [x] Bulk Music Import
 - [x] Music playback
+- [X] Dedicated pages for tracks, artists, and albums
 - [x] Advanced Search
 - [x] Keyboard Shortcuts
 - [ ] Playlists
@@ -45,7 +46,7 @@ Now you should have Jukebox up and running on your local machine.
 
 ## Configuration
 
-Jukebox can be configured using the `~/.jukebox.json` file located your home directory. You can customize settings such as the music library path, theme, and default audio output.
+Jukebox can be configured in JSON from the `~/Library/Application\ Support/Jukebox`(on Mac) directory. You can customize settings such as the music library path, theme, and default audio output.
 
 ## Contributing
 
