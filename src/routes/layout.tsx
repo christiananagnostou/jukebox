@@ -95,12 +95,13 @@ export default component$(() => {
       const audioElem = new Audio()
       // Listen for metadata being loaded into the audio element and set duration
       audioElem.addEventListener('loadedmetadata', () => (store.player.duration = audioElem.duration), false)
+      // Listen for song ending to go to next
+      audioElem.addEventListener('ended', () => audioActions.nextSong())
 
-      // Update currentTime / check for pause or to go to the next song
+      // Update currentTime / check for pause
       interval = setInterval(() => {
         store.player.currentTime = audioElem.currentTime
         if (audioElem.paused != store.player.isPaused) store.player.isPaused = audioElem.paused
-        if (audioElem.ended && !store.player.isPaused) audioActions.nextSong()
       }, 333)
 
       // Set Audio Elem
