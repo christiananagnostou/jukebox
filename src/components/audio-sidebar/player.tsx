@@ -43,7 +43,7 @@ export default component$<IndexProps>(() => {
     <div class="text-center text-sm group/nav-player">
       <div class="max-w-[250px] m-auto">
         {/* Album Art */}
-        <div class="w-full aspect-square bg-slate-800">
+        <div class="w-full">
           {albumArt.value && <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />}
         </div>
 
