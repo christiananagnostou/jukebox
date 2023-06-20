@@ -1,4 +1,4 @@
-import { component$, useComputed$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { ALBUM_ART_DB, StoreActionsContext, StoreContext } from '../layout'
 import { Store as DB } from 'tauri-plugin-store-api'
 import type { AlbumArt, ListItemStyle, Song } from '~/App'
@@ -20,31 +20,19 @@ interface Albums {
 
 type AlbumItem = [string, Album]
 
-function chunk(arr: AlbumItem[], len: number) {
-  const chunks = []
-  let i = 0
-  const n = arr.length
-
-  while (i < n) {
-    chunks.push(arr.slice(i, (i += len)))
-  }
-
-  return chunks
-}
-
 const AlbumArtDB = new DB(ALBUM_ART_DB)
 
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
-  const containerRef = useSignal<Element | undefined>()
+  const containerRef = useSignal<Element>()
 
   const state = useStore({
     virtualListHeight: 0,
     windowHeight: 0,
 
-    rowHeight: 420,
+    rowHeight: 500,
     numCols: 5,
   })
 
@@ -58,6 +46,18 @@ export default component$(() => {
     sizeVirtualList()
     const unlistenResize = await appWindow.onResized(sizeVirtualList)
     return () => unlistenResize()
+  })
+
+  const chunk = $((arr: AlbumItem[], len: number) => {
+    const chunks = []
+    let i = 0
+    const n = arr.length
+
+    while (i < n) {
+      chunks.push(arr.slice(i, (i += len)))
+    }
+
+    return chunks
   })
 
   const albums = useComputed$(async () => {
@@ -89,7 +89,27 @@ export default component$(() => {
     }
 
     // return chunk(Object.entries(a), Math.floor(state.rowWidth / (containerRef.value?.clientWidth || 1)))
-    return chunk(Object.entries(a), state.numCols)
+    return await chunk(Object.entries(a), state.numCols)
+  })
+
+  useVisibleTask$(({ track }) => {
+    if (!containerRef.value) return
+    track(() => store.filteredSongs)
+
+    const outputsize = () => {
+      const containerWidth = containerRef.value?.clientWidth || 0
+      const padding = 16 * (state.numCols + 1)
+      const scrollbar = 8
+      const albumWidth = (containerWidth - padding - scrollbar) / state.numCols
+      const infoHeight = 110
+      const rowPadding = 16
+      const border = 2
+
+      state.rowHeight = albumWidth + infoHeight + rowPadding + border
+    }
+    outputsize()
+
+    new ResizeObserver(outputsize).observe(containerRef.value)
   })
 
   return (
@@ -175,10 +195,8 @@ export default component$(() => {
               scrollToRow={store.libraryView.cursorIdx}
               renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
                 const row = albums.value[index]
-
-                console.log(row)
-                // Row
                 return (
+                  // Row
                   <div
                     class="w-full flex gap-4 px-4 pt-4 last:pb-4"
                     style={{ ...style, height: state.rowHeight + 'px' }}
@@ -186,29 +204,38 @@ export default component$(() => {
                     {row.map(([albumName, { albumArtSRC, songs, artist, date }]) => (
                       // Column
                       <div
-                        class="flex flex-col h-full flex-1 w-0 border border-slate-700 cursor-pointer"
+                        class="album-container flex flex-col h-fit flex-1 w-0 border border-slate-700 cursor-pointer"
                         key={albumName}
                         onDblClick$={() => {
                           store.playlist = songs
                           storeActions.playSong(songs[0], 0)
                         }}
                       >
-                        <div class="min-w-full aspect-square bg-slate-800">
+                        <div class="min-w-full aspect-square bg-gray-800">
                           {albumArtSRC && (
-                            <img src={albumArtSRC} alt={albumName} width={250} height={250} class="w-full h-full" />
+                            <img
+                              src={albumArtSRC}
+                              alt={albumName}
+                              width={250}
+                              height={250}
+                              class="block m-auto w-auto h-full"
+                            />
                           )}
                         </div>
                         <div class="p-2 h-full">
-                          <span class="truncate py-1 block">{albumName}</span>
-                          <span class="truncate py-1 block">{songs.length}</span>
-                          <span class="truncate py-1 block">{artist}</span>
-                          <span class="truncate py-1 block">{date}</span>
+                          <span class="truncate py-1 block text-2xl font-light">{albumName || '-'}</span>
+                          <span class="truncate py-1 block mb-1">{artist || '-'}</span>
+
+                          <span class="truncate py-1 block float-left">{date || '-'}</span>
+                          <span class="truncate py-1 block float-right">
+                            {songs.length || '-'} <span class="text-xs text-slate-500">tracks</span>
+                          </span>
                         </div>
                       </div>
                     ))}
 
                     {[...Array(state.numCols - row.length)].map((item) => (
-                      <div class="flex-1 w-0" key={item} />
+                      <div class="flex-1 w-0 album-container" key={item} />
                     ))}
                   </div>
                 )
