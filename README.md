@@ -62,7 +62,7 @@ Please ensure that your contributions align with the project's coding style.
 
 ## License
 
-Jukebox is licensed under the [MIT License](LICENSE). Feel free to modify and distribute the application as per the terms of the license.
+Jukebox is licensed under the [GNU General Public License v3.0](LICENSE). Feel free to modify and distribute the application as per the terms of the license.
 
 ## Acknowledgments
 
