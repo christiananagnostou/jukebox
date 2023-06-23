@@ -6,6 +6,7 @@ import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
 import type { AlbumArt } from '~/App'
+import { MusicNote } from '../svg/MusicNote'
 
 interface IndexProps {}
 
@@ -44,7 +45,13 @@ export default component$<IndexProps>(() => {
       <div class="max-w-[250px] m-auto">
         {/* Album Art */}
         <div class="w-full">
-          {albumArt.value && <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />}
+          {albumArt.value ? (
+            <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />
+          ) : (
+            <div class="h-auto w-full aspect-square grid place-items-center bg-gray-800 text-gray-700">
+              <MusicNote height="20%" width="20%" />
+            </div>
+          )}
         </div>
 
         {/* Range Slider */}

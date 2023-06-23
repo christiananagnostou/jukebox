@@ -6,6 +6,7 @@ import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
+import { MusicNote } from '~/components/svg/MusicNote'
 
 interface Album {
   albumArtSRC: string
@@ -101,7 +102,7 @@ export default component$(() => {
       const padding = 16 * (state.numCols + 1)
       const scrollbar = 8
       const albumWidth = (containerWidth - padding - scrollbar) / state.numCols
-      const infoHeight = 110
+      const infoHeight = 106
       const rowPadding = 16
       const border = 2
 
@@ -204,7 +205,7 @@ export default component$(() => {
                     {row.map(([albumName, { albumArtSRC, songs, artist, date }]) => (
                       // Column
                       <div
-                        class="album-container flex flex-col h-fit flex-1 w-0 border border-slate-700 cursor-pointer"
+                        class="album-container flex flex-col h-fit flex-1 w-0 border border-slate-700 cursor-pointer transition-all hover:border-slate-500 hover:shadow-xl"
                         key={albumName}
                         onDblClick$={() => {
                           store.playlist = songs
@@ -212,7 +213,7 @@ export default component$(() => {
                         }}
                       >
                         <div class="min-w-full aspect-square bg-gray-800">
-                          {albumArtSRC && (
+                          {albumArtSRC ? (
                             <img
                               src={albumArtSRC}
                               alt={albumName}
@@ -220,14 +221,18 @@ export default component$(() => {
                               height={250}
                               class="block m-auto w-auto h-full"
                             />
+                          ) : (
+                            <div class="h-full w-full grid place-items-center text-gray-700">
+                              <MusicNote height="20%" width="20%" />
+                            </div>
                           )}
                         </div>
                         <div class="p-2 h-full">
-                          <span class="truncate py-1 block text-2xl font-light">{albumName || '-'}</span>
-                          <span class="truncate py-1 block mb-1">{artist || '-'}</span>
+                          <span class="truncate py-1 block text-lg font-light">{albumName || '-'}</span>
+                          <span class="truncate py-1 block mb-1 text-slate-300">{artist || '-'}</span>
 
-                          <span class="truncate py-1 block float-left">{date || '-'}</span>
-                          <span class="truncate py-1 block float-right">
+                          <span class="truncate py-1 block float-left text-sm text-slate-300">{date || '-'}</span>
+                          <span class="truncate py-1 block float-right text-sm text-slate-300">
                             {songs.length || '-'} <span class="text-xs text-slate-500">tracks</span>
                           </span>
                         </div>
