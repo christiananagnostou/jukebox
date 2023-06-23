@@ -56,6 +56,7 @@ export default component$(() => {
       sampleRate: metadata.sample_rate,
       startTime: 0,
       favorRating: 0,
+      dateAdded: new Date().toISOString(),
     }
 
     // If song exists in DB, replace it in allSongs, else add in order

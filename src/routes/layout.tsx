@@ -186,6 +186,9 @@ export default component$(() => {
         case 'album-asc':
           // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.album.localeCompare(song1.album)
+        case 'recent-asc':
+          return new Date(song1.dateAdded).getTime() - new Date(song2.dateAdded).getTime()
+
         default:
           return 1
       }

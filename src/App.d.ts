@@ -20,6 +20,7 @@ export interface Store {
     | 'date-desc'
     | 'fave-asc'
     | 'fave-desc'
+    | 'recent-asc'
     | 'default'
 
   libraryView: {
@@ -88,6 +89,7 @@ export interface Song {
   sampleRate: string
   side: number
   startTime: number
+  dateAdded: string
   favorRating: 0 | 1 | 2
 }
 
