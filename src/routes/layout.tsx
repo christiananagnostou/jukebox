@@ -95,12 +95,14 @@ export default component$(() => {
       const audioElem = new Audio()
       // Listen for metadata being loaded into the audio element and set duration
       audioElem.addEventListener('loadedmetadata', () => (store.player.duration = audioElem.duration), false)
+      // Listen for song ending to go to next
+      audioElem.addEventListener('ended', () => audioActions.nextSong())
 
-      // Update currentTime and check to go to the next song
+      // Update currentTime / check for pause
       interval = setInterval(() => {
         store.player.currentTime = audioElem.currentTime
-        if (audioElem.ended && !store.player.isPaused) audioActions.nextSong()
-      }, 500)
+        if (audioElem.paused != store.player.isPaused) store.player.isPaused = audioElem.paused
+      }, 333)
 
       // Set Audio Elem
       store.player.audioElem = audioElem
@@ -184,6 +186,9 @@ export default component$(() => {
         case 'album-asc':
           // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.album.localeCompare(song1.album)
+        case 'recent-asc':
+          return new Date(song1.dateAdded).getTime() - new Date(song2.dateAdded).getTime()
+
         default:
           return 1
       }

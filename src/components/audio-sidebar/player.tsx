@@ -6,6 +6,7 @@ import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
 import type { AlbumArt } from '~/App'
+import { MusicNote } from '../svg/MusicNote'
 
 interface IndexProps {}
 
@@ -43,13 +44,19 @@ export default component$<IndexProps>(() => {
     <div class="text-center text-sm group/nav-player">
       <div class="max-w-[250px] m-auto">
         {/* Album Art */}
-        <div class="w-full aspect-square bg-slate-800">
-          {albumArt.value && <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />}
+        <div class="w-full">
+          {albumArt.value ? (
+            <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />
+          ) : (
+            <div class="h-auto w-full aspect-square grid place-items-center bg-gray-800 text-gray-700">
+              <MusicNote height="20%" width="20%" />
+            </div>
+          )}
         </div>
 
         {/* Range Slider */}
         <div
-          class="w-full relative overflow-hidden h-6 -mb-2 song-control__range cursor-pointer"
+          class="w-full relative overflow-hidden h-8 -mb-4 song-control__range cursor-pointer"
           onMouseMove$={(e) => {
             // @ts-ignore
             state.cursorXPos = e.offsetX
@@ -114,7 +121,7 @@ export default component$<IndexProps>(() => {
         </button>
       </div>
 
-      <div class="text-left flex flex-col gap-3 p-2 my-2 border-b border-slate-700 relative">
+      <div class="text-left flex flex-col gap-3 p-2 mt-4 border-b border-slate-700 relative">
         {/* Edit Btn */}
         <button
           onClick$={() => (state.isEditing = !state.isEditing)}

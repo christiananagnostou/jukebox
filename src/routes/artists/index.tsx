@@ -100,7 +100,7 @@ export default component$(() => {
       </div>
 
       {/* Artists */}
-      <div class="grid grid-cols-[1fr_1fr_1fr]">
+      <div class="h-full grid grid-cols-[1fr_1fr_1fr]">
         <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
             itemHeight={RowHeight}
