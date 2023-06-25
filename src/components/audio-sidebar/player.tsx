@@ -1,11 +1,9 @@
 import { $, useComputed$, component$, useContext, useStore } from '@builder.io/qwik'
-import { Store as DB } from 'tauri-plugin-store-api'
-import { StoreContext, StoreActionsContext, ALBUM_ART_DB } from '~/routes/layout'
+import { StoreContext, StoreActionsContext } from '~/routes/layout'
 import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
-import type { AlbumArt } from '~/App'
 import { MusicNote } from '../svg/MusicNote'
 
 interface IndexProps {}
@@ -30,14 +28,15 @@ export default component$<IndexProps>(() => {
   })
 
   const albumArt = useComputed$(async () => {
-    const albumArtDB = new DB(ALBUM_ART_DB)
-    if (!store.player.currSong?.id) return ''
+    // const albumArtDB = new DB(ALBUM_ART_DB)
+    // if (!store.player.currSong?.id) return ''
 
-    const visualInfo = (await albumArtDB.get(store.player.currSong.id)) as AlbumArt
-    if (!visualInfo.mediaData || !visualInfo.mediaType) return ''
+    // const visualInfo = (await albumArtDB.get(store.player.currSong.id)) as AlbumArt
+    // if (!visualInfo.mediaData || !visualInfo.mediaType) return ''
 
-    const content = new Uint8Array(visualInfo.mediaData)
-    return URL.createObjectURL(new Blob([content.buffer], { type: visualInfo.mediaType }))
+    // const content = new Uint8Array(visualInfo.mediaData)
+    // return URL.createObjectURL(new Blob([content.buffer], { type: visualInfo.mediaType }))
+    return ''
   })
 
   return (

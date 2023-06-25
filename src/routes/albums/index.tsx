@@ -1,11 +1,8 @@
 import { $, component$, useComputed$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
-import { ALBUM_ART_DB, StoreActionsContext, StoreContext } from '../layout'
-import { Store as DB } from 'tauri-plugin-store-api'
-import type { AlbumArt, ListItemStyle, Song } from '~/App'
+import { StoreActionsContext, StoreContext } from '../layout'
+import type { ListItemStyle, Song } from '~/App'
 import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
-import { ArrowDown } from '~/components/svg/ArrowDown'
-import { ArrowUp } from '~/components/svg/ArrowUp'
 import { MusicNote } from '~/components/svg/MusicNote'
 
 interface Album {
@@ -21,7 +18,7 @@ interface Albums {
 
 type AlbumItem = [string, Album]
 
-const AlbumArtDB = new DB(ALBUM_ART_DB)
+// const AlbumArtDB = new DB(ALBUM_ART_DB)
 
 export default component$(() => {
   const store = useContext(StoreContext)
@@ -41,7 +38,7 @@ export default component$(() => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - 30 * 2 - 28 // 2 rows (col titles + footer)
+      state.virtualListHeight = height - 30 * 1 - 28 // 1 rows (col titles + footer)
       state.windowHeight = height
     }
     sizeVirtualList()
@@ -71,17 +68,17 @@ export default component$(() => {
 
         album.songs.push(song)
       } else {
-        const visualInfo = (await AlbumArtDB.get(song.id)) as AlbumArt
+        // const visualInfo = (await AlbumArtDB.get(song.id)) as AlbumArt
 
-        let albumArtSRC = ''
+        // let albumArtSRC = ''
 
-        if (visualInfo.mediaData && visualInfo.mediaType) {
-          const content = new Uint8Array(visualInfo.mediaData)
-          albumArtSRC = URL.createObjectURL(new Blob([content.buffer], { type: visualInfo.mediaType }))
-        }
+        // if (visualInfo.mediaData && visualInfo.mediaType) {
+        //   const content = new Uint8Array(visualInfo.mediaData)
+        //   albumArtSRC = URL.createObjectURL(new Blob([content.buffer], { type: visualInfo.mediaType }))
+        // }
 
         a[song.album] = {
-          albumArtSRC,
+          albumArtSRC: '',
           artist: song.artist,
           date: song.date,
           songs: [song],
@@ -89,7 +86,6 @@ export default component$(() => {
       }
     }
 
-    // return chunk(Object.entries(a), Math.floor(state.rowWidth / (containerRef.value?.clientWidth || 1)))
     return await chunk(Object.entries(a), state.numCols)
   })
 
@@ -115,7 +111,7 @@ export default component$(() => {
 
   return (
     <>
-      <div
+      {/* <div
         class="w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_70px] text-left items-center border-b border-gray-700"
         style={{ height: 30 + 'px', paddingRight: 'var(--scrollbar-width)' }}
       >
@@ -183,7 +179,7 @@ export default component$(() => {
           {store.sorting === 'fave-desc' && <ArrowDown />}
           {store.sorting === 'fave-asc' && <ArrowUp />}
         </button>
-      </div>
+      </div> */}
 
       <div class="overflow-auto">
         <div class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }} ref={containerRef}>
