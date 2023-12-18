@@ -8,7 +8,13 @@ const Links = [
   { title: 'Library', url: '/', shortcut: 'L' },
   { title: 'Artists', url: '/artists/', shortcut: 'A' },
   { title: 'Storage', url: '/storage/', shortcut: 'O' },
+  { title: 'Albums', url: '/albums/', shortcut: 'M' },
 ]
+
+const NavItemStyles = {
+  button: 'w-full flex items-center justify-between p-2 hover:bg-gray-700 group',
+  icon: 'text-xs text-gray-500 group-hover:text-gray-400',
+}
 
 export default component$(() => {
   const store = useContext(StoreContext)
@@ -20,42 +26,29 @@ export default component$(() => {
         class="border-r border-gray-700 fixed top-0 left-0 h-screen flex z-20 flex-col text-sm"
         style={{ width: 'var(--navbar-width)' }}
       >
-        <ul class="flex-1 mt-[29px] border-t border-gray-700">
+        <div class="flex-1 mt-[29px] border-t border-gray-700">
           {Links.map((link) => (
-            <li key={link.title} class="p-1">
-              <Link
-                href={link.url}
-                title={link.title}
-                class={`w-full flex items-center justify-between py-1 px-2 border border-transparent hover:border-gray-700 rounded 
-              ${location?.url?.pathname === link.url ? '!border-gray-700' : ''}`}
-              >
-                {link.title}
-
-                <span class="text-[.6rem] text-gray-500">{link.shortcut}</span>
-              </Link>
-            </li>
-          ))}
-
-          <hr class="border-slate-700" />
-
-          <li class="p-1">
-            <MusicPicker />
-          </li>
-
-          <li class="p-1">
-            <button
-              class="w-full flex items-center justify-between py-1 px-2 border border-transparent hover:border-gray-700 rounded"
-              onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
+            <Link
+              key={link.title}
+              href={link.url}
+              title={link.title}
+              class={NavItemStyles.button + ` ${location?.url?.pathname === link.url ? '!bg-gray-700' : ''}`}
             >
-              Shortcuts
-              <span class="text-xs text-gray-500">?</span>
-            </button>
-          </li>
-        </ul>
+              {link.title}
 
-        <p class="w-full flex items-center justify-between p-2 border border-transparent rounded text-slate-400 text-sm">
-          {store.allSongs.length} songs
-        </p>
+              <span class={NavItemStyles.icon}>{link.shortcut}</span>
+            </Link>
+          ))}
+        </div>
+
+        <MusicPicker styles={NavItemStyles} />
+
+        <button class={NavItemStyles.button} onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}>
+          Shortcuts
+          <span class={NavItemStyles.icon}>?</span>
+        </button>
+
+        <p class={NavItemStyles.button + ` text-slate-400 text-sm`}>{store.allSongs.length} songs</p>
       </nav>
 
       {store.showKeyShortcuts && <ShortcutsModal />}

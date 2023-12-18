@@ -1,22 +1,28 @@
 import { $, component$, useContext, useOnWindow, useVisibleTask$ } from '@builder.io/qwik'
+// @ts-ignore
 import { listen } from '@tauri-apps/api/event'
+// @ts-ignore
 import type { FileEntry } from '@tauri-apps/api/fs'
+// @ts-ignore
 import { readDir } from '@tauri-apps/api/fs'
+// @ts-ignore
 import { audioDir } from '@tauri-apps/api/path'
+// @ts-ignore
 import { open } from '@tauri-apps/api/dialog'
+// @ts-ignore
 import { invoke } from '@tauri-apps/api/tauri'
 import md5 from 'md5'
-import { Store as DB } from 'tauri-plugin-store-api'
 
 import type { Metadata, Song } from '~/App'
-import { ALBUM_ART_DB, METADATA_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
+import { LIBRARY_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
 import { isAudioFile } from '~/utils/Files'
+import Database from 'tauri-plugin-sql-api'
 
-// WINDOW_FILE_DROP = 'tauri://file-drop',
-// WINDOW_FILE_DROP_HOVER = 'tauri://file-drop-hover',
-// WINDOW_FILE_DROP_CANCELLED = 'tauri://file-drop-cancelled',
+// const WINDOW_FILE_DROP = 'tauri://file-drop'
+// const WINDOW_FILE_DROP_HOVER = 'tauri://file-drop-hover'
+// const WINDOW_FILE_DROP_CANCELLED = 'tauri://file-drop-cancelled'
 
-export default component$(() => {
+export default component$(({ styles }: { styles: { button: string; icon: string } }) => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
@@ -26,7 +32,7 @@ export default component$(() => {
    * get metadata from backend and store it in the DB
    *
    */
-  const addSong = $(async (filePath: string, fileName: string, metadataDB: DB, albumArtDB: DB) => {
+  const addSong = $(async (filePath: string, fileName: string, db: Database) => {
     if (!isAudioFile(filePath)) return
 
     const data = await invoke<string>('get_metadata', { filePath })
@@ -56,18 +62,23 @@ export default component$(() => {
       sampleRate: metadata.sample_rate,
       startTime: 0,
       favorRating: 0,
+      dateAdded: new Date().toISOString(),
+      visualsPath: metadata.visual_info.image_path,
     }
 
     // If song exists in DB, replace it in allSongs, else add in order
-    if (await metadataDB.has(song.id)) store.allSongs[store.allSongs.findIndex((s) => s.id === song.id)] = song
+    const existingSong = (await db.select('SELECT * FROM songs WHERE id =?', [song.id])) as Song
+
+    if (existingSong) store.allSongs[store.allSongs.findIndex((s) => s.id === song.id)] = song
     else storeActions.addSongInOrder(song)
 
-    // Always store latest to DB
-    await metadataDB.set(song.id, song)
-    await albumArtDB.set(song.id, {
-      mediaData: metadata.visual_info.media_data,
-      mediaType: metadata.visual_info.media_type,
-    })
+    const columns = Object.keys(song).join(', ')
+    const values = Object.values(song)
+    const placeholders = Array.from({ length: values.length }, (_, i) => `$${i + 1}`).join(', ')
+
+    const query = `INSERT INTO songs (${columns}) VALUES (${placeholders})`
+
+    await db.execute(query, values)
   })
 
   /**
@@ -76,15 +87,14 @@ export default component$(() => {
    *
    */
   const processEntries = $(async (entries: FileEntry[]) => {
-    const metadataDB = new DB(METADATA_DB)
-    const albumArtDB = new DB(ALBUM_ART_DB)
+    const db = await Database.load(LIBRARY_DB)
 
     const process = async (ent: FileEntry[]) => {
       for (const entry of ent.values()) {
         if (entry.children) {
-          process(entry.children.filter((e) => !e.name?.startsWith('.')))
+          process(entry.children.filter((e: FileEntry['children']) => !e.name?.startsWith('.')))
         } else if (entry.name && entry.path) {
-          addSong(entry.path, entry.name, metadataDB, albumArtDB)
+          await addSong(entry.path, entry.name, db)
         }
       }
     }
@@ -98,7 +108,7 @@ export default component$(() => {
    */
   const addDir = $(async (folderPath: string) => {
     const entries = await readDir(folderPath, { recursive: true })
-    await processEntries(entries.filter((e) => !e.name?.startsWith('.')))
+    await processEntries(entries.filter((e: FileEntry) => !e.name?.startsWith('.')))
   })
 
   /**
@@ -138,7 +148,7 @@ export default component$(() => {
       console.log(e)
     }
 
-    const unlistenFileDrop = await listen('tauri://file-drop', async (event) => {
+    const unlistenFileDrop = await listen('tauri://file-drop', async (event: any) => {
       if (!event.payload) return
       for (const entry of event.payload as string[]) {
         const dir = await readDir(entry, { recursive: true })
@@ -164,12 +174,9 @@ export default component$(() => {
   )
 
   return (
-    <button
-      onClick$={openDirectoryPicker}
-      class="w-full flex items-center justify-between py-1 px-2 border border-transparent hover:border-gray-700 rounded"
-    >
+    <button onClick$={openDirectoryPicker} class={styles.button}>
       Add Music
-      <span class="text-xs text-gray-500">I</span>
+      <span class={styles.icon}>I</span>
     </button>
   )
 })

@@ -76,9 +76,8 @@
         "fullscreen": false,
         "height": 600,
         "resizable": true,
-        "title": " ",
+        "title": "Jukebox",
         "width": 800,
-        "transparent": true,
         "maximized": true,
         "focus": true
       }

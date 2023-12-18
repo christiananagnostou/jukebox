@@ -1,11 +1,12 @@
 import { $, useComputed$, component$, useContext, useStore } from '@builder.io/qwik'
-import { Store as DB } from 'tauri-plugin-store-api'
-import { StoreContext, StoreActionsContext, ALBUM_ART_DB } from '~/routes/layout'
+import { StoreContext, StoreActionsContext } from '~/routes/layout'
 import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
-import type { AlbumArt } from '~/App'
+// @ts-ignore
+import { convertFileSrc } from '@tauri-apps/api/tauri'
+import { MusicNote } from '../svg/MusicNote'
 
 interface IndexProps {}
 
@@ -29,27 +30,27 @@ export default component$<IndexProps>(() => {
   })
 
   const albumArt = useComputed$(async () => {
-    const albumArtDB = new DB(ALBUM_ART_DB)
-    if (!store.player.currSong?.id) return ''
-
-    const visualInfo = (await albumArtDB.get(store.player.currSong.id)) as AlbumArt
-    if (!visualInfo.mediaData || !visualInfo.mediaType) return ''
-
-    const content = new Uint8Array(visualInfo.mediaData)
-    return URL.createObjectURL(new Blob([content.buffer], { type: visualInfo.mediaType }))
+    if (!store.player.currSong?.visualsPath) return ''
+    return convertFileSrc(store.player.currSong.visualsPath)
   })
 
   return (
     <div class="text-center text-sm group/nav-player">
       <div class="max-w-[250px] m-auto">
         {/* Album Art */}
-        <div class="w-full aspect-square bg-slate-800">
-          {albumArt.value && <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />}
+        <div class="w-full">
+          {albumArt.value ? (
+            <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />
+          ) : (
+            <div class="h-auto w-full aspect-square grid place-items-center bg-gray-800 text-gray-700">
+              <MusicNote height="20%" width="20%" />
+            </div>
+          )}
         </div>
 
         {/* Range Slider */}
         <div
-          class="w-full relative overflow-hidden h-6 -mb-2 song-control__range cursor-pointer"
+          class="w-full relative overflow-hidden h-8 -mb-4 song-control__range cursor-pointer"
           onMouseMove$={(e) => {
             // @ts-ignore
             state.cursorXPos = e.offsetX
@@ -114,7 +115,7 @@ export default component$<IndexProps>(() => {
         </button>
       </div>
 
-      <div class="text-left flex flex-col gap-3 p-2 my-2 border-b border-slate-700 relative">
+      <div class="text-left flex flex-col gap-3 p-2 mt-4 border-b border-slate-700 relative">
         {/* Edit Btn */}
         <button
           onClick$={() => (state.isEditing = !state.isEditing)}
@@ -128,7 +129,7 @@ export default component$<IndexProps>(() => {
         {state.isEditing ? (
           <input
             type="text"
-            onChange$={(e) => {
+            onChange$={(e: any) => {
               if (store.player.currSong) store.player.currSong.title = e.target.value
             }}
             value={store.player.currSong?.title}
@@ -145,7 +146,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.album = e.target.value
               }}
               value={store.player.currSong?.album}
@@ -163,7 +164,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.artist = e.target.value
               }}
               value={store.player.currSong?.artist}
@@ -181,7 +182,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.genre = e.target.value
               }}
               value={store.player.currSong?.genre}
@@ -199,7 +200,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.date = e.target.value
               }}
               value={store.player.currSong?.date}
@@ -217,7 +218,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.trackNumber = parseInt(e.target.value)
               }}
               value={store.player.currSong?.trackNumber}
@@ -238,7 +239,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.codec = e.target.value
               }}
               value={store.player.currSong?.codec}
@@ -255,7 +256,7 @@ export default component$<IndexProps>(() => {
           {state.isEditing ? (
             <input
               type="text"
-              onChange$={(e) => {
+              onChange$={(e: any) => {
                 if (store.player.currSong) store.player.currSong.sampleRate = e.target.value
               }}
               value={store.player.currSong?.sampleRate}

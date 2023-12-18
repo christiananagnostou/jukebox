@@ -1,6 +1,7 @@
-import { component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
 import VirtualList from '~/components/Shared/VirtualList'
+// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
 import type { Album, ListItemStyle, Song } from '~/App'
 import { ArrowDown } from '~/components/svg/ArrowDown'
@@ -100,7 +101,7 @@ export default component$(() => {
       </div>
 
       {/* Artists */}
-      <div class="grid grid-cols-[1fr_1fr_1fr]">
+      <div class="h-full grid grid-cols-[1fr_1fr_1fr]">
         <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
           <VirtualList
             itemHeight={RowHeight}
@@ -116,7 +117,7 @@ export default component$(() => {
               return (
                 <button
                   key={artist.name}
-                  onDblClick$={() => {
+                  onDblClick$={$(() => {
                     // Reset album index
                     store.artistView.albumIdx = 0
                     // Get all songs from all playlists
@@ -125,7 +126,7 @@ export default component$(() => {
                       []
                     )
                     storeActions.playSong(store.playlist[0], 0)
-                  }}
+                  })}
                   onClick$={() => (store.artistView.artistIdx = index) && (store.artistView.cursorCol = 0)}
                   style={{ ...style, height: RowHeight + 'px' }}
                   class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]  

@@ -8,7 +8,6 @@ import {
   useTask$,
   useVisibleTask$,
 } from '@builder.io/qwik'
-import { Store as DB } from 'tauri-plugin-store-api'
 
 import type { Song, Store, StoreActions } from '~/App'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
@@ -19,12 +18,12 @@ import { StorageStore } from '~/hooks/useStoragePage'
 import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
 import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
+import Database from 'tauri-plugin-sql-api'
 
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
 
-export const METADATA_DB = 'metadata.dat'
-export const ALBUM_ART_DB = 'album-art.dat'
+export const LIBRARY_DB = 'sqlite:library.db'
 
 export default component$(() => {
   const store = useStore<Store>(
@@ -81,26 +80,54 @@ export default component$(() => {
    */
   useVisibleTask$(async () => {
     // Load All Songs From Database
-    const db = new DB(METADATA_DB)
-    const songs = (await db.values()) as Song[]
+
+    const db = await Database.load(LIBRARY_DB)
+
+    db.execute(`CREATE TABLE IF NOT EXISTS songs (
+        id TEXT,
+        path TEXT,
+        file TEXT,
+        title TEXT,
+        album TEXT,
+        artist TEXT,
+        genre TEXT,
+        bpm INTEGER,
+        compilation INTEGER,
+        date TEXT,
+        encoder TEXT,
+        trackTotal INTEGER,
+        trackNumber INTEGER,
+        codec TEXT,
+        duration TEXT,
+        sampleRate TEXT,
+        side INTEGER,
+        startTime INTEGER,
+        favorRating TEXT CHECK (favorRating IN ('0', '1', '2')),
+        dateAdded TEXT,
+        visualsPath TEXT
+    )`)
+
+    const songs = (await db.select('SELECT * from songs')) as Song[]
+
     songs.forEach((song) => addSongInOrder(song))
 
-    // Used for debugging purposes
-    // db.clear()
+    // Interval to update the currentTime
+    let interval: NodeJS.Timeout
 
     // Initialize an audio element
-    let interval: NodeJS.Timer
-
     if (!store.player.audioElem) {
       const audioElem = new Audio()
       // Listen for metadata being loaded into the audio element and set duration
       audioElem.addEventListener('loadedmetadata', () => (store.player.duration = audioElem.duration), false)
 
-      // Update currentTime and check to go to the next song
+      // Listen for song ending to go to next
+      audioElem.addEventListener('ended', () => audioActions.nextSong())
+
+      // Update currentTime / check for pause
       interval = setInterval(() => {
         store.player.currentTime = audioElem.currentTime
-        if (audioElem.ended && !store.player.isPaused) audioActions.nextSong()
-      }, 500)
+        if (audioElem.paused != store.player.isPaused) store.player.isPaused = audioElem.paused
+      }, 333)
 
       // Set Audio Elem
       store.player.audioElem = audioElem
@@ -184,6 +211,8 @@ export default component$(() => {
         case 'album-asc':
           // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.album.localeCompare(song1.album)
+        case 'recent-asc':
+          return new Date(song1.dateAdded).getTime() - new Date(song2.dateAdded).getTime()
         default:
           return 1
       }

@@ -1,5 +1,6 @@
-import { component$, useComputed$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
+// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
 import type { ListItemStyle } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
@@ -60,8 +61,8 @@ export default component$<AlbumsProps>(() => {
             return (
               <button
                 key={file.name}
-                onDblClick$={() => storageActions.playFile(file)}
-                onClick$={() => (store.storageView.cursorIdx = index)}
+                onDblClick$={$(() => storageActions.playFile(file))}
+                onClick$={$(() => (store.storageView.cursorIdx = index))}
                 style={{ ...style, height: RowHeight + 'px', paddingLeft: (file.level + 1) * 20 + 'px' }}
                 class={`flex items-center truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]  
                   ${highlighted && '!bg-gray-800'}`}

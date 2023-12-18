@@ -1,4 +1,5 @@
 import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
+// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
 import type { ListItemStyle } from '~/App'
@@ -110,16 +111,21 @@ export default component$(() => {
           scrollToRow={store.libraryView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
             const song = store.filteredSongs[index]
+            const onClick = $(() => {
+              store.libraryView.cursorIdx = index
+            })
+            const onDblClick = $(() => {
+              store.playlist = store.filteredSongs
+              storeActions.playSong(song, index)
+            })
+
             return (
               <LibraryRow
                 key={song.id}
                 data-song-index={index}
                 song={song}
-                onDblClick={$(() => {
-                  store.playlist = store.filteredSongs
-                  storeActions.playSong(song, index)
-                })}
-                onClick={$(() => (store.libraryView.cursorIdx = index))}
+                onDblClick={onDblClick}
+                onClick={onClick}
                 style={{ ...style, height: RowHeight + 'px' }}
                 isCursor={store.libraryView.cursorIdx === index}
                 isPlaying={store.player.currSong?.id === song.id}

@@ -1,5 +1,6 @@
 import type { Store, Song } from '~/App'
 import { $ } from '@builder.io/qwik'
+// @ts-ignore
 import { convertFileSrc } from '@tauri-apps/api/tauri'
 
 export const AudioPlayerState = {

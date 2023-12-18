@@ -41,7 +41,7 @@ export const KeyboardCommands = [
       { key: '⇧ A', command: 'Artists' },
       { key: '⇧ O', command: 'Storage' },
       // { key: '⇧ P', command: 'Playlists' },
-      // { key: '⇧ B', command: 'Albums' },
+      { key: '⇧ M', command: 'Albums' },
     ],
   },
 
@@ -70,7 +70,11 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       // @ts-ignore
       const { key } = e as { key: string }
 
-      // Library View Specific
+      /**
+       *
+       * Library View Specific
+       *
+       */
       if (location.url.pathname == '/') {
         // Move Hightlight Down
         if (key === 'j') libraryActions.highlightDown()
@@ -80,9 +84,22 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
 
         // Play Highlighted Song
         if (key === 'Enter') libraryActions.playHighlighted()
+
+        // Move Hightlight to Top
+        if (key === 'g') store.libraryView.cursorIdx = 0
+
+        // Move Hightlight to Bottom
+        if (key === 'G') store.libraryView.cursorIdx = store.filteredSongs.length - 1
+
+        // Play Highlighted Song
+        if (key === 'q') store.queue.push(store.filteredSongs[store.libraryView.cursorIdx])
       }
 
-      // Artists View Specific
+      /**
+       *
+       * Artists View Specific
+       *
+       */
       if (location.url.pathname == '/artists/') {
         // Move Hightlight Down
         if (key === 'j') artistActions.moveCursorDown()
@@ -100,7 +117,11 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         if (key === 'Enter') artistActions.playHighlighted()
       }
 
-      // Storage View Specific
+      /**
+       *
+       * Storage View Specific
+       *
+       */
       if (location.url.pathname == '/storage/') {
         // Move Hightlight Down
         if (key === 'j') storageActions.highlightDown()
@@ -113,14 +134,11 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         }
       }
 
-      // Move Hightlight to Top
-      if (key === 'g') store.libraryView.cursorIdx = 0
-
-      // Move Hightlight to Bottom
-      if (key === 'G') store.libraryView.cursorIdx = store.filteredSongs.length - 1
-
-      // Play Highlighted Song
-      if (key === 'q') store.queue.push(store.filteredSongs[store.libraryView.cursorIdx])
+      /**
+       *
+       * Audio Player
+       *
+       */
 
       // Next Song
       if (key === 'n') storeActions.nextSong()
@@ -131,6 +149,12 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       // Pause/Play
       if (key === 'p') store.player.isPaused ? storeActions.resumeSong() : storeActions.pauseSong()
 
+      /**
+       *
+       * Route Navigation
+       *
+       */
+
       // Navigate to Home (Library) Page
       if (key === 'L') nav('/')
 
@@ -140,8 +164,20 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       // Navigate to Storage Page
       if (key === 'O') nav('/storage')
 
+      /**
+       *
+       * Utility
+       *
+       */
+
       // Toggle Keyboard Shortcuts Modal
       if (key === '?') store.showKeyShortcuts = !store.showKeyShortcuts
+
+      // Close Keyboard Shortcuts Modal
+      if (key === 'Escape' && store.showKeyShortcuts) store.showKeyShortcuts = false
+
+      // Sorting By Recent
+      if (key === 'r') store.sorting = 'recent-asc'
     })
   )
 }

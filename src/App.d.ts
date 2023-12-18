@@ -2,6 +2,9 @@ export interface Store {
   allSongs: Song[]
   filteredSongs: Song[]
   playlist: Song[]
+  searchTerm: string
+  audioDir: string
+
   sorting:
     | 'title-desc'
     | 'title-asc'
@@ -17,9 +20,8 @@ export interface Store {
     | 'date-desc'
     | 'fave-asc'
     | 'fave-desc'
+    | 'recent-asc'
     | 'default'
-  searchTerm: string
-  audioDir: string
 
   libraryView: {
     cursorIdx: number
@@ -88,6 +90,8 @@ export interface Song {
   side: number
   startTime: number
   favorRating: 0 | 1 | 2
+  dateAdded: string
+  visualsPath: string
 }
 
 export interface Metadata {
@@ -101,11 +105,11 @@ export interface Metadata {
   visual_info: {
     media_type: string
     media_data: number[]
+    image_path: string
   }
 }
 
 export interface AlbumArt {
-  objectUrl: string
   mediaType: string
   mediaData: number[]
 }
