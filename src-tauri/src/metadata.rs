@@ -50,35 +50,50 @@ impl Metadata {
         }
     }
 
+    fn hash_string(s: &String) -> String {
+        format!("{:?}", md5::compute(s.as_bytes()))
+    }
+
     fn create_album_image_file(
         meta_tags: &HashMap<String, String>,
         visual_info: &VisualInfo,
     ) -> String {
-        let exe_dir = std::env::current_exe().unwrap();
-        let app_dir = exe_dir.parent().unwrap();
+        let default = String::from("unknown");
+        let artist = Self::hash_string(meta_tags.get("Artist").unwrap_or(&default));
+        let album = Self::hash_string(meta_tags.get("Album").unwrap_or(&default));
+        let track = Self::hash_string(&meta_tags.get("TrackTitle").unwrap_or(&default));
 
-        let album_dir = PathBuf::from(app_dir)
-            .join(&"art".to_string())
-            .join(&meta_tags.get("Artist").unwrap_or(&"unknown".to_string()))
-            .join(&meta_tags.get("Album").unwrap_or(&"unknown".to_string()));
+        // Tauri local data dir
+        let local_data_dir = tauri::api::path::local_data_dir().unwrap();
 
-        if let Err(e) = fs::create_dir_all(&album_dir) {
-            println!("Error creating directories: {}", e);
+        // Jukebox/art/[artist]/[album]/
+        let album_dir = PathBuf::from(local_data_dir)
+            .join(&"Jukebox/art".to_string())
+            .join(artist)
+            .join(album);
+
+        // Create album dir if it doesn't exist
+        match album_dir.try_exists() {
+            Ok(false) => {
+                if let Err(e) = fs::create_dir_all(&album_dir) {
+                    panic!("Error creating directories: {}", e);
+                }
+            }
+            Ok(true) => {}
+            Err(e) => {
+                panic!("Error checking directory existence: {}", e);
+            }
         }
 
         let file_extension = visual_info.media_type.split("/").last().unwrap();
-        let file_name = album_dir.join(format!("0.{}", file_extension));
-
-        println!("{:?}", file_name);
-
-        let file_data = visual_info.media_data.clone();
+        let file_name = album_dir.join(format!("{}.{}", track, file_extension));
 
         let mut f = match File::create(&file_name) {
             Ok(file) => file,
             Err(e) => panic!("Failed to create file: {}", e),
         };
 
-        match f.write_all(&file_data) {
+        match f.write_all(&visual_info.media_data) {
             Ok(_) => (),
             Err(e) => panic!("Failed to write to file: {}", e),
         };

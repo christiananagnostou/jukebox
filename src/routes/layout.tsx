@@ -78,13 +78,13 @@ export default component$(() => {
    * Runs as soon as the window is visible
    *
    */
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     // Load All Songs From Database
-
     const db = await Database.load(LIBRARY_DB)
 
     db.execute(`CREATE TABLE IF NOT EXISTS songs (
-        id TEXT,
+        id TEXT PRIMARY KEY,
         path TEXT,
         file TEXT,
         title TEXT,
