@@ -9,6 +9,28 @@ import { ArrowUp } from '~/components/svg/ArrowUp'
 import { LibraryRow } from '~/components/library/LibraryRow'
 
 const RowHeight = 30
+const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
+
+const SortButton = component$(({ label, type, store }: { label: string; type: string; store: any }) => {
+  const handleClick = $(() => {
+    store.sorting = store.sorting === `${type}-desc` ? `${type}-asc` : `${type}-desc`
+  })
+
+  const isSorting = store.sorting === `${type}-desc` || store.sorting === `${type}-asc`
+
+  return (
+    <button
+      class={`not-nth-[2]:border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative ${
+        isSorting ? 'text-yellow-500' : ''
+      }`}
+      onClick$={handleClick}
+    >
+      {label}
+      {store.sorting === `${type}-desc` && <ArrowDown />}
+      {store.sorting === `${type}-asc` && <ArrowUp />}
+    </button>
+  )
+})
 
 export default component$(() => {
   const store = useContext(StoreContext)
@@ -19,6 +41,7 @@ export default component$(() => {
     windowHeight: 0,
   })
 
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
@@ -31,76 +54,32 @@ export default component$(() => {
     return () => unlistenResize()
   })
 
+  const renderSortButtons = () => {
+    const buttonConfigs = [
+      { label: 'Title', type: 'title' },
+      { label: 'Artist', type: 'artist' },
+      { label: 'Album', type: 'album' },
+      { label: 'Track', type: 'track' },
+      { label: 'Hertz', type: 'hertz' },
+      { label: 'Date', type: 'date' },
+      { label: 'Date Added', type: 'date-added' },
+      { label: 'Fave', type: 'fave' },
+    ]
+
+    return buttonConfigs.map((config, index) => (
+      <SortButton key={index} label={config.label} type={config.type} store={store} />
+    ))
+  }
+
   return (
     <section class="w-full flex flex-col flex-1">
       <div
-        class="w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_70px] text-left items-center border-b border-gray-700"
+        class={`${RowStyle} border-b border-gray-700`}
         style={{ height: RowHeight + 'px', paddingRight: 'var(--scrollbar-width)' }}
       >
         <span />
 
-        <button
-          class="truncate h-full flex items-center justify-between pl-1 pr-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'title-desc' ? 'title-asc' : 'title-desc')}
-        >
-          Title
-          {store.sorting === 'title-desc' && <ArrowDown />}
-          {store.sorting === 'title-asc' && <ArrowUp />}
-        </button>
-
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
-        >
-          Artist
-          {store.sorting === 'artist-desc' && <ArrowDown />}
-          {store.sorting === 'artist-asc' && <ArrowUp />}
-        </button>
-
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'album-desc' ? 'album-asc' : 'album-desc')}
-        >
-          Album
-          {store.sorting === 'album-desc' && <ArrowDown />}
-          {store.sorting === 'album-asc' && <ArrowUp />}
-        </button>
-
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'track-desc' ? 'track-asc' : 'track-desc')}
-        >
-          Track
-          {store.sorting === 'track-desc' && <ArrowDown />}
-          {store.sorting === 'track-asc' && <ArrowUp />}
-        </button>
-
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'hertz-desc' ? 'hertz-asc' : 'hertz-desc')}
-        >
-          Hertz
-          {store.sorting === 'hertz-desc' && <ArrowDown />}
-          {store.sorting === 'hertz-asc' && <ArrowUp />}
-        </button>
-
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'date-desc' ? 'date-asc' : 'date-desc')}
-        >
-          Date
-          {store.sorting === 'date-desc' && <ArrowDown />}
-          {store.sorting === 'date-asc' && <ArrowUp />}
-        </button>
-
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'fave-desc' ? 'fave-asc' : 'fave-desc')}
-        >
-          Fave
-          {store.sorting === 'fave-desc' && <ArrowDown />}
-          {store.sorting === 'fave-asc' && <ArrowUp />}
-        </button>
+        {renderSortButtons()}
       </div>
 
       <div class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
@@ -119,6 +98,9 @@ export default component$(() => {
               storeActions.playSong(song, index)
             })
 
+            const isCursor = index === store.libraryView.cursorIdx
+            const isPlaying = store.player.currSong?.id === song.id
+
             return (
               <LibraryRow
                 key={song.id}
@@ -127,8 +109,10 @@ export default component$(() => {
                 onDblClick={onDblClick}
                 onClick={onClick}
                 style={{ ...style, height: RowHeight + 'px' }}
-                isCursor={store.libraryView.cursorIdx === index}
-                isPlaying={store.player.currSong?.id === song.id}
+                isPlaying={isPlaying}
+                classes={`${RowStyle} hover:bg-[rgba(0,0,0,.15)] 
+                  ${isCursor && '!bg-gray-800'}
+                  ${isPlaying && '!bg-gray-700'}`}
               />
             )
           })}

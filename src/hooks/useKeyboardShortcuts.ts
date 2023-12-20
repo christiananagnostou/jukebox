@@ -164,6 +164,9 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       // Navigate to Storage Page
       if (key === 'O') nav('/storage')
 
+      // Navigate to Albums Page
+      if (key === 'M') nav('/albums')
+
       /**
        *
        * Utility

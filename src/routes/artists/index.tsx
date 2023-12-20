@@ -1,4 +1,6 @@
 import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
+import { isServer } from '@builder.io/qwik/build'
+
 import { StoreActionsContext, StoreContext } from '../layout'
 import VirtualList from '~/components/Shared/VirtualList'
 // @ts-ignore
@@ -19,7 +21,7 @@ export default component$(() => {
     windowHeight: 0,
   })
 
-  useComputed$(() => {
+  const artists = useComputed$(() => {
     const artistMap: { [artist: string]: { [album: string]: Song[] } } = {}
 
     const setNestedKey = (obj: any, path: string[], song: Song) => {
@@ -38,13 +40,17 @@ export default component$(() => {
       setNestedKey(artistMap, [song.artist || '-', song.album || '-'], song)
     }
 
-    store.artistView.artists = Object.entries(artistMap).map(([artist, album]) => ({
+    return Object.entries(artistMap).map(([artist, album]) => ({
       name: artist,
       albums: Object.entries(album).map(([album, songs]) => ({
         title: album,
         tracks: songs,
       })),
     }))
+  })
+
+  useTask$(({ track }) => {
+    store.artistView.artists = track(() => artists.value)
   })
 
   useTask$(({ track }) => {
@@ -59,7 +65,10 @@ export default component$(() => {
     store.artistView.tracks = albums[albumIdx]?.tracks || []
   })
 
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
+    if (isServer) return // Server guard
+
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)

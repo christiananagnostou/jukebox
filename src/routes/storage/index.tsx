@@ -1,4 +1,4 @@
-import { $, component$, useComputed$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
 // @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
@@ -21,12 +21,15 @@ export default component$<AlbumsProps>(() => {
 
   const state = useStore<{ virtualListHeight: number; windowHeight: number }>({ virtualListHeight: 0, windowHeight: 0 })
 
-  useComputed$(() => {
-    const rootFile = organizeFiles(store.filteredSongs)
-    store.storageView.rootFile = rootFile
-    storageActions.countAndMapFiles(rootFile)
+  const rootFile = useComputed$(() => organizeFiles(store.filteredSongs))
+
+  useTask$(({ track }) => {
+    const root = track(() => rootFile.value)
+    store.storageView.rootFile = root
+    storageActions.countAndMapFiles(root)
   })
 
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
