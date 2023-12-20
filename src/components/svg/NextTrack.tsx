@@ -5,7 +5,7 @@ export const NextTrack = component$(() => {
     <svg
       stroke="currentColor"
       fill="none"
-      stroke-width="2"
+      stroke-width="1"
       viewBox="0 0 24 24"
       stroke-linecap="round"
       stroke-linejoin="round"
