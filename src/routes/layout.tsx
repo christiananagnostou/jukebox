@@ -102,7 +102,7 @@ export default component$(() => {
         sampleRate TEXT,
         side INTEGER,
         startTime INTEGER,
-        favorRating TEXT CHECK (favorRating IN ('0', '1', '2')),
+        favorRating INTEGER CHECK (favorRating IN (0, 1, 2)),
         dateAdded TEXT,
         visualsPath TEXT
     )`)

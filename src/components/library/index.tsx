@@ -3,7 +3,7 @@ import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.i
 import { appWindow } from '@tauri-apps/api/window'
 import VirtualList from '~/components/Shared/VirtualList'
 import type { ListItemStyle } from '~/App'
-import { StoreActionsContext, StoreContext } from '../../routes/layout'
+import { StoreContext } from '../../routes/layout'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
 import { LibraryRow } from '~/components/library/LibraryRow'
@@ -34,7 +34,6 @@ const SortButton = component$(({ label, type, store }: { label: string; type: st
 
 export default component$(() => {
   const store = useContext(StoreContext)
-  const storeActions = useContext(StoreActionsContext)
 
   const state = useStore({
     virtualListHeight: 0,
@@ -90,29 +89,13 @@ export default component$(() => {
           scrollToRow={store.libraryView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
             const song = store.filteredSongs[index]
-            const onClick = $(() => {
-              store.libraryView.cursorIdx = index
-            })
-            const onDblClick = $(() => {
-              store.playlist = store.filteredSongs
-              storeActions.playSong(song, index)
-            })
-
-            const isCursor = index === store.libraryView.cursorIdx
-            const isPlaying = store.player.currSong?.id === song.id
-
             return (
               <LibraryRow
                 key={song.id}
                 data-song-index={index}
-                song={song}
-                onDblClick={onDblClick}
-                onClick={onClick}
+                index={index}
                 style={{ ...style, height: RowHeight + 'px' }}
-                isPlaying={isPlaying}
-                classes={`${RowStyle} hover:bg-[rgba(0,0,0,.15)] 
-                  ${isCursor && '!bg-gray-800'}
-                  ${isPlaying && '!bg-gray-700'}`}
+                classes={RowStyle}
               />
             )
           })}
