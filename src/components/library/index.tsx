@@ -99,7 +99,15 @@ export default component$(() => {
               />
             )
           })}
-        />
+        >
+          <div
+            class="bg-gray-800 w-full transition-[top] ease-in-out absolute left-0 -z-10"
+            style={{
+              top: store.libraryView.cursorIdx * RowHeight + 'px',
+              height: RowHeight,
+            }}
+          />
+        </VirtualList>
       </div>
     </section>
   )

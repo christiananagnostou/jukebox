@@ -1,4 +1,4 @@
-import { $, component$, useSignal, type QwikUIEvent, type Component, type JSXNode, useTask$ } from '@builder.io/qwik'
+import { type Component, type JSXNode, $, component$, useSignal, useTask$, Slot } from '@builder.io/qwik'
 import type { ListItemStyle } from '~/App'
 
 type Props = {
@@ -68,7 +68,7 @@ export default component$((props: Props) => {
     }
   })
 
-  const onScroll = $((_: QwikUIEvent<HTMLDivElement>, element: HTMLDivElement) => {
+  const onScroll = $((_: UIEvent, element: HTMLDivElement) => {
     scrollTop.value = element.scrollTop
   })
 
@@ -76,6 +76,7 @@ export default component$((props: Props) => {
     <div class="scroll overflow-y-scroll overflow-x-hidden w-full h-full" onScroll$={onScroll} ref={scrollRef}>
       <div class={`inner relative ${listWrapClass}`} style={{ height: `${innerHeight}px` }}>
         {items}
+        <Slot />
       </div>
     </div>
   )

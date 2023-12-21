@@ -18,7 +18,6 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
   const storeActions = useContext(StoreActionsContext)
 
   const song = store.filteredSongs[index]
-  const isCursor = index === store.libraryView.cursorIdx
   const isPlaying = store.player.currSong?.id === song.id
 
   const onClick = $(() => {
@@ -52,7 +51,6 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
       class={
         classes +
         ` hover:bg-[rgba(0,0,0,.15)] 
-        ${isCursor && '!bg-gray-800'}
         ${isPlaying && '!bg-gray-700'}`
       }
     >
