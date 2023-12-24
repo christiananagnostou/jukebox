@@ -4,6 +4,7 @@ import {
   createContextId,
   Slot,
   useContextProvider,
+  useOnWindow,
   useStore,
   useTask$,
   useVisibleTask$,
@@ -73,14 +74,7 @@ export default component$(() => {
   // Listen for Keyboard Shortcuts
   useKeyboardShortcuts(store, { ...audioActions, addSongInOrder })
 
-  /**
-   *
-   * Runs as soon as the window is visible
-   *
-   */
-  // eslint-disable-next-line qwik/no-use-visible-task
-  useVisibleTask$(async () => {
-    // Load All Songs From Database
+  const fetchSongs = $(async () => {
     const db = await Database.load(LIBRARY_DB)
 
     db.execute(`CREATE TABLE IF NOT EXISTS songs (
@@ -110,7 +104,22 @@ export default component$(() => {
     const songs = (await db.select('SELECT * from songs')) as Song[]
 
     songs.forEach((song) => addSongInOrder(song))
+  })
 
+  /**
+   *
+   * Runs as soon as the window is visible
+   *
+   */
+  useOnWindow(
+    'load',
+    $(() => {
+      fetchSongs()
+    })
+  )
+
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(async () => {
     // Interval to update the currentTime
     let interval: NodeJS.Timeout
 
@@ -123,9 +132,10 @@ export default component$(() => {
       // Listen for song ending to go to next
       audioElem.addEventListener('ended', () => audioActions.nextSong())
 
-      // Update currentTime / check for pause
       interval = setInterval(() => {
+        // Update currentTime
         store.player.currentTime = audioElem.currentTime
+        // Check for pause
         if (audioElem.paused != store.player.isPaused) store.player.isPaused = audioElem.paused
       }, 333)
 
@@ -152,7 +162,6 @@ export default component$(() => {
      * Result: list is not sorted anymore and ascending can happen before descending
      *
      */
-
     store.filteredSongs.sort((song1, song2) => {
       switch (sorting) {
         case 'artist-desc':
@@ -189,30 +198,38 @@ export default component$(() => {
           // If both artist and track number are the same, preserve the original order
           return 0
 
-        case 'title-desc':
-          return song1.title.localeCompare(song2.title)
-        case 'title-asc':
-          return song2.title.localeCompare(song1.title)
-        case 'hertz-desc':
-          return parseInt(song1.sampleRate) - parseInt(song2.sampleRate)
-        case 'hertz-asc':
-          return parseInt(song2.sampleRate) - parseInt(song1.sampleRate)
-        case 'date-desc':
-          return parseInt(song1.date || '0') - parseInt(song2.date || '0')
-        case 'date-asc':
-          return parseInt(song2.date || '0') - parseInt(song1.date || '0')
-        case 'fave-desc':
-          return song1.favorRating - song2.favorRating
-        case 'fave-asc':
-          return song2.favorRating - song1.favorRating
         case 'artist-asc':
           // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.artist.localeCompare(song1.artist)
         case 'album-asc':
           // Ascending doesn't need complex sort because it always happens after a descending sort
           return song2.album.localeCompare(song1.album)
-        case 'recent-asc':
+
+        case 'title-desc':
+          return song1.title.localeCompare(song2.title)
+        case 'title-asc':
+          return song2.title.localeCompare(song1.title)
+
+        case 'hertz-desc':
+          return parseInt(song1.sampleRate) - parseInt(song2.sampleRate)
+        case 'hertz-asc':
+          return parseInt(song2.sampleRate) - parseInt(song1.sampleRate)
+
+        case 'date-desc':
+          return parseInt(song1.date || '0') - parseInt(song2.date || '0')
+        case 'date-asc':
+          return parseInt(song2.date || '0') - parseInt(song1.date || '0')
+
+        case 'fave-desc':
+          return song1.favorRating - song2.favorRating
+        case 'fave-asc':
+          return song2.favorRating - song1.favorRating
+
+        case 'date-added-desc':
           return new Date(song1.dateAdded).getTime() - new Date(song2.dateAdded).getTime()
+        case 'date-added-asc':
+          return new Date(song2.dateAdded).getTime() - new Date(song1.dateAdded).getTime()
+
         default:
           return 1
       }
