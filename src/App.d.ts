@@ -20,7 +20,8 @@ export interface Store {
     | 'date-desc'
     | 'fave-asc'
     | 'fave-desc'
-    | 'recent-asc'
+    | 'date-added-asc'
+    | 'date-added-desc'
     | 'default'
 
   libraryView: {

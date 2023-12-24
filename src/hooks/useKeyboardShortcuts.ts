@@ -178,9 +178,6 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
 
       // Close Keyboard Shortcuts Modal
       if (key === 'Escape' && store.showKeyShortcuts) store.showKeyShortcuts = false
-
-      // Sorting By Recent
-      if (key === 'r') store.sorting = 'recent-asc'
     })
   )
 }

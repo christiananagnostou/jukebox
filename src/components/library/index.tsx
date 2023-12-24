@@ -11,6 +11,17 @@ import { LibraryRow } from '~/components/library/LibraryRow'
 const RowHeight = 30
 const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
 
+const ButtonConfigs = [
+  { label: 'Title', type: 'title' },
+  { label: 'Artist', type: 'artist' },
+  { label: 'Album', type: 'album' },
+  { label: 'Track', type: 'track' },
+  { label: 'Hertz', type: 'hertz' },
+  { label: 'Date', type: 'date' },
+  { label: 'Date Added', type: 'date-added' },
+  { label: 'Fave', type: 'fave' },
+]
+
 const SortButton = component$(({ label, type, store }: { label: string; type: string; store: any }) => {
   const handleClick = $(() => {
     store.sorting = store.sorting === `${type}-desc` ? `${type}-asc` : `${type}-desc`
@@ -54,18 +65,7 @@ export default component$(() => {
   })
 
   const renderSortButtons = () => {
-    const buttonConfigs = [
-      { label: 'Title', type: 'title' },
-      { label: 'Artist', type: 'artist' },
-      { label: 'Album', type: 'album' },
-      { label: 'Track', type: 'track' },
-      { label: 'Hertz', type: 'hertz' },
-      { label: 'Date', type: 'date' },
-      { label: 'Date Added', type: 'date-added' },
-      { label: 'Fave', type: 'fave' },
-    ]
-
-    return buttonConfigs.map((config, index) => (
+    return ButtonConfigs.map((config, index) => (
       <SortButton key={index} label={config.label} type={config.type} store={store} />
     ))
   }
@@ -88,11 +88,9 @@ export default component$(() => {
           windowHeight={state.virtualListHeight || 0}
           scrollToRow={store.libraryView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-            const song = store.filteredSongs[index]
             return (
               <LibraryRow
-                key={song.id}
-                data-song-index={index}
+                key={store.filteredSongs[index].id}
                 index={index}
                 style={{ ...style, height: RowHeight + 'px' }}
                 classes={RowStyle}
