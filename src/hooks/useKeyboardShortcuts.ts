@@ -68,7 +68,7 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
     $((e: Event) => {
       if (store.isTyping) return
       // @ts-ignore
-      const { key } = e as { key: string }
+      const { key, code } = e as { key: string; code: string }
 
       /**
        *
@@ -141,10 +141,10 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
        */
 
       // Next Song
-      if (key === 'n') storeActions.nextSong()
+      if (key === 'n' || code === 'MediaTrackNext') storeActions.nextSong()
 
       // Previous Song
-      if (key === 'N') storeActions.prevSong()
+      if (key === 'N' || code === 'MediaTrackPrevious') storeActions.prevSong()
 
       // Pause/Play
       if (key === 'p') store.player.isPaused ? storeActions.resumeSong() : storeActions.pauseSong()
