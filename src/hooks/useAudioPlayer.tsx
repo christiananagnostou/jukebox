@@ -1,5 +1,5 @@
 import type { Store, Song } from '~/App'
-import { $ } from '@builder.io/qwik'
+import { $, useVisibleTask$ } from '@builder.io/qwik'
 // @ts-ignore
 import { convertFileSrc } from '@tauri-apps/api/tauri'
 
@@ -16,6 +16,35 @@ export const AudioPlayerState = {
 }
 
 export function useAudioPlayer(store: Store) {
+  // const visualizeAudio = $(() => {
+  //   if (!store.player.audioElem) return
+  //   const audioContext = new window.AudioContext()
+
+  //   const sourceNode = audioContext.createMediaElementSource(store.player.audioElem)
+  //   const analyser = audioContext.createAnalyser()
+
+  //   sourceNode.connect(analyser)
+  //   analyser.connect(audioContext.destination)
+
+  //   const frequencyData = new Uint8Array(analyser.frequencyBinCount)
+
+  //   function updateFrequencyData() {
+  //     analyser.getByteFrequencyData(frequencyData)
+
+  //     // Use frequencyData for visualization or analysis
+  //     console.log(frequencyData)
+  //   }
+
+  //   function update() {
+  //     updateFrequencyData()
+  //     // Update visualization or perform tasks based on the data
+  //     requestAnimationFrame(update)
+  //   }
+
+  //   // Start updating data
+  //   update()
+  // })
+
   const loadSong = $((song: Song) => {
     if (!store.player.audioElem) return
     store.player.audioElem.src = convertFileSrc(song.path)
@@ -31,6 +60,8 @@ export function useAudioPlayer(store: Store) {
     store.player.currSongIndex = index
     store.player.audioElem.play()
     store.player.isPaused = false
+
+    // visualizeAudio()
   })
 
   const pauseSong = $(() => {
@@ -64,6 +95,35 @@ export function useAudioPlayer(store: Store) {
 
       playSong(store.playlist[prevIndex], prevIndex)
     }
+  })
+
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(async () => {
+    // Interval to update the pause/play state
+    let interval: NodeJS.Timeout
+
+    // Initialize an audio element
+    if (!store.player.audioElem) {
+      const audioElem = new Audio()
+      // Listen for metadata being loaded into the audio element and set duration
+      audioElem.addEventListener('loadedmetadata', () => (store.player.duration = audioElem.duration), false)
+
+      // Listen for song ending to go to next
+      audioElem.addEventListener('ended', nextSong)
+
+      // Update current time
+      audioElem.addEventListener('timeupdate', () => (store.player.currentTime = audioElem.currentTime))
+
+      // Update pause/play state
+      interval = setInterval(() => {
+        if (audioElem.paused != store.player.isPaused) store.player.isPaused = audioElem.paused
+      }, 333)
+
+      // Set Audio Elem
+      store.player.audioElem = audioElem
+    }
+
+    return () => clearInterval(interval)
   })
 
   return {

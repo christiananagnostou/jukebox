@@ -7,7 +7,6 @@ import {
   useOnWindow,
   useStore,
   useTask$,
-  useVisibleTask$,
 } from '@builder.io/qwik'
 
 import type { Song, Store, StoreActions } from '~/App'
@@ -111,40 +110,7 @@ export default component$(() => {
    * Runs as soon as the window is visible
    *
    */
-  useOnWindow(
-    'load',
-    $(() => {
-      fetchSongs()
-    })
-  )
-
-  // eslint-disable-next-line qwik/no-use-visible-task
-  useVisibleTask$(async () => {
-    // Interval to update the currentTime
-    let interval: NodeJS.Timeout
-
-    // Initialize an audio element
-    if (!store.player.audioElem) {
-      const audioElem = new Audio()
-      // Listen for metadata being loaded into the audio element and set duration
-      audioElem.addEventListener('loadedmetadata', () => (store.player.duration = audioElem.duration), false)
-
-      // Listen for song ending to go to next
-      audioElem.addEventListener('ended', () => audioActions.nextSong())
-
-      interval = setInterval(() => {
-        // Update currentTime
-        store.player.currentTime = audioElem.currentTime
-        // Check for pause
-        if (audioElem.paused != store.player.isPaused) store.player.isPaused = audioElem.paused
-      }, 333)
-
-      // Set Audio Elem
-      store.player.audioElem = audioElem
-    }
-
-    return () => clearInterval(interval)
-  })
+  useOnWindow('load', fetchSongs)
 
   /**
    *
