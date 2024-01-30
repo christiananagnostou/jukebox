@@ -1,6 +1,5 @@
 import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
-// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
 import type { ListItemStyle } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
@@ -29,7 +28,6 @@ export default component$<AlbumsProps>(() => {
     storageActions.countAndMapFiles(root)
   })
 
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
@@ -67,11 +65,11 @@ export default component$<AlbumsProps>(() => {
                 onDblClick$={$(() => storageActions.playFile(file))}
                 onClick$={$(() => (store.storageView.cursorIdx = index))}
                 style={{ ...style, height: RowHeight + 'px', paddingLeft: (file.level + 1) * 20 + 'px' }}
-                class={`flex items-center truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]  
+                class={`flex items-center truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && '!bg-gray-800'}`}
               >
                 <span
-                  class={`text-slate-700 mr-3 
+                  class={`text-slate-700 mr-3
                   ${highlighted && '!text-gray-600'}`}
                   onClick$={() => {
                     file.isClosed = !file.isClosed

@@ -1,4 +1,4 @@
-import { type Component, type JSXNode, $, component$, useSignal, useTask$, Slot } from '@builder.io/qwik'
+import { type Component, $, component$, useSignal, useTask$, Slot, type JSXOutput } from '@builder.io/qwik'
 import type { ListItemStyle } from '~/App'
 
 type Props = {
@@ -28,7 +28,7 @@ export default component$((props: Props) => {
   )
 
   // Elements to be rendered
-  const items: JSXNode[] = []
+  const items: JSXOutput[] = []
 
   ;(async () => {
     for (let i = startIndex; i <= endIndex; i++) {
@@ -37,7 +37,7 @@ export default component$((props: Props) => {
           index: i,
           style: { position: 'absolute', top: `${i * itemHeight}px`, width: '100%' },
         },
-        '' + i,
+        i.toString(),
         0
       )
       if (elem) items.push(elem)

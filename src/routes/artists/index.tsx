@@ -1,9 +1,6 @@
 import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
-import { isServer } from '@builder.io/qwik/build'
-
 import { StoreActionsContext, StoreContext } from '../layout'
 import VirtualList from '~/components/Shared/VirtualList'
-// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
 import type { Album, ListItemStyle, Song } from '~/App'
 import { ArrowDown } from '~/components/svg/ArrowDown'
@@ -65,10 +62,7 @@ export default component$(() => {
     store.artistView.tracks = albums[albumIdx]?.tracks || []
   })
 
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
-    if (isServer) return // Server guard
-
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
@@ -138,7 +132,7 @@ export default component$(() => {
                   })}
                   onClick$={() => (store.artistView.artistIdx = index) && (store.artistView.cursorCol = 0)}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]  
+                  class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && 'bg-gray-800'}
                   ${isCursor && '!bg-gray-700'}`}
                 >
@@ -171,7 +165,7 @@ export default component$(() => {
                   }}
                   onClick$={() => (store.artistView.albumIdx = index) && (store.artistView.cursorCol = 1)}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]  
+                  class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && 'bg-gray-800'}
                   ${isCursor && '!bg-gray-700'}`}
                 >
@@ -205,7 +199,7 @@ export default component$(() => {
                   }}
                   onClick$={() => (store.artistView.trackIdx = index) && (store.artistView.cursorCol = 2)}
                   style={{ ...style, height: RowHeight + 'px' }}
-                  class={`flex items-center justify-between px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]  
+                  class={`flex items-center justify-between px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && 'bg-gray-800'}
                   ${isCursor && '!bg-gray-700'}`}
                 >

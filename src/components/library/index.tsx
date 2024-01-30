@@ -1,12 +1,11 @@
 import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
-// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
-import VirtualList from '~/components/Shared/VirtualList'
 import type { ListItemStyle } from '~/App'
-import { StoreContext } from '../../routes/layout'
+import VirtualList from '~/components/Shared/VirtualList'
+import { LibraryRow } from '~/components/library/LibraryRow'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
-import { LibraryRow } from '~/components/library/LibraryRow'
+import { StoreContext } from '../../routes/layout'
 
 const RowHeight = 30
 const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
@@ -51,7 +50,6 @@ export default component$(() => {
     windowHeight: 0,
   })
 
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
@@ -64,12 +62,6 @@ export default component$(() => {
     return () => unlistenResize()
   })
 
-  const renderSortButtons = () => {
-    return ButtonConfigs.map((config, index) => (
-      <SortButton key={index} label={config.label} type={config.type} store={store} />
-    ))
-  }
-
   return (
     <section class="w-full flex flex-col flex-1">
       <div
@@ -78,7 +70,9 @@ export default component$(() => {
       >
         <span />
 
-        {renderSortButtons()}
+        {ButtonConfigs.map((config, index) => (
+          <SortButton key={index} label={config.label} type={config.type} store={store} />
+        ))}
       </div>
 
       <div class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>

@@ -1,6 +1,5 @@
 import type { Store, Song } from '~/App'
 import { $, useVisibleTask$ } from '@builder.io/qwik'
-// @ts-ignore
 import { convertFileSrc } from '@tauri-apps/api/tauri'
 
 export const AudioPlayerState = {
@@ -97,7 +96,6 @@ export function useAudioPlayer(store: Store) {
     }
   })
 
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     // Interval to update the pause/play state
     let interval: NodeJS.Timeout

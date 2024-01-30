@@ -4,9 +4,9 @@ import {
   createContextId,
   Slot,
   useContextProvider,
-  useOnWindow,
   useStore,
   useTask$,
+  useVisibleTask$,
 } from '@builder.io/qwik'
 
 import type { Song, Store, StoreActions } from '~/App'
@@ -73,44 +73,44 @@ export default component$(() => {
   // Listen for Keyboard Shortcuts
   useKeyboardShortcuts(store, { ...audioActions, addSongInOrder })
 
-  const fetchSongs = $(async () => {
-    const db = await Database.load(LIBRARY_DB)
-
-    db.execute(`CREATE TABLE IF NOT EXISTS songs (
-        id TEXT PRIMARY KEY,
-        path TEXT,
-        file TEXT,
-        title TEXT,
-        album TEXT,
-        artist TEXT,
-        genre TEXT,
-        bpm INTEGER,
-        compilation INTEGER,
-        date TEXT,
-        encoder TEXT,
-        trackTotal INTEGER,
-        trackNumber INTEGER,
-        codec TEXT,
-        duration TEXT,
-        sampleRate TEXT,
-        side INTEGER,
-        startTime INTEGER,
-        favorRating INTEGER CHECK (favorRating IN (0, 1, 2)),
-        dateAdded TEXT,
-        visualsPath TEXT
-    )`)
-
-    const songs = (await db.select('SELECT * from songs')) as Song[]
-
-    songs.forEach((song) => addSongInOrder(song))
-  })
-
   /**
    *
    * Runs as soon as the window is visible
    *
    */
-  useOnWindow('load', fetchSongs)
+  useVisibleTask$(async () => {
+    const db = await Database.load(LIBRARY_DB)
+
+    db.execute(`CREATE TABLE IF NOT EXISTS songs (
+         id TEXT PRIMARY KEY,
+         path TEXT,
+         file TEXT,
+         title TEXT,
+         album TEXT,
+         artist TEXT,
+         genre TEXT,
+         bpm INTEGER,
+         compilation INTEGER,
+         date TEXT,
+         encoder TEXT,
+         trackTotal INTEGER,
+         trackNumber INTEGER,
+         codec TEXT,
+         duration TEXT,
+         sampleRate TEXT,
+         side INTEGER,
+         startTime INTEGER,
+         favorRating INTEGER CHECK (favorRating IN (0, 1, 2)),
+         dateAdded TEXT,
+         visualsPath TEXT
+     )`)
+
+    const songs = (await db.select('SELECT * from songs')) as Song[]
+
+    songs.forEach((song) => addSongInOrder(song))
+
+    db.close()
+  })
 
   /**
    *

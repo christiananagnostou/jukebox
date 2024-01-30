@@ -6,6 +6,7 @@ import { Star1 } from '../svg/Star1'
 import { Star2 } from '../svg/Star2'
 import Database from 'tauri-plugin-sql-api'
 import { LIBRARY_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
+import dayjs from 'dayjs'
 
 export interface LibraryRowProps {
   index: number
@@ -50,7 +51,7 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
       style={style}
       class={
         classes +
-        ` hover:bg-[rgba(0,0,0,.15)] 
+        ` hover:bg-[rgba(0,0,0,.15)]
         ${isPlaying && '!bg-gray-700'}`
       }
     >
@@ -68,7 +69,7 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
 
       <span class="truncate pl-2">{song.date}</span>
 
-      <span class="truncate pl-2">{song.dateAdded}</span>
+      <span class="truncate pl-2">{dayjs(song.dateAdded).format('M-D-YY')}</span>
 
       <span class="truncate pl-2 flex align-center">
         {ratingsWithStars.map(({ rating, star }, i) => (

@@ -1,14 +1,12 @@
 import { $, component$, useComputed$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
 import type { ListItemStyle, Song } from '~/App'
-// @ts-ignore
 import { appWindow } from '@tauri-apps/api/window'
-// @ts-ignore
 import { convertFileSrc } from '@tauri-apps/api/tauri'
 import VirtualList from '~/components/Shared/VirtualList'
 import { MusicNote } from '~/components/svg/MusicNote'
-import { ArrowDown } from '~/components/svg/ArrowDown'
-import { ArrowUp } from '~/components/svg/ArrowUp'
+// import { ArrowDown } from '~/components/svg/ArrowDown'
+// import { ArrowUp } from '~/components/svg/ArrowUp'
 
 interface Album {
   albumArtSRC: string
@@ -37,7 +35,6 @@ export default component$(() => {
     numCols: 5,
   })
 
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(async () => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
@@ -84,7 +81,6 @@ export default component$(() => {
     return await chunk(Object.entries(a), state.numCols)
   })
 
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(({ track }) => {
     if (!containerRef.value) return
     track(() => store.filteredSongs)
@@ -108,67 +104,9 @@ export default component$(() => {
   return (
     <>
       <div
-        class="w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_70px] text-left items-center border-b border-gray-700"
+        class="w-full text-sm border-b border-slate-700 flex items-center justify-between"
         style={{ height: 30 + 'px', paddingRight: 'var(--scrollbar-width)' }}
-      >
-        <span />
-        <button
-          class="truncate h-full flex items-center justify-between pl-1 pr-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'title-desc' ? 'title-asc' : 'title-desc')}
-        >
-          Title
-          {store.sorting === 'title-desc' && <ArrowDown />}
-          {store.sorting === 'title-asc' && <ArrowUp />}
-        </button>
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
-        >
-          Artist
-          {store.sorting === 'artist-desc' && <ArrowDown />}
-          {store.sorting === 'artist-asc' && <ArrowUp />}
-        </button>
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'album-desc' ? 'album-asc' : 'album-desc')}
-        >
-          Album
-          {store.sorting === 'album-desc' && <ArrowDown />}
-          {store.sorting === 'album-asc' && <ArrowUp />}
-        </button>
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'track-desc' ? 'track-asc' : 'track-desc')}
-        >
-          Track
-          {store.sorting === 'track-desc' && <ArrowDown />}
-          {store.sorting === 'track-asc' && <ArrowUp />}
-        </button>
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'hertz-desc' ? 'hertz-asc' : 'hertz-desc')}
-        >
-          Hertz
-          {store.sorting === 'hertz-desc' && <ArrowDown />}
-          {store.sorting === 'hertz-asc' && <ArrowUp />}
-        </button>
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'date-desc' ? 'date-asc' : 'date-desc')}
-        >
-          Date
-          {store.sorting === 'date-desc' && <ArrowDown />}
-          {store.sorting === 'date-asc' && <ArrowUp />}
-        </button>
-        <button
-          class="border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'fave-desc' ? 'fave-asc' : 'fave-desc')}
-        >
-          Fave
-          {store.sorting === 'fave-desc' && <ArrowDown />}
-          {store.sorting === 'fave-asc' && <ArrowUp />}
-        </button>
-      </div>
+      ></div>
 
       <div class="overflow-auto">
         <div class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }} ref={containerRef}>

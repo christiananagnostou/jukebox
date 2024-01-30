@@ -1,15 +1,9 @@
 import { $, component$, useContext, useOnWindow, useVisibleTask$ } from '@builder.io/qwik'
-// @ts-ignore
 import { listen } from '@tauri-apps/api/event'
-// @ts-ignore
 import type { FileEntry } from '@tauri-apps/api/fs'
-// @ts-ignore
 import { readDir } from '@tauri-apps/api/fs'
-// @ts-ignore
 import { audioDir } from '@tauri-apps/api/path'
-// @ts-ignore
 import { open } from '@tauri-apps/api/dialog'
-// @ts-ignore
 import { invoke } from '@tauri-apps/api/tauri'
 import md5 from 'md5'
 
@@ -92,7 +86,7 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
     const process = async (ent: FileEntry[]) => {
       for (const entry of ent.values()) {
         if (entry.children) {
-          process(entry.children.filter((e: FileEntry['children']) => !e.name?.startsWith('.')))
+          process(entry.children.filter((e) => !e.name?.startsWith('.')))
         } else if (entry.name && entry.path) {
           await addSong(entry.path, entry.name, db)
         }
@@ -141,7 +135,7 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
    * Add listener for file drop on the app
    *
    */
-  // eslint-disable-next-line qwik/no-use-visible-task
+  // eslint-disable-next-line
   useVisibleTask$(async () => {
     try {
       store.audioDir = await audioDir()
@@ -176,7 +170,7 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
 
   return (
     <button onClick$={openDirectoryPicker} class={styles.button}>
-      Add Music
+      Import Music
       <span class={styles.icon}>I</span>
     </button>
   )

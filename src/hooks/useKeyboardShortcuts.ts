@@ -50,7 +50,7 @@ export const KeyboardCommands = [
     title: 'Utility',
     commands: [
       { key: '/', command: 'Search' },
-      { key: '⇧ I', command: 'Import Files' },
+      { key: '⇧ I', command: 'Import Music' },
       { key: '?', command: 'Toggle Shortcuts' },
     ],
   },
