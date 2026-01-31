@@ -29,7 +29,7 @@
     "@types/eslint": "^8.56.2",
     "@types/md5": "^2.3.2",
     "@types/node": "^20.1.0",
-    "@typescript-eslint/eslint-plugin": "5.59.2",
+    "@typescript-eslint/eslint-plugin": "8.54.0",
     "@typescript-eslint/parser": "5.59.2",
     "autoprefixer": "^10.4.14",
     "eslint": "^8.45.0",
