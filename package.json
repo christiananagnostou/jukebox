@@ -25,7 +25,7 @@
   "devDependencies": {
     "@builder.io/qwik": "^1.4.2",
     "@builder.io/qwik-city": "^1.4.2",
-    "@tauri-apps/cli": "^1.5.9",
+    "@tauri-apps/cli": "^2.9.6",
     "@types/eslint": "^8.56.2",
     "@types/md5": "^2.3.2",
     "@types/node": "^20.1.0",
