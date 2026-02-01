@@ -24,41 +24,44 @@ fn main() {
                 .items(&[&show, &hide, &PredefinedMenuItem::separator(app)?, &quit])
                 .build()?;
 
-            let mut tray_builder = TrayIconBuilder::new()
-                .menu(&menu)
-                .tooltip("Jukebox")
-                .on_menu_event(|app, event| match event.id().as_ref() {
-                    "tray_show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+            let mut tray_builder =
+                TrayIconBuilder::new()
+                    .menu(&menu)
+                    .tooltip("Jukebox")
+                    .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| {
+                        match event.id().as_ref() {
+                            "tray_show" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            "tray_hide" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.hide();
+                                }
+                            }
+                            "tray_quit" => {
+                                app.exit(0);
+                            }
+                            _ => {}
                         }
-                    }
-                    "tray_hide" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.hide();
-                        }
-                    }
-                    "tray_quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if matches!(
-                        event,
-                        TrayIconEvent::Click { .. } | TrayIconEvent::DoubleClick { .. }
-                    ) {
-                        if let Some(window) = tray.app_handle().get_webview_window("main") {
-                            if window.is_visible().unwrap_or(true) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                    })
+                    .on_tray_icon_event(|tray: &tauri::tray::TrayIcon, event: TrayIconEvent| {
+                        if matches!(
+                            event,
+                            TrayIconEvent::Click { .. } | TrayIconEvent::DoubleClick { .. }
+                        ) {
+                            if let Some(window) = tray.app_handle().get_webview_window("main") {
+                                if window.is_visible().unwrap_or(true) {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
                             }
                         }
-                    }
-                });
+                    });
 
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray_builder = tray_builder.icon(icon);
