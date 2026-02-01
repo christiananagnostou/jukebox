@@ -63,8 +63,8 @@ impl Metadata {
         let album = Self::hash_string(meta_tags.get("Album").unwrap_or(&default));
         let track = Self::hash_string(&meta_tags.get("TrackTitle").unwrap_or(&default));
 
-        // Tauri local data dir
-        let local_data_dir = tauri::api::path::local_data_dir().unwrap();
+        // Tauri local data dir - use dirs crate instead for v2 compatibility
+        let local_data_dir = dirs::data_local_dir().unwrap();
 
         // Jukebox/art/[artist]/[album]/
         let album_dir = PathBuf::from(local_data_dir)
