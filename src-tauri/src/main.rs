@@ -8,18 +8,29 @@ use tauri::{Manager, RunEvent, WindowEvent};
 
 mod metadata;
 
+const MAIN_WINDOW: &str = "main";
+const TRAY_SHOW: &str = "tray_show";
+const TRAY_HIDE: &str = "tray_hide";
+const TRAY_QUIT: &str = "tray_quit";
+
 #[command]
 fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> String {
     let song_metadata = Metadata::new(&app_handle, file_path);
-    serde_json::to_string(&song_metadata).unwrap()
+    serde_json::to_string(&song_metadata).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f: F) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        f(&window);
+    }
 }
 
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
-            let show = MenuItemBuilder::new("Show").id("tray_show").build(app)?;
-            let hide = MenuItemBuilder::new("Hide").id("tray_hide").build(app)?;
-            let quit = MenuItemBuilder::new("Quit").id("tray_quit").build(app)?;
+            let show = MenuItemBuilder::new("Show").id(TRAY_SHOW).build(app)?;
+            let hide = MenuItemBuilder::new("Hide").id(TRAY_HIDE).build(app)?;
+            let quit = MenuItemBuilder::new("Quit").id(TRAY_QUIT).build(app)?;
             let menu = MenuBuilder::new(app)
                 .items(&[&show, &hide, &PredefinedMenuItem::separator(app)?, &quit])
                 .build()?;
@@ -30,18 +41,18 @@ fn main() {
                     .tooltip("Jukebox")
                     .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| {
                         match event.id().as_ref() {
-                            "tray_show" => {
-                                if let Some(window) = app.get_webview_window("main") {
+                            TRAY_SHOW => {
+                                with_main_window(app, |window| {
                                     let _ = window.show();
                                     let _ = window.set_focus();
-                                }
+                                });
                             }
-                            "tray_hide" => {
-                                if let Some(window) = app.get_webview_window("main") {
+                            TRAY_HIDE => {
+                                with_main_window(app, |window| {
                                     let _ = window.hide();
-                                }
+                                });
                             }
-                            "tray_quit" => {
+                            TRAY_QUIT => {
                                 app.exit(0);
                             }
                             _ => {}
@@ -57,7 +68,7 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "main" {
+            if window.label() == MAIN_WINDOW {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
@@ -74,10 +85,10 @@ fn main() {
     app.run(|app_handle, event| {
         #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = event {
-            if let Some(window) = app_handle.get_webview_window("main") {
+            with_main_window(app_handle, |window| {
                 let _ = window.show();
                 let _ = window.set_focus();
-            }
+            });
         }
     });
 }
