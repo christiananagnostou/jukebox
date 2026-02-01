@@ -25,7 +25,10 @@ export const RouterHead = component$(() => {
       ))}
 
       {head.styles.map((s) => {
-        const { dangerouslySetInnerHTML: _deprecated, ...styleProps } = s.props || {}
+        const styleProps = { ...(s.props || {}) }
+        if ('dangerouslySetInnerHTML' in styleProps) {
+          delete styleProps.dangerouslySetInnerHTML
+        }
 
         return <style key={s.key} {...styleProps} dangerouslySetInnerHTML={s.style} />
       })}
