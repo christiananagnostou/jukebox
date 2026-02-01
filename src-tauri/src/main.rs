@@ -6,8 +6,8 @@ use tauri::command;
 mod metadata;
 
 #[command]
-fn get_metadata(file_path: String) -> String {
-    let song_metadata = Metadata::new(file_path);
+fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> String {
+    let song_metadata = Metadata::new(&app_handle, file_path);
     serde_json::to_string(&song_metadata).unwrap()
 }
 
