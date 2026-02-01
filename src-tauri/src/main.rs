@@ -3,7 +3,7 @@
 use crate::metadata::Metadata;
 use tauri::command;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, RunEvent, WindowEvent};
 
 mod metadata;
@@ -45,21 +45,6 @@ fn main() {
                                 app.exit(0);
                             }
                             _ => {}
-                        }
-                    })
-                    .on_tray_icon_event(|tray: &tauri::tray::TrayIcon, event: TrayIconEvent| {
-                        if matches!(
-                            event,
-                            TrayIconEvent::Click { .. } | TrayIconEvent::DoubleClick { .. }
-                        ) {
-                            if let Some(window) = tray.app_handle().get_webview_window("main") {
-                                if window.is_visible().unwrap_or(true) {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
-                            }
                         }
                     });
 
