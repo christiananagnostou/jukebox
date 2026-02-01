@@ -15,7 +15,7 @@ concurrency:
 
 env:
   NODE_VERSION: 22.12.0
-  RUST_TOOLCHAIN: '1.88.0'
+  RUST_TOOLCHAIN: '1.93.0'
 
 jobs:
   web:
