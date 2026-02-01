@@ -2,7 +2,7 @@
   "name": "jukebox",
   "description": "Dank Music Player",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.19.0"
   },
   "private": true,
   "scripts": {
