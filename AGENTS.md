@@ -26,6 +26,8 @@ Desktop dev:
 Frontend build:
 
 - npm run build
+- npm run build.client # used by qwik build
+- npm run build.server # used by qwik build
 
 Typecheck:
 
