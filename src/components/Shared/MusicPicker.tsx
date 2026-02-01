@@ -141,7 +141,6 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
    * Add listener for file drop on the app
    *
    */
-  // eslint-disable-next-line
   useVisibleTask$(async () => {
     try {
       store.audioDir = await audioDir()
