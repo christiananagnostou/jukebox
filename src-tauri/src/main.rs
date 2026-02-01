@@ -14,6 +14,8 @@ fn get_metadata(file_path: String) -> String {
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![get_metadata])
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

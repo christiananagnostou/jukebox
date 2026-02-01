@@ -1,6 +1,6 @@
 import type { Store, Song } from '~/App'
 import { $, useVisibleTask$ } from '@builder.io/qwik'
-import { convertFileSrc } from '@tauri-apps/api/tauri'
+import { convertFileSrc } from '@tauri-apps/api/core'
 
 export const AudioPlayerState = {
   player: {

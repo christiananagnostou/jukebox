@@ -53,42 +53,62 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
   const moveCursorUp = $(() => {
     // Artist Col
     if (store.artistView.cursorCol === 0) {
-      store.artistView.artistIdx > 0 && store.artistView.artistIdx--
+      if (store.artistView.artistIdx > 0) {
+        store.artistView.artistIdx -= 1
+      }
       store.artistView.albumIdx = 0
       store.artistView.trackIdx = 0
     }
     // Albums Col
     if (store.artistView.cursorCol === 1) {
-      store.artistView.albumIdx > 0 && store.artistView.albumIdx--
+      if (store.artistView.albumIdx > 0) {
+        store.artistView.albumIdx -= 1
+      }
       store.artistView.trackIdx = 0
     }
     // Tracks Col
     if (store.artistView.cursorCol === 2) {
-      store.artistView.trackIdx > 0 && store.artistView.trackIdx--
+      if (store.artistView.trackIdx > 0) {
+        store.artistView.trackIdx -= 1
+      }
     }
   })
 
   const moveCursorDown = $(() => {
     // Artist Col
     if (store.artistView.cursorCol === 0) {
-      store.artistView.artistIdx < store.artistView.artists.length - 1 && store.artistView.artistIdx++
+      if (store.artistView.artistIdx < store.artistView.artists.length - 1) {
+        store.artistView.artistIdx += 1
+      }
       store.artistView.albumIdx = 0
       store.artistView.trackIdx = 0
     }
     // Albums Col
     if (store.artistView.cursorCol === 1) {
-      store.artistView.albumIdx < store.artistView.albums.length - 1 && store.artistView.albumIdx++
+      if (store.artistView.albumIdx < store.artistView.albums.length - 1) {
+        store.artistView.albumIdx += 1
+      }
       store.artistView.trackIdx = 0
     }
     // Tracks Col
     if (store.artistView.cursorCol === 2) {
-      store.artistView.trackIdx < store.artistView.tracks.length - 1 && store.artistView.trackIdx++
+      if (store.artistView.trackIdx < store.artistView.tracks.length - 1) {
+        store.artistView.trackIdx += 1
+      }
     }
   })
 
-  const moveCursorLeft = $(() => store.artistView.cursorCol > 0 && store.artistView.cursorCol--)
+  const moveCursorLeft = $(() => {
+    if (store.artistView.cursorCol > 0) {
+      store.artistView.cursorCol -= 1
+    }
+  })
 
-  const moveCursorRight = $(() => store.artistView.cursorCol < 2 && store.artistView.cursorCol++)
+  const moveCursorRight = $(() => {
+    if (store.artistView.cursorCol < 2) {
+      store.artistView.cursorCol += 1
+    }
+  })
 
   return {
     playHighlighted,

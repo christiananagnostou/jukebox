@@ -147,7 +147,13 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       if (key === 'N' || code === 'MediaTrackPrevious') storeActions.prevSong()
 
       // Pause/Play
-      if (key === 'p') store.player.isPaused ? storeActions.resumeSong() : storeActions.pauseSong()
+      if (key === 'p') {
+        if (store.player.isPaused) {
+          storeActions.resumeSong()
+        } else {
+          storeActions.pauseSong()
+        }
+      }
 
       /**
        *

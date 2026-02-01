@@ -2,9 +2,7 @@ import { component$, useContext } from '@builder.io/qwik'
 import type { Song } from '~/App'
 import { StoreContext } from '~/routes/layout'
 
-interface QueueProps {}
-
-export default component$<QueueProps>(() => {
+export default component$(() => {
   const store = useContext(StoreContext)
 
   const getCircularWindow = (arr: Song[], start: number) => {
@@ -20,7 +18,7 @@ export default component$<QueueProps>(() => {
 
       <ol>
         {(store.queue.length ? store.queue : next5Displayed).map((song) => (
-         <li class="pt-1 pb-2" key={'queued-song-' + song.id}>
+          <li class="pt-1 pb-2" key={'queued-song-' + song.id}>
             <span class="block truncate">{song.title}</span>
             <span class="text-xs truncate text-gray-400">{song.artist}</span>
           </li>
