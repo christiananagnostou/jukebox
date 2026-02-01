@@ -26,7 +26,7 @@ export default component$(() => {
     return `${minutes}:${secondsWithZero}`
   })
 
-  const albumArt = useComputed$(async () => {
+  const albumArt = useComputed$(() => {
     if (!store.player.currSong?.visualsPath) return ''
     return convertFileSrc(store.player.currSong.visualsPath)
   })

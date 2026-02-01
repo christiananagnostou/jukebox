@@ -60,7 +60,7 @@ export default component$(() => {
     return chunks
   })
 
-  const albums = useComputed$(async () => {
+  const albums = useComputed$(() => {
     const a: Albums = {}
 
     for (const song of store.filteredSongs) {
@@ -81,7 +81,7 @@ export default component$(() => {
       }
     }
 
-    return await chunk(Object.entries(a), state.numCols)
+    return chunk(Object.entries(a), state.numCols)
   })
 
   useVisibleTask$(({ track }) => {
