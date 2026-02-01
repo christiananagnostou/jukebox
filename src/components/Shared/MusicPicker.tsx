@@ -1,16 +1,16 @@
 import { $, component$, useContext, useOnWindow, useVisibleTask$ } from '@builder.io/qwik'
 import { listen } from '@tauri-apps/api/event'
-import type { FileEntry } from '@tauri-apps/api/fs'
-import { readDir } from '@tauri-apps/api/fs'
-import { audioDir } from '@tauri-apps/api/path'
-import { open } from '@tauri-apps/api/dialog'
-import { invoke } from '@tauri-apps/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
+import { audioDir, join } from '@tauri-apps/api/path'
+import { open } from '@tauri-apps/plugin-dialog'
+import type { DirEntry } from '@tauri-apps/plugin-fs'
+import { readDir } from '@tauri-apps/plugin-fs'
 import md5 from 'md5'
 
 import type { Metadata, Song } from '~/App'
 import { LIBRARY_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
 import { isAudioFile } from '~/utils/Files'
-import Database from 'tauri-plugin-sql-api'
+import Database from '@tauri-apps/plugin-sql'
 
 // const WINDOW_FILE_DROP = 'tauri://file-drop'
 // const WINDOW_FILE_DROP_HOVER = 'tauri://file-drop-hover'
@@ -80,19 +80,25 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
    * Recursively read through entries and process each entry or it's children
    *
    */
-  const processEntries = $(async (entries: FileEntry[]) => {
+  const processEntries = $(async (basePath: string, entries: DirEntry[]) => {
     const db = await Database.load(LIBRARY_DB)
 
-    const process = async (ent: FileEntry[]) => {
+    const process = async (parentPath: string, ent: DirEntry[]) => {
       for (const entry of ent.values()) {
-        if (entry.children) {
-          process(entry.children.filter((e) => !e.name?.startsWith('.')))
-        } else if (entry.name && entry.path) {
-          await addSong(entry.path, entry.name, db)
+        if (entry.name.startsWith('.')) continue
+        const entryPath = await join(parentPath, entry.name)
+
+        if (entry.isDirectory) {
+          const nested = await readDir(entryPath)
+          await process(entryPath, nested)
+        } else if (entry.isFile) {
+          await addSong(entryPath, entry.name, db)
         }
       }
     }
-    process(entries)
+
+    await process(basePath, entries)
+    await db.close()
   })
 
   /**
@@ -101,8 +107,8 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
    *
    */
   const addDir = $(async (folderPath: string) => {
-    const entries = await readDir(folderPath, { recursive: true })
-    await processEntries(entries.filter((e: FileEntry) => !e.name?.startsWith('.')))
+    const entries = await readDir(folderPath)
+    await processEntries(folderPath, entries)
   })
 
   /**
@@ -135,7 +141,6 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
    * Add listener for file drop on the app
    *
    */
-  // eslint-disable-next-line
   useVisibleTask$(async () => {
     try {
       store.audioDir = await audioDir()
@@ -146,8 +151,8 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
     const unlistenFileDrop = await listen('tauri://file-drop', async (event: any) => {
       if (!event.payload) return
       for (const entry of event.payload as string[]) {
-        const dir = await readDir(entry, { recursive: true })
-        processEntries(dir)
+        const dir = await readDir(entry)
+        await processEntries(entry, dir)
       }
     })
 

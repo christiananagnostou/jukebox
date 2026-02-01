@@ -1,8 +1,8 @@
 import { $, component$, useComputed$, useContext, useSignal, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
 import type { ListItemStyle, Song } from '~/App'
-import { appWindow } from '@tauri-apps/api/window'
-import { convertFileSrc } from '@tauri-apps/api/tauri'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import VirtualList from '~/components/Shared/VirtualList'
 import { MusicNote } from '~/components/svg/MusicNote'
 // import { ArrowDown } from '~/components/svg/ArrowDown'
@@ -36,6 +36,7 @@ export default component$(() => {
   })
 
   useVisibleTask$(async () => {
+    const appWindow = getCurrentWebviewWindow()
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
@@ -59,13 +60,15 @@ export default component$(() => {
     return chunks
   })
 
-  const albums = useComputed$(async () => {
+  const albums = useComputed$(() => {
     const a: Albums = {}
 
     for (const song of store.filteredSongs) {
       const album = a[song.album]
       if (album) {
-        album.date < song.date && (album.date = song.date)
+        if (album.date < song.date) {
+          album.date = song.date
+        }
 
         album.songs.push(song)
       } else {
@@ -78,7 +81,7 @@ export default component$(() => {
       }
     }
 
-    return await chunk(Object.entries(a), state.numCols)
+    return chunk(Object.entries(a), state.numCols)
   })
 
   useVisibleTask$(({ track }) => {

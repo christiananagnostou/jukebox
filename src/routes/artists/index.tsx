@@ -1,7 +1,7 @@
 import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
 import VirtualList from '~/components/Shared/VirtualList'
-import { appWindow } from '@tauri-apps/api/window'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { Album, ListItemStyle, Song } from '~/App'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
@@ -63,6 +63,7 @@ export default component$(() => {
   })
 
   useVisibleTask$(async () => {
+    const appWindow = getCurrentWebviewWindow()
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)

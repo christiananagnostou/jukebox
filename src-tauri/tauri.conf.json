@@ -1,75 +1,23 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "Jukebox",
+  "version": "0.1.0",
+  "identifier": "com.jukebox.app",
+  "mainBinaryName": "Jukebox",
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:5173",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "Jukebox",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": true,
-      "fs": {
-        "all": true,
-        "scope": ["**"]
-      },
-      "globalShortcut": {
-        "all": true
-      },
-      "path": {
-        "all": true
-      },
-      "shell": {
-        "all": true,
-        "execute": true,
-        "sidecar": true,
-        "open": ".*"
-      },
-      "protocol": {
-        "all": true,
-        "asset": true,
-        "assetScope": ["**"]
-      }
-    },
-    "bundle": {
-      "active": true,
-      "category": "DeveloperTool",
-      "copyright": "",
-      "deb": {
-        "depends": []
-      },
-      "appimage": {
-        "bundleMediaFramework": true
-      },
-      "externalBin": [],
-      "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-      "identifier": "Jukebox",
-      "longDescription": "",
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "resources": [],
-      "shortDescription": "",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
-    },
+  "app": {
+    "macOSPrivateApi": true,
     "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": false
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     },
     "windows": [
       {
@@ -81,7 +29,42 @@
         "maximized": true,
         "focus": true
       }
-    ],
-    "macOSPrivateApi": true
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "copyright": "",
+    "externalBin": [],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "longDescription": "",
+    "resources": [],
+    "shortDescription": "",
+    "targets": "all",
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:library.db"]
+    }
   }
 }

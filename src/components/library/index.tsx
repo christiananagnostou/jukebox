@@ -1,5 +1,5 @@
 import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
-import { appWindow } from '@tauri-apps/api/window'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { ListItemStyle } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { LibraryRow } from '~/components/library/LibraryRow'
@@ -51,6 +51,7 @@ export default component$(() => {
   })
 
   useVisibleTask$(async () => {
+    const appWindow = getCurrentWebviewWindow()
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)

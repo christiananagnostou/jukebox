@@ -4,12 +4,10 @@ import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
-import { convertFileSrc } from '@tauri-apps/api/tauri'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { MusicNote } from '../svg/MusicNote'
 
-interface IndexProps {}
-
-export default component$<IndexProps>(() => {
+export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
@@ -28,7 +26,7 @@ export default component$<IndexProps>(() => {
     return `${minutes}:${secondsWithZero}`
   })
 
-  const albumArt = useComputed$(async () => {
+  const albumArt = useComputed$(() => {
     if (!store.player.currSong?.visualsPath) return ''
     return convertFileSrc(store.player.currSong.visualsPath)
   })

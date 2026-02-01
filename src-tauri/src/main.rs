@@ -6,14 +6,16 @@ use tauri::command;
 mod metadata;
 
 #[command]
-fn get_metadata(file_path: String) -> String {
-    let song_metadata = Metadata::new(file_path);
+fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> String {
+    let song_metadata = Metadata::new(&app_handle, file_path);
     serde_json::to_string(&song_metadata).unwrap()
 }
 
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![get_metadata])
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

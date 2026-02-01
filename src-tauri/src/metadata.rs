@@ -25,7 +25,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(file_path: String) -> Self {
+    pub fn new(app_handle: &tauri::AppHandle, file_path: String) -> Self {
         let file_meta = FileData::build(&file_path);
 
         let (codec, sample_rate, duration) = Self::extract_track_info(&file_meta);
@@ -36,7 +36,7 @@ impl Metadata {
         let mut visual_info = Self::extract_visual_info(&mut *format);
 
         if !visual_info.media_type.is_empty() {
-            let image_path = Self::create_album_image_file(&meta_tags, &visual_info);
+            let image_path = Self::create_album_image_file(app_handle, &meta_tags, &visual_info);
             visual_info.image_path = image_path;
         }
 
@@ -55,6 +55,7 @@ impl Metadata {
     }
 
     fn create_album_image_file(
+        app_handle: &tauri::AppHandle,
         meta_tags: &HashMap<String, String>,
         visual_info: &VisualInfo,
     ) -> String {
@@ -63,8 +64,12 @@ impl Metadata {
         let album = Self::hash_string(meta_tags.get("Album").unwrap_or(&default));
         let track = Self::hash_string(&meta_tags.get("TrackTitle").unwrap_or(&default));
 
-        // Tauri local data dir
-        let local_data_dir = tauri::api::path::local_data_dir().unwrap();
+        // Tauri v2: use app_handle.path() API instead of tauri::api::path
+        use tauri::Manager;
+        let local_data_dir = app_handle
+            .path()
+            .app_local_data_dir()
+            .expect("failed to get app local data dir");
 
         // Jukebox/art/[artist]/[album]/
         let album_dir = PathBuf::from(local_data_dir)

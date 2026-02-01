@@ -1,6 +1,6 @@
 import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
-import { appWindow } from '@tauri-apps/api/window'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { ListItemStyle } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { OpenFolder } from '~/components/svg/OpenFolder'
@@ -9,11 +9,9 @@ import { SoundBars } from '~/components/Shared/SoundBars'
 import { organizeFiles } from '~/utils/Files'
 import { useStoragePage } from '~/hooks/useStoragePage'
 
-interface AlbumsProps {}
-
 const RowHeight = 30
 
-export default component$<AlbumsProps>(() => {
+export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const storageActions = useStoragePage(store, storeActions)
@@ -29,6 +27,7 @@ export default component$<AlbumsProps>(() => {
   })
 
   useVisibleTask$(async () => {
+    const appWindow = getCurrentWebviewWindow()
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)

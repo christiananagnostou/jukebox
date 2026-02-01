@@ -4,7 +4,7 @@ import { SoundBars } from '../Shared/SoundBars'
 import { Star0 } from '../svg/Star0'
 import { Star1 } from '../svg/Star1'
 import { Star2 } from '../svg/Star2'
-import Database from 'tauri-plugin-sql-api'
+import Database from '@tauri-apps/plugin-sql'
 import { LIBRARY_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
 import dayjs from 'dayjs'
 

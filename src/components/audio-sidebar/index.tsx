@@ -3,9 +3,7 @@ import { StoreContext } from '~/routes/layout'
 import Player from './player'
 import Queue from './queue'
 
-interface IndexProps {}
-
-export default component$<IndexProps>(() => {
+export default component$(() => {
   const store = useContext(StoreContext)
 
   return (
