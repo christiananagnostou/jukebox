@@ -8,10 +8,11 @@ Guidance for automated coding agents working in this repo.
 - Frontend: Vite SSR dev server.
 - Node: 22.12.0+ (package.json engines).
 - Rust: 1.93+ (src-tauri/Cargo.toml rust-version).
+- Frontend lives in src/; Tauri backend in src-tauri/.
 
 ## Commands
 
-Install deps:
+Install dependencies:
 
 - npm install
 
@@ -66,7 +67,7 @@ Rust only:
 ## Code Style
 
 - Prettier is the formatter (.prettierrc, no semicolons, single quotes).
-- ESLint is configured via eslint.config.cjs.
+- ESLint is configured via eslint.config.cjs (ESLint 9 + typescript-eslint).
 - Keep changes small and focused; avoid large refactors.
 - Prefer ASCII unless the file already uses Unicode.
 
@@ -74,7 +75,7 @@ Rust only:
 
 - Use component$ and hooks from @builder.io/qwik.
 - Avoid async useComputed$ (deprecated). Use useTask$ or useResource$.
-- Prefer useVisibleTask$ for browser-only APIs.
+- Prefer useVisibleTask$ for browser-only logic.
 - Keep types explicit; strict mode is enabled.
 - Prefer type-only imports (eslint warns for consistency).
 
