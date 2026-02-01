@@ -15,7 +15,7 @@ fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> String {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .setup(|app| {
             let show = MenuItemBuilder::new("Show").id("tray_show").build(app)?;
             let hide = MenuItemBuilder::new("Hide").id("tray_hide").build(app)?;
@@ -83,14 +83,16 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
-        .run(tauri::generate_context!(), |app, event| {
-            #[cfg(target_os = "macos")]
-            if let RunEvent::Reopen { .. } = event {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Reopen { .. } = event {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
-        })
-        .expect("error while running tauri application");
+        }
+    });
 }
