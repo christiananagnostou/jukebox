@@ -15,7 +15,7 @@ concurrency:
 
 env:
   NODE_VERSION: 18
-  RUST_TOOLCHAIN: 1.70
+  RUST_TOOLCHAIN: '1.76'
 
 jobs:
   web:
@@ -57,6 +57,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
+            libsoup2.4-dev \
+            pkg-config \
             libssl-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
