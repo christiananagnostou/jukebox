@@ -10,6 +10,7 @@ import { organizeFiles } from '~/utils/Files'
 import { useStoragePage } from '~/hooks/useStoragePage'
 
 const RowHeight = 30
+const StatusBarHeight = 29
 
 export default component$(() => {
   const store = useContext(StoreContext)
@@ -31,7 +32,7 @@ export default component$(() => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
+      state.virtualListHeight = height - RowHeight * 2 - 28 - StatusBarHeight // 2 rows (col titles + footer)
       state.windowHeight = height
     }
     sizeVirtualList()

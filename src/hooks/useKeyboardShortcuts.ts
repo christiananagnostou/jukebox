@@ -42,6 +42,7 @@ export const KeyboardCommands = [
       { key: '⇧ O', command: 'Storage' },
       // { key: '⇧ P', command: 'Playlists' },
       { key: '⇧ M', command: 'Albums' },
+      { key: '⇧ S', command: 'Settings' },
     ],
   },
 
@@ -172,6 +173,9 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
 
       // Navigate to Albums Page
       if (key === 'M') nav('/albums')
+
+      // Navigate to Settings Page
+      if (key === 'S') nav('/settings')
 
       /**
        *

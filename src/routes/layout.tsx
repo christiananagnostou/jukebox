@@ -8,17 +8,20 @@ import {
   useTask$,
   useVisibleTask$,
 } from '@builder.io/qwik'
+import { invoke } from '@tauri-apps/api/core'
+import { audioDir } from '@tauri-apps/api/path'
+import Database from '@tauri-apps/plugin-sql'
 
 import type { Song, Store, StoreActions } from '~/App'
-import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
-import Nav from '~/components/nav'
-import Footer from '~/components/footer'
 import AudioSidebar from '~/components/audio-sidebar'
-import { StorageStore } from '~/hooks/useStoragePage'
 import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
+import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
+import { StorageStore } from '~/hooks/useStoragePage'
 import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
-import Database from '@tauri-apps/plugin-sql'
+import Footer from '~/components/footer'
+import Nav from '~/components/nav'
+import StatusBar from '~/components/status-bar'
 
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
@@ -28,13 +31,23 @@ export const LIBRARY_DB = 'sqlite:library.db'
 export default component$(() => {
   const store = useStore<Store>(
     {
-      audioDir: '',
       allSongs: [],
       filteredSongs: [],
       playlist: [],
       queue: [],
       sorting: 'default',
       searchTerm: '',
+      settings: {
+        closeOnX: false,
+        musicFolder: '',
+      },
+      sync: {
+        status: 'idle',
+        processed: 0,
+        total: 0,
+        lastRunAt: '',
+        message: '',
+      },
       ...LibraryStore,
       ...ArtistPageState,
       ...StorageStore,
@@ -67,11 +80,12 @@ export default component$(() => {
   })
 
   const audioActions = useAudioPlayer(store)
+  const storeActions: StoreActions = { ...audioActions, addSongInOrder }
   // Provide audio controls to the app
-  useContextProvider(StoreActionsContext, { ...audioActions, addSongInOrder })
+  useContextProvider(StoreActionsContext, storeActions)
 
   // Listen for Keyboard Shortcuts
-  useKeyboardShortcuts(store, { ...audioActions, addSongInOrder })
+  useKeyboardShortcuts(store, storeActions)
 
   /**
    *
@@ -79,9 +93,31 @@ export default component$(() => {
    *
    */
   useVisibleTask$(async () => {
+    try {
+      type RawSettings = { close_on_x: boolean; music_folder: string }
+      const rawSettings = await invoke<RawSettings>('get_settings')
+      const resolvedMusicFolder = rawSettings.music_folder || (await audioDir())
+      const resolvedSettings = {
+        closeOnX: rawSettings.close_on_x ?? false,
+        musicFolder: resolvedMusicFolder,
+      }
+      store.settings = resolvedSettings
+
+      if (rawSettings.music_folder !== resolvedMusicFolder || rawSettings.close_on_x !== resolvedSettings.closeOnX) {
+        await invoke('set_settings', {
+          settings: {
+            close_on_x: resolvedSettings.closeOnX,
+            music_folder: resolvedSettings.musicFolder,
+          },
+        })
+      }
+    } catch {
+      store.settings = { ...store.settings, musicFolder: await audioDir() }
+    }
+
     const db = await Database.load(LIBRARY_DB)
 
-    db.execute(`CREATE TABLE IF NOT EXISTS songs (
+    await db.execute(`CREATE TABLE IF NOT EXISTS songs (
          id TEXT PRIMARY KEY,
          path TEXT,
          file TEXT,
@@ -109,7 +145,7 @@ export default component$(() => {
 
     songs.forEach((song) => addSongInOrder(song))
 
-    db.close()
+    await db.close()
   })
 
   /**
@@ -227,11 +263,14 @@ export default component$(() => {
     <>
       <Nav />
 
+      <StatusBar />
+
       <main
         class="h-screen max-h-screen w-full flex flex-col realtive transition-[margin]"
         style={{
           marginLeft: 'var(--navbar-width)',
           marginRight: store.player.currSong ? 'var(--audio-sidebar-width)' : '0',
+          paddingTop: 'var(--status-bar-height)',
         }}
       >
         <AudioSidebar />

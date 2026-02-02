@@ -20,6 +20,7 @@ interface Albums {
 }
 
 type AlbumItem = [string, Album]
+const StatusBarHeight = 29
 
 export default component$(() => {
   const store = useContext(StoreContext)
@@ -40,7 +41,7 @@ export default component$(() => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - 29 - 29 - 30 - 16 // 29 for search and filters, 20 for app bar, 16 for top padding
+      state.virtualListHeight = height - 29 - 29 - 30 - 16 - StatusBarHeight // 29 for search and filters, 20 for app bar, 16 for top padding
       state.windowHeight = height
     }
     sizeVirtualList()

@@ -9,6 +9,7 @@ const Links = [
   { title: 'Artists', url: '/artists/', shortcut: 'A' },
   { title: 'Storage', url: '/storage/', shortcut: 'O' },
   { title: 'Albums', url: '/albums/', shortcut: 'M' },
+  { title: 'Settings', url: '/settings/', shortcut: 'S' },
 ]
 
 const NavItemStyles = {
@@ -47,8 +48,6 @@ export default component$(() => {
           Shortcuts
           <span class={NavItemStyles.icon}>?</span>
         </button>
-
-        <p class={NavItemStyles.button + ` text-slate-400 text-sm`}>{store.allSongs.length} songs</p>
       </nav>
 
       {store.showKeyShortcuts && <ShortcutsModal />}
