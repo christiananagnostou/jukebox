@@ -8,6 +8,7 @@ import { ArrowUp } from '~/components/svg/ArrowUp'
 import { StoreContext } from '../../routes/layout'
 
 const RowHeight = 30
+const StatusBarHeight = 29
 const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
 
 const ButtonConfigs = [
@@ -55,7 +56,7 @@ export default component$(() => {
     const sizeVirtualList = async () => {
       const factor = await appWindow.scaleFactor()
       const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
+      state.virtualListHeight = height - RowHeight * 2 - 28 - StatusBarHeight // 2 rows (col titles + footer)
       state.windowHeight = height
     }
     sizeVirtualList()
