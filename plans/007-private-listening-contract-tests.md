@@ -75,7 +75,7 @@ Change candidate selection so an existing but failing, timed-out, or unparsable 
 
 ### Step 3: Characterize start and stop orchestration
 
-Using the fake runner, assert exact command arguments and postcondition inspection for a dedicated endpoint. Cover selection of 8443 when 443 belongs to Coach, refusal to remove a shared path or named service, command timeout, command non-zero exit, and a successful command whose follow-up status does not show the requested state. Preserve the rule that tests never run `tailscale serve` for real.
+Using the fake runner, assert exact command arguments and postcondition inspection for a dedicated endpoint. Cover selection of 8443 when 443 belongs to another application, refusal to remove a shared path or named service, command timeout, command non-zero exit, and a successful command whose follow-up status does not show the requested state. Preserve the rule that tests never run `tailscale serve` for real.
 
 **Verify**: `cd src-tauri && cargo test --locked tailscale` → orchestration tests pass and the fake runner records no unexpected calls.
 
@@ -115,4 +115,4 @@ Run every command in the commands table. Then inspect `git status --short` and c
 
 ## Maintenance notes
 
-Keep the command seam local to Tailscale. Reviewers should scrutinize argv, timeout handling, and proof that stop cannot affect Coach or any other endpoint. Plan 006 mobile/API additions must extend the router fixture rather than reverting to helper-only tests.
+Keep the command seam local to Tailscale. Reviewers should scrutinize argv, timeout handling, and proof that stop cannot affect any other endpoint. Plan 006 mobile/API additions must extend the router fixture rather than reverting to helper-only tests.
