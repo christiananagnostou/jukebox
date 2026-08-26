@@ -7,10 +7,12 @@ use tauri::Manager;
 const SETTINGS_FILE: &str = "settings.json";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub close_on_x: bool,
     pub music_folder: String,
+    pub remote_access_enabled: bool,
 }
 
 pub struct AppState {
@@ -31,7 +33,7 @@ pub fn load_settings(app: &tauri::AppHandle) -> AppSettings {
         .unwrap_or_default()
 }
 
-fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
+pub(crate) fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
     let path = settings_path(app)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -39,6 +41,22 @@ fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), S
 
     let contents = serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?;
     fs::write(path, contents).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn older_settings_default_new_fields() {
+        let settings: AppSettings =
+            serde_json::from_str(r#"{"closeOnX":true,"musicFolder":"/Music"}"#)
+                .expect("deserialize older settings");
+
+        assert!(settings.close_on_x);
+        assert_eq!(settings.music_folder, "/Music");
+        assert!(!settings.remote_access_enabled);
+    }
 }
 
 #[tauri::command]

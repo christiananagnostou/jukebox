@@ -64,6 +64,15 @@ export interface Store {
 export interface Settings {
   closeOnX: boolean
   musicFolder: string
+  remoteAccessEnabled: boolean
+}
+
+export interface RemoteAccessStatus {
+  enabled: boolean
+  error?: string
+  port: number
+  running: boolean
+  url: string
 }
 
 export interface SyncState {
