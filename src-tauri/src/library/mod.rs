@@ -30,9 +30,7 @@ impl LibraryState {
             .filename(path)
             .create_if_missing(true)
             .busy_timeout(Duration::from_secs(5));
-        let pool = SqlitePoolOptions::new()
-            .max_connections(4)
-            .connect_lazy_with(options);
+        let pool = open_pool(options)?;
         Ok(Self::from_pool(pool))
     }
 
@@ -54,6 +52,15 @@ impl LibraryState {
             .clone()?;
         self.repository.query_tracks(query).await
     }
+}
+
+fn open_pool(options: SqliteConnectOptions) -> Result<SqlitePool, String> {
+    tauri::async_runtime::block_on(
+        SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(options),
+    )
+    .map_err(|_| "Could not open the Jukebox library database.".to_owned())
 }
 
 #[tauri::command]
@@ -94,6 +101,24 @@ mod tests {
                 .await
                 .expect("inspect initialized schema");
             assert_eq!(revision_rows, 1);
+        });
+    }
+
+    #[test]
+    fn pool_opening_enters_the_tauri_runtime() {
+        let directory = tempfile::tempdir().expect("create fixture directory");
+        let options = SqliteConnectOptions::new()
+            .filename(directory.path().join("library.db"))
+            .create_if_missing(true);
+
+        let pool = open_pool(options).expect("open pool outside a caller Tokio context");
+        tauri::async_runtime::block_on(async {
+            let value: i64 = sqlx::query_scalar("SELECT 1")
+                .fetch_one(&pool)
+                .await
+                .expect("query opened pool");
+            assert_eq!(value, 1);
+            pool.close().await;
         });
     }
 }
