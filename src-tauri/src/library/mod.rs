@@ -129,6 +129,14 @@ impl LibraryState {
         self.reconciliation.get(scan_id).await
     }
 
+    pub async fn apply_library_reconciliation(
+        &self,
+        scan_id: i64,
+    ) -> Result<LibraryReconciliation, LibraryError> {
+        self.ensure_initialized().await?;
+        self.reconciliation.apply(scan_id).await
+    }
+
     async fn ensure_initialized(&self) -> Result<(), LibraryError> {
         self.initialized
             .get_or_init(|| async {
@@ -230,6 +238,14 @@ pub async fn get_library_reconciliation(
     scan_id: i64,
 ) -> Result<LibraryReconciliation, LibraryError> {
     library.get_library_reconciliation(scan_id).await
+}
+
+#[tauri::command]
+pub async fn apply_library_reconciliation(
+    library: tauri::State<'_, LibraryState>,
+    scan_id: i64,
+) -> Result<LibraryReconciliation, LibraryError> {
+    library.apply_library_reconciliation(scan_id).await
 }
 
 #[cfg(test)]

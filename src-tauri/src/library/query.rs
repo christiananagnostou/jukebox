@@ -177,6 +177,21 @@ impl LibraryError {
         }
     }
 
+    pub(crate) fn reconciliation_not_ready() -> Self {
+        Self {
+            code: "library_reconciliation_not_ready".to_owned(),
+            message: "That library snapshot is not ready to apply.".to_owned(),
+        }
+    }
+
+    pub(crate) fn identity_collision() -> Self {
+        Self {
+            code: "library_identity_collision".to_owned(),
+            message: "Jukebox could not safely assign an identity to a discovered track."
+                .to_owned(),
+        }
+    }
+
     pub(crate) fn stale_cursor() -> Self {
         Self {
             code: "stale_cursor".to_owned(),
