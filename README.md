@@ -1,76 +1,52 @@
-# 🎵 Jukebox 🎵
+# Jukebox
 
-Jukebox is a music player desktop application capable of managing your precious digital music library. It provides a sleek and intuitive interface for users to manage and play their music collection. Jukebox offers a seamless music playback experience with a host of features to support audiophiles and chill listeners alike.
+Jukebox is a compact desktop music player for local libraries. It is built with Tauri v2, Qwik, TypeScript, and Rust.
 
 ## Features
 
-- [x] Cross-platform - Windows, MacOS, and Linux
-- [x] Bulk Music Import
-- [x] Music playback
-- [x] Dedicated pages for tracks, artists, and albums
-- [x] Advanced Search
-- [x] Keyboard Shortcuts
-- [ ] Playlists
-- [ ] Remote Library Connection
-- [ ] Audio visualization
+- Recursive folder and drag-and-drop import for common audio formats
+- Track, artist, album, and folder views
+- Search, deterministic sorting, favorites, queueing, and keyboard shortcuts
+- Persistent library catalog, album-art cache, and app settings
+- Missing-file cleanup and manual library rescans
+- System tray playback behavior
 
-## Installation
+## Requirements
 
-To install and run Jukebox locally, follow these steps:
+- Node.js 22.12 or newer
+- Rust 1.93 or newer
+- Platform dependencies required by [Tauri v2](https://v2.tauri.app/start/prerequisites/)
 
-1. Clone the repository:
+## Development
 
-```
-git clone https://github.com/ChristianAnagnostou/jukebox.git
-```
-
-2. Navigate to the project directory:
-
-```
+```sh
+git clone https://github.com/christiananagnostou/jukebox.git
 cd jukebox
-```
-
-3. Install the required node dependencies:
-
-```
 npm install
-```
-
-5. Start the Tauri application for development or production:
-
-```
 npm run tauri dev
 ```
 
+Useful checks:
+
+```sh
+npm test -- --run
+npm run lint
+npm run build.types
+npm run build
+npm run fmt.check
+cd src-tauri && cargo check --locked && cargo fmt --all -- --check
 ```
+
+Build a desktop bundle with:
+
+```sh
 npm run tauri build
 ```
 
-Now you should have Jukebox up and running on your local machine.
+## Local data
 
-## Configuration
-
-Jukebox can be configured in JSON from the `~/Library/Application\ Support/Jukebox`(on Mac) directory. You can customize settings such as the music library path, theme, and default audio output.
-
-## Contributing
-
-Contributions to Jukebox are welcome! If you want to contribute to the project, please follow these steps:
-
-1. Fork the repository on GitHub.
-2. Create a new branch from the `master` branch.
-3. Make your changes and commit them with descriptive messages.
-4. Push your changes to your forked repository.
-5. Submit a pull request to the `master` branch of the original repository.
-
-Please ensure that your contributions align with the project's coding style.
+Jukebox stores its SQLite catalog, settings, and cached album art in the platform-specific application data directory. The Settings page controls close-on-X behavior and the default music folder, and provides scan and cleanup actions.
 
 ## License
 
-Jukebox is licensed under the [GNU General Public License v3.0](LICENSE). Feel free to modify and distribute the application as per the terms of the license.
-
-## Acknowledgments
-
-Jukebox is built using the following open-source libraries and frameworks:
-
-- [Tauri](https://tauri.app/): A framework for creating lightweight and secure desktop applications using web technologies.
-- [Qwik](https://qwik.dev/): A fast and efficient framework for building web applications using Typescript and server-side rendering.
+Jukebox is licensed under the [GNU General Public License v3.0](LICENSE).

@@ -7,8 +7,10 @@ import {
   useTask$,
   useVisibleTask$,
 } from '@builder.io/qwik'
+import { invoke } from '@tauri-apps/api/core'
+import { audioDir } from '@tauri-apps/api/path'
 
-import type { Store, StoreActions } from '~/App'
+import type { Settings, Store, StoreActions } from '~/App'
 import { loadLibrarySongs } from '~/services/library-db'
 import { filterAndSortSongs } from '~/utils/Songs'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
@@ -26,13 +28,23 @@ export const StoreActionsContext = createContextId<StoreActions>('store-actions-
 export default component$(() => {
   const store = useStore<Store>(
     {
-      audioDir: '',
       allSongs: [],
       filteredSongs: [],
       playlist: [],
       queue: [],
       sorting: 'default',
       searchTerm: '',
+      settings: {
+        closeOnX: false,
+        musicFolder: '',
+      },
+      sync: {
+        status: 'idle',
+        processed: 0,
+        total: 0,
+        lastRunAt: '',
+        message: '',
+      },
       ...LibraryStore,
       ...ArtistPageState,
       ...StorageStore,
@@ -51,7 +63,19 @@ export default component$(() => {
   useKeyboardShortcuts(store, storeActions)
 
   useVisibleTask$(async () => {
-    store.allSongs = await loadLibrarySongs()
+    const [songs, savedSettings] = await Promise.all([
+      loadLibrarySongs(),
+      invoke<Settings>('get_settings').catch(() => ({ closeOnX: false, musicFolder: '' })),
+    ])
+
+    store.allSongs = songs
+    if (!savedSettings.musicFolder) {
+      savedSettings.musicFolder = await audioDir().catch(() => '')
+      if (savedSettings.musicFolder) {
+        await invoke<Settings>('set_settings', { settings: savedSettings }).catch(() => undefined)
+      }
+    }
+    store.settings = savedSettings
   })
 
   useTask$(({ track }) => {

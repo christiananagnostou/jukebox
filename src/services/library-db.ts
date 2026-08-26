@@ -142,3 +142,30 @@ export async function updateFavoriteRating(id: string, rating: Song['favorRating
     await db.close()
   }
 }
+
+export async function deleteSongs(ids: string[]): Promise<void> {
+  if (!ids.length) return
+
+  const db = await Database.load(LIBRARY_DB)
+
+  try {
+    for (let start = 0; start < ids.length; start += 200) {
+      const chunk = ids.slice(start, start + 200)
+      const placeholders = chunk.map((_, index) => `$${index + 1}`).join(', ')
+      await db.execute(`DELETE FROM songs WHERE id IN (${placeholders})`, chunk)
+    }
+  } finally {
+    await db.close()
+  }
+}
+
+export async function clearLibrarySongs(): Promise<void> {
+  const db = await Database.load(LIBRARY_DB)
+
+  try {
+    await db.execute(CREATE_SONGS_TABLE)
+    await db.execute('DELETE FROM songs')
+  } finally {
+    await db.close()
+  }
+}

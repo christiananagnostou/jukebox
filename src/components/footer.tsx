@@ -37,6 +37,14 @@ export default component$(() => {
     store.storageView.cursorIdx = 0
   })
 
+  const progress = store.sync.total ? ` ${store.sync.processed}/${store.sync.total}` : ''
+  const syncStatus =
+    store.sync.status === 'idle'
+      ? ''
+      : store.sync.status === 'error'
+        ? store.sync.message || 'Library operation failed'
+        : `${store.sync.status === 'scanning' ? 'Scanning' : 'Importing'}${progress}`
+
   return (
     <footer
       class="w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg-solid)]"
@@ -57,6 +65,9 @@ export default component$(() => {
         onFocus$={() => (store.isTyping = true)}
         class="bg-inherit h-full flex-1 px-2 text-sm placeholder:text-slate-600 focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)] focus:outline-none"
       />
+      <span class="max-w-72 truncate px-2 text-xs text-slate-500" aria-live="polite">
+        {syncStatus || `${store.allSongs.length} songs`}
+      </span>
     </footer>
   )
 })

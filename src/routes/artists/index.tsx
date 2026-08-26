@@ -83,7 +83,6 @@ export default component$(() => {
         </button>
       </div>
 
-      {/* Artists */}
       <div class="min-h-0 flex-1 grid grid-cols-[1fr_1fr_1fr]">
         <div class="min-h-0">
           <VirtualList
@@ -121,7 +120,6 @@ export default component$(() => {
           />
         </div>
 
-        {/* Albums */}
         <div class="min-h-0 border-l border-gray-700">
           <VirtualList
             itemHeight={RowHeight}
@@ -157,7 +155,6 @@ export default component$(() => {
           />
         </div>
 
-        {/* Songs */}
         <div class="min-h-0 border-l border-gray-700">
           <VirtualList
             itemHeight={RowHeight}
