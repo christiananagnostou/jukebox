@@ -4,30 +4,6 @@ import type { Song } from '~/App'
 
 export const LIBRARY_DB = 'sqlite:library.db'
 
-const CREATE_SONGS_TABLE = `CREATE TABLE IF NOT EXISTS songs (
-  id TEXT PRIMARY KEY,
-  path TEXT NOT NULL,
-  file TEXT NOT NULL,
-  title TEXT NOT NULL,
-  album TEXT NOT NULL,
-  artist TEXT NOT NULL,
-  genre TEXT NOT NULL,
-  bpm INTEGER NOT NULL,
-  compilation INTEGER NOT NULL,
-  date TEXT NOT NULL,
-  encoder TEXT NOT NULL,
-  trackTotal INTEGER NOT NULL,
-  trackNumber INTEGER NOT NULL,
-  codec TEXT NOT NULL,
-  duration TEXT NOT NULL,
-  sampleRate TEXT NOT NULL,
-  side INTEGER NOT NULL,
-  startTime INTEGER NOT NULL,
-  favorRating INTEGER NOT NULL CHECK (favorRating IN (0, 1, 2)),
-  dateAdded TEXT NOT NULL,
-  visualsPath TEXT NOT NULL
-)`
-
 const SONG_COLUMNS = [
   'id',
   'path',
@@ -102,7 +78,6 @@ export async function loadLibrarySongs(): Promise<Song[]> {
   const db = await Database.load(LIBRARY_DB)
 
   try {
-    await db.execute(CREATE_SONGS_TABLE)
     return await db.select<Song[]>('SELECT * FROM songs')
   } finally {
     await db.close()
@@ -163,7 +138,6 @@ export async function clearLibrarySongs(): Promise<void> {
   const db = await Database.load(LIBRARY_DB)
 
   try {
-    await db.execute(CREATE_SONGS_TABLE)
     await db.execute('DELETE FROM songs')
   } finally {
     await db.close()
