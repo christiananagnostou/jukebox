@@ -75,6 +75,22 @@ pub(crate) async fn list_library_roots(
     .collect()
 }
 
+pub(crate) async fn get_library_root(
+    pool: &SqlitePool,
+    id: i64,
+) -> Result<LibraryRoot, LibraryError> {
+    let row = sqlx::query(
+        "SELECT id, path, enabled, watch_status, created_at, last_scan_at
+         FROM library_roots WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| LibraryError::database())?
+    .ok_or_else(LibraryError::root_not_found)?;
+    root_from_row(&row)
+}
+
 pub(crate) async fn set_library_root_enabled(
     pool: &SqlitePool,
     id: i64,

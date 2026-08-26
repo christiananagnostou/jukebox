@@ -19,7 +19,6 @@ use std::sync::RwLock;
 use tauri::command;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-#[cfg(target_os = "macos")]
 use tauri::RunEvent;
 use tauri::{Manager, WindowEvent};
 
@@ -59,7 +58,13 @@ fn main() {
                 settings_warning: RwLock::new(settings_snapshot.warning),
             });
             let library = LibraryState::new(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(library);
+            app.manage(library.clone());
+            let watcher_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = library.recover_library_watchers(watcher_app).await {
+                    eprintln!("library watchers failed to start: {}", error.code);
+                }
+            });
 
             let remote_access = RemoteAccessState::default();
             app.manage(remote_access.clone());
@@ -167,16 +172,23 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    #[cfg(target_os = "macos")]
     app.run(|app_handle, event| {
-        if let RunEvent::Reopen { .. } = event {
+        #[cfg(target_os = "macos")]
+        if matches!(event, RunEvent::Reopen { .. }) {
             with_main_window(app_handle, |window| {
                 let _ = window.show();
                 let _ = window.set_focus();
             });
         }
-    });
 
-    #[cfg(not(target_os = "macos"))]
-    app.run(|_, _| {});
+        if matches!(event, RunEvent::Resumed) {
+            let library = app_handle.state::<LibraryState>().inner().clone();
+            let watcher_app = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = library.recover_library_watchers(watcher_app).await {
+                    eprintln!("library watchers failed to recover: {}", error.code);
+                }
+            });
+        }
+    });
 }

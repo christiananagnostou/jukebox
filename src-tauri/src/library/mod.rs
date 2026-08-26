@@ -4,6 +4,7 @@ mod refresh;
 mod repository;
 mod roots;
 mod scanner;
+mod watcher;
 
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
@@ -26,6 +27,7 @@ pub struct LibraryState {
     repository: LibraryRepository,
     reconciliation: reconciliation::ReconciliationService,
     scanner: scanner::ScannerService,
+    watchers: watcher::WatcherService,
 }
 
 impl LibraryState {
@@ -52,6 +54,7 @@ impl LibraryState {
             repository: LibraryRepository::new(pool.clone()),
             reconciliation: reconciliation::ReconciliationService::new(pool.clone()),
             scanner: scanner::ScannerService::new(pool),
+            watchers: watcher::WatcherService::default(),
         }
     }
 
@@ -78,6 +81,11 @@ impl LibraryState {
     pub async fn list_library_roots(&self) -> Result<Vec<LibraryRoot>, LibraryError> {
         self.ensure_initialized().await?;
         roots::list_library_roots(&self.repository.pool()).await
+    }
+
+    pub(crate) async fn get_library_root(&self, id: i64) -> Result<LibraryRoot, LibraryError> {
+        self.ensure_initialized().await?;
+        roots::get_library_root(&self.repository.pool(), id).await
     }
 
     pub async fn set_library_root_enabled(
@@ -173,9 +181,14 @@ pub async fn query_tracks(
 #[tauri::command]
 pub async fn add_library_root(
     library: tauri::State<'_, LibraryState>,
+    app: tauri::AppHandle,
     path: String,
 ) -> Result<LibraryRoot, LibraryError> {
-    library.add_library_root(path).await
+    let root = library.add_library_root(path).await?;
+    library
+        .sync_library_root_watcher(root.id, app, true)
+        .await?;
+    library.get_library_root(root.id).await
 }
 
 #[tauri::command]
@@ -188,10 +201,13 @@ pub async fn list_library_roots(
 #[tauri::command]
 pub async fn set_library_root_enabled(
     library: tauri::State<'_, LibraryState>,
+    app: tauri::AppHandle,
     id: i64,
     enabled: bool,
 ) -> Result<LibraryRoot, LibraryError> {
-    library.set_library_root_enabled(id, enabled).await
+    library.set_library_root_enabled(id, enabled).await?;
+    library.sync_library_root_watcher(id, app, enabled).await?;
+    library.get_library_root(id).await
 }
 
 #[tauri::command]
