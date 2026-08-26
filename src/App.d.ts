@@ -96,16 +96,13 @@ export interface Song {
 }
 
 export interface Metadata {
+  id: string
   codec: string
   duration: string
-  sample_rate: string
-  path_name: string
-  file_name: string
-  file_size: number
+  sample_rate: number
   meta_tags: { [key: string]: string }
   visual_info: {
     media_type: string
-    media_data: number[]
     image_path: string
   }
 }
@@ -128,8 +125,6 @@ export interface StoreActions {
   resumeSong: QRL<() => void>
   nextSong: QRL<() => void>
   prevSong: QRL<() => void>
-
-  addSongInOrder: QRL<(song: Song) => void>
 }
 
 export interface FileNode {

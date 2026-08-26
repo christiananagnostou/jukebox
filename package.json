@@ -14,6 +14,7 @@
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",
     "lint": "eslint \"src/**/*.ts*\"",
+    "test": "vitest run",
     "tauri": "tauri"
   },
   "devDependencies": {
@@ -22,7 +23,6 @@
     "@tauri-apps/cli": "^2.11.4",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/eslint": "^9.6.1",
-    "@types/md5": "^2.3.6",
     "@types/node": "^22.18.0",
     "@typescript-eslint/eslint-plugin": "8.68.0",
     "@typescript-eslint/parser": "8.68.0",
@@ -35,14 +35,14 @@
     "typescript": "5.9.3",
     "typescript-eslint": "^8.68.0",
     "vite": "^7.3.6",
-    "vite-tsconfig-paths": "^6.1.1"
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-sql": "^2.4.0",
-    "dayjs": "^1.11.23",
-    "md5": "^2.3.0"
+    "dayjs": "^1.11.23"
   }
 }

@@ -1,5 +1,4 @@
 import {
-  $,
   component$,
   createContextId,
   Slot,
@@ -9,7 +8,9 @@ import {
   useVisibleTask$,
 } from '@builder.io/qwik'
 
-import type { Song, Store, StoreActions } from '~/App'
+import type { Store, StoreActions } from '~/App'
+import { loadLibrarySongs } from '~/services/library-db'
+import { compareSongsByAlbumTrack } from '~/utils/Songs'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
 import Nav from '~/components/nav'
 import Footer from '~/components/footer'
@@ -18,12 +19,9 @@ import { StorageStore } from '~/hooks/useStoragePage'
 import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
 import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
-import Database from '@tauri-apps/plugin-sql'
 
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
-
-export const LIBRARY_DB = 'sqlite:library.db'
 
 export default component$(() => {
   const store = useStore<Store>(
@@ -46,32 +44,11 @@ export default component$(() => {
   )
   useContextProvider(StoreContext, store)
 
-  const addSongInOrder = $((song: Song) => {
-    // Find the index to insert the new song
-    let insertIndex = 0
-    while (insertIndex < store.allSongs.length && store.allSongs[insertIndex].album < song.album) {
-      insertIndex++
-    }
-
-    // Find the correct position within the album
-    while (
-      insertIndex < store.allSongs.length &&
-      store.allSongs[insertIndex].album === song.album &&
-      store.allSongs[insertIndex].trackNumber < song.trackNumber
-    ) {
-      insertIndex++
-    }
-
-    // Insert the new song at the determined index
-    store.allSongs.splice(insertIndex, 0, song)
-  })
-
   const audioActions = useAudioPlayer(store)
-  // Provide audio controls to the app
-  useContextProvider(StoreActionsContext, { ...audioActions, addSongInOrder })
+  const storeActions: StoreActions = audioActions
+  useContextProvider(StoreActionsContext, storeActions)
 
-  // Listen for Keyboard Shortcuts
-  useKeyboardShortcuts(store, { ...audioActions, addSongInOrder })
+  useKeyboardShortcuts(store, storeActions)
 
   /**
    *
@@ -79,37 +56,7 @@ export default component$(() => {
    *
    */
   useVisibleTask$(async () => {
-    const db = await Database.load(LIBRARY_DB)
-
-    db.execute(`CREATE TABLE IF NOT EXISTS songs (
-         id TEXT PRIMARY KEY,
-         path TEXT,
-         file TEXT,
-         title TEXT,
-         album TEXT,
-         artist TEXT,
-         genre TEXT,
-         bpm INTEGER,
-         compilation INTEGER,
-         date TEXT,
-         encoder TEXT,
-         trackTotal INTEGER,
-         trackNumber INTEGER,
-         codec TEXT,
-         duration TEXT,
-         sampleRate TEXT,
-         side INTEGER,
-         startTime INTEGER,
-         favorRating INTEGER CHECK (favorRating IN (0, 1, 2)),
-         dateAdded TEXT,
-         visualsPath TEXT
-     )`)
-
-    const songs = (await db.select('SELECT * from songs')) as Song[]
-
-    songs.forEach((song) => addSongInOrder(song))
-
-    db.close()
+    store.allSongs = (await loadLibrarySongs()).sort(compareSongsByAlbumTrack)
   })
 
   /**

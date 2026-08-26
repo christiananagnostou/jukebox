@@ -4,8 +4,8 @@ import { SoundBars } from '../Shared/SoundBars'
 import { Star0 } from '../svg/Star0'
 import { Star1 } from '../svg/Star1'
 import { Star2 } from '../svg/Star2'
-import Database from '@tauri-apps/plugin-sql'
-import { LIBRARY_DB, StoreActionsContext, StoreContext } from '~/routes/layout'
+import { StoreActionsContext, StoreContext } from '~/routes/layout'
+import { updateFavoriteRating } from '~/services/library-db'
 import dayjs from 'dayjs'
 
 export interface LibraryRowProps {
@@ -32,9 +32,8 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
 
   // Update favor rating
   const handleFavorClick = $(async (rating: Song['favorRating']) => {
+    await updateFavoriteRating(song.id, rating)
     song.favorRating = rating
-    const db = await Database.load(LIBRARY_DB)
-    db.execute('UPDATE songs SET favorRating = $1 WHERE id = $2', [rating, song.id])
   })
 
   const ratingsWithStars: { rating: Song['favorRating']; star: any }[] = [
