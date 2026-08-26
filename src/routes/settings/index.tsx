@@ -296,8 +296,8 @@ export default component$(() => {
                       </code>
                     )}
                     <p>
-                      Jukebox has its own private HTTPS address, so it can stay installed separately from Coach. Open
-                      the address in Safari, then use Share → Add to Home Screen.
+                      Jukebox has its own private HTTPS address, so it can stay installed separately from other web
+                      apps. Open the address in Safari, then use Share → Add to Home Screen.
                     </p>
                     {state.tailscale.serveManaged ? (
                       <button class={BUTTON_CLASS} disabled={Boolean(state.tailscaleAction)} onClick$={stopTailscale}>
@@ -316,8 +316,8 @@ export default component$(() => {
                     ) : state.tailscale.recommendedHttpsPort ? (
                       <>
                         <p>
-                          Jukebox will use its own HTTPS port ({state.tailscale.recommendedHttpsPort}). Coach and other
-                          Tailscale apps keep their current ports and routes.
+                          Jukebox will use its own HTTPS port ({state.tailscale.recommendedHttpsPort}). Other Tailscale
+                          apps keep their current ports and routes.
                         </p>
                         <button
                           class={BUTTON_CLASS}

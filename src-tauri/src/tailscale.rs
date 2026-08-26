@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::process::Command;
 
 const JUKEBOX_PORT: &str = "45321";
-// Keep the default HTTPS port available for an existing primary app such as Coach.
+// Keep the default HTTPS port available for an existing primary Serve endpoint.
 const HTTPS_PORT_CANDIDATES: [u16; 4] = [8443, 9443, 10_443, 443];
 const STATUS_COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
 const MUTATION_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
@@ -692,7 +692,7 @@ mod tests {
                     "Web": {
                         "apps.tailnet.ts.net:443": {
                             "Handlers": {
-                                "/coach": { "Proxy": "http://127.0.0.1:3000" },
+                                "/existing-app": { "Proxy": "http://127.0.0.1:3000" },
                                 "/jukebox": { "Proxy": "http://127.0.0.1:45321" }
                             }
                         }
@@ -785,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn chooses_a_free_port_without_replacing_coach() {
+    fn chooses_a_free_port_without_replacing_an_existing_app() {
         let status = serde_json::json!({
             "TCP": {
                 "443": { "HTTPS": true }
@@ -820,7 +820,7 @@ mod tests {
                     "Web": {
                         "apps.tailnet.ts.net:443": {
                             "Handlers": {
-                                "/coach": { "Proxy": "http://127.0.0.1:3000" },
+                                "/existing-app": { "Proxy": "http://127.0.0.1:3000" },
                                 "/jukebox": { "Proxy": "http://localhost:45321" }
                             }
                         }
