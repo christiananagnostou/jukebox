@@ -1,7 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { $, noSerialize, useSignal, useTask$, useVisibleTask$, type NoSerialize } from '@builder.io/qwik'
 
-import type { AggregateCatalogState, AlbumSummary, ArtistSummary, LibraryCatalogState, Song, Store } from '~/App'
+import type {
+  AggregateCatalogState,
+  AlbumSummary,
+  ArtistSummary,
+  LibraryCatalogState,
+  Song,
+  StorageNode,
+  Store,
+} from '~/App'
 
 export type { AggregateCatalogState, AlbumSummary, ArtistSummary } from '~/App'
 
@@ -19,7 +27,9 @@ export interface TrackQuery {
   cursor?: string
   direction: 'asc' | 'desc'
   limit: number
+  pathPrefix?: string
   q: string
+  rootId?: number
   sort: NativeTrackSort
 }
 
@@ -35,6 +45,15 @@ export interface AggregatePage<Item> {
   items: Item[]
   revision: number
   total: number
+}
+
+export interface StorageQuery {
+  direction: 'asc' | 'desc'
+  limit: number
+  offset: number
+  parent: string
+  q: string
+  rootId?: number
 }
 
 interface NativeTrackSummary {
@@ -72,6 +91,7 @@ export interface TrackPage {
 
 export type TrackPageFetcher = (query: TrackQuery) => Promise<TrackPage>
 export type AggregatePageFetcher<Item> = (query: AggregateQuery) => Promise<AggregatePage<Item>>
+export type StoragePageFetcher = (query: StorageQuery) => Promise<AggregatePage<StorageNode>>
 
 function toSong(track: NativeTrackSummary): Song {
   return {
@@ -97,18 +117,29 @@ export function queryAlbums(query: AggregateQuery): Promise<AggregatePage<AlbumS
   return invoke('query_albums', { query })
 }
 
-export class AggregatePager<Item> {
+export function queryStorage(query: StorageQuery): Promise<AggregatePage<StorageNode>> {
+  return invoke('query_storage', { query })
+}
+
+interface OffsetQuery {
+  limit: number
+  offset: number
+}
+
+type OffsetPageFetcher<Item, Query extends OffsetQuery> = (query: Query) => Promise<AggregatePage<Item>>
+
+export class OffsetPager<Item, Query extends OffsetQuery> {
   private generation = 0
-  private query: Omit<AggregateQuery, 'limit' | 'offset'> = { direction: 'asc', q: '' }
+  private query?: Omit<Query, 'limit' | 'offset'>
   private queryKey = ''
   private queue = Promise.resolve()
 
   constructor(
     private readonly state: AggregateCatalogState<Item>,
-    private readonly fetchPage: AggregatePageFetcher<Item>
+    private readonly fetchPage: OffsetPageFetcher<Item, Query>
   ) {}
 
-  reset(query: Omit<AggregateQuery, 'limit' | 'offset'>): Promise<void> {
+  reset(query: Omit<Query, 'limit' | 'offset'>): Promise<void> {
     const queryKey = JSON.stringify(query)
     if (queryKey === this.queryKey && this.state.status !== 'error') return this.queue
     this.query = query
@@ -117,6 +148,7 @@ export class AggregatePager<Item> {
   }
 
   reload(): Promise<void> {
+    if (!this.query) return Promise.resolve()
     this.queryKey = ''
     return this.reset(this.query)
   }
@@ -143,6 +175,7 @@ export class AggregatePager<Item> {
   }
 
   private async loadRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    if (!this.query) return
     try {
       for (let pageIndex = startPage; pageIndex <= endPage; pageIndex += 1) {
         if (generation !== this.generation) return
@@ -151,7 +184,7 @@ export class AggregatePager<Item> {
           ...this.query,
           limit: AGGREGATE_PAGE_SIZE,
           offset: pageIndex * AGGREGATE_PAGE_SIZE,
-        })
+        } as Query)
         if (generation !== this.generation) return
         if (this.state.revision && page.revision !== this.state.revision) {
           await this.loadRange(0, 0, this.beginQuery())
@@ -196,10 +229,16 @@ export class AggregatePager<Item> {
   }
 }
 
+export class AggregatePager<Item> extends OffsetPager<Item, AggregateQuery> {}
+
+export class StoragePager extends OffsetPager<StorageNode, StorageQuery> {}
+
 export function aggregateItemAt<Item>(state: AggregateCatalogState<Item>, index: number): Item | undefined {
   const pageIndex = Math.floor(index / AGGREGATE_PAGE_SIZE)
   return state.pages[String(pageIndex)]?.[index % AGGREGATE_PAGE_SIZE]
 }
+
+export const storageNodeAt = aggregateItemAt<StorageNode>
 
 export function catalogQuery(searchTerm: string, sorting: Store['sorting']): Omit<TrackQuery, 'cursor' | 'limit'> {
   if (sorting === 'default') return { direction: 'asc', q: searchTerm, sort: 'default' }

@@ -1,62 +1,80 @@
-import type { FileNode, PathIndexMap, Song, Store, StoreActions } from '~/App'
+import type { StorageNode, Store, StoreActions } from '~/App'
 import { $ } from '@builder.io/qwik'
-import { organizeFiles } from '~/utils/Files'
+
+import { loadTrackSelection } from '~/services/library-client'
 
 export const StorageStore = {
   storageView: {
     cursorIdx: 0,
-    rootFile: organizeFiles([]),
-    pathIndexMap: {},
-    nodeCount: 0,
+    nodes: { error: '', pages: {}, revision: 0, status: 'loading', total: 0 },
+    parent: '',
+    rootDisplayPath: '',
+    rootId: null,
+    rootName: '',
   },
+} satisfies Pick<Store, 'storageView'>
+
+export function useStoragePlayNode(store: Store, storeActions: StoreActions) {
+  return $(async (node?: StorageNode) => {
+    if (!node) return
+    try {
+      const songs = await loadTrackSelection({
+        direction: 'asc',
+        pathPrefix: node.relativePath || undefined,
+        q: store.searchTerm,
+        rootId: node.rootId,
+        sort: 'default',
+      })
+      if (!songs.length) return
+      store.playlist = songs
+      storeActions.playSong(songs[0], 0)
+      store.bootstrap.libraryError = ''
+    } catch {
+      store.bootstrap.libraryError = 'Jukebox could not prepare that storage selection for playback.'
+    }
+  })
 }
 
-export function useStoragePage(store: Store, storeActions: StoreActions) {
-  const countAndMapFiles = $((rootFile: FileNode) => {
-    let nodeCount = 0
-    const pathIndexMap: PathIndexMap = {}
-
-    const mapChildren = (file: FileNode, isParentClosed = false) => {
-      if (!isParentClosed) pathIndexMap[nodeCount++] = file
-      file.children.forEach((child) => mapChildren(child, file.isClosed || isParentClosed))
+export function useStorageOpenNode(store: Store) {
+  return $((node?: StorageNode) => {
+    if (!node || node.kind === 'track') return
+    store.storageView.cursorIdx = 0
+    if (node.kind === 'root') {
+      store.storageView.rootId = node.rootId
+      store.storageView.rootName = node.name
+      store.storageView.rootDisplayPath = node.displayPath
+      store.storageView.parent = ''
+      return
     }
-    mapChildren(rootFile, rootFile.hidden)
-    store.storageView.pathIndexMap = pathIndexMap
-    store.storageView.nodeCount = nodeCount
-    store.storageView.cursorIdx = Math.min(store.storageView.cursorIdx, Math.max(0, nodeCount - 1))
+    store.storageView.parent = node.relativePath
   })
+}
 
-  const playFile = $((file?: FileNode) => {
-    if (!file) return
-
-    const getChildrenSongs = (f: FileNode, songs: Song[] = []): Song[] => {
-      if (f.song) songs.push(f.song)
-      f.children.forEach((child) => getChildrenSongs(child, songs))
-      return songs
+export function useStorageOpenParent(store: Store) {
+  return $(() => {
+    store.storageView.cursorIdx = 0
+    if (store.storageView.parent) {
+      store.storageView.parent = store.storageView.parent.split('/').slice(0, -1).join('/')
+      return
     }
-
-    store.playlist = getChildrenSongs(file)
-
-    const songToPlay = file.song || store.playlist[0]
-    if (songToPlay) storeActions.playSong(songToPlay, 0)
+    store.storageView.rootId = null
+    store.storageView.rootName = ''
+    store.storageView.rootDisplayPath = ''
   })
+}
 
-  const highlightUp = $(() => {
-    if (!store.storageView.nodeCount) return
+export function useStorageHighlightUp(store: Store) {
+  return $(() => {
+    if (!store.storageView.nodes.total) return
     store.storageView.cursorIdx =
-      store.storageView.cursorIdx <= 0 ? store.storageView.nodeCount - 1 : store.storageView.cursorIdx - 1
+      store.storageView.cursorIdx <= 0 ? store.storageView.nodes.total - 1 : store.storageView.cursorIdx - 1
   })
+}
 
-  const highlightDown = $(() => {
-    if (!store.storageView.nodeCount) return
+export function useStorageHighlightDown(store: Store) {
+  return $(() => {
+    if (!store.storageView.nodes.total) return
     store.storageView.cursorIdx =
-      store.storageView.cursorIdx >= store.storageView.nodeCount - 1 ? 0 : store.storageView.cursorIdx + 1
+      store.storageView.cursorIdx >= store.storageView.nodes.total - 1 ? 0 : store.storageView.cursorIdx + 1
   })
-
-  return {
-    playFile,
-    highlightUp,
-    highlightDown,
-    countAndMapFiles,
-  }
 }

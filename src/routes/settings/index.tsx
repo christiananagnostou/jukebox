@@ -21,7 +21,6 @@ import {
   type LibraryRoot,
 } from '~/services/library-refresh'
 import { getErrorMessage } from '~/utils/Errors'
-import { organizeFiles } from '~/utils/Files'
 import { StoreContext } from '../layout'
 
 const SECTION_CLASS = 'border-b border-gray-700 pb-6 flex flex-col gap-3'
@@ -279,9 +278,11 @@ export default component$(() => {
       store.libraryCatalog.loadedSongCount = 0
       store.libraryCatalog.refreshKey += 1
       store.libraryView.cursorIdx = 0
-      store.storageView.rootFile = organizeFiles([])
-      store.storageView.pathIndexMap = {}
-      store.storageView.nodeCount = 0
+      store.storageView.nodes = { error: '', pages: {}, revision: 0, status: 'ready', total: 0 }
+      store.storageView.parent = ''
+      store.storageView.rootDisplayPath = ''
+      store.storageView.rootId = null
+      store.storageView.rootName = ''
       store.sync.status = 'idle'
       store.sync.message = ''
       state.confirmAction = ''
