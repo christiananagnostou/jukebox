@@ -75,6 +75,16 @@ export interface RemoteAccessStatus {
   url: string
 }
 
+export interface TailscaleStatus {
+  backendState?: string
+  connected: boolean
+  dnsName?: string
+  error?: string
+  installed: boolean
+  serveConfigured: boolean
+  url?: string
+}
+
 export interface SyncState {
   status: 'idle' | 'scanning' | 'importing' | 'error'
   processed: number

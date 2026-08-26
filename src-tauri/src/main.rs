@@ -5,6 +5,7 @@ use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
 };
 use crate::settings::{get_settings, load_settings, set_settings, AppState};
+use crate::tailscale::get_tailscale_status;
 use std::sync::RwLock;
 use tauri::command;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
@@ -17,6 +18,7 @@ mod database;
 mod metadata;
 mod remote_access;
 mod settings;
+mod tailscale;
 
 const MAIN_WINDOW: &str = "main";
 const TRAY_SHOW: &str = "tray_show";
@@ -119,7 +121,8 @@ fn main() {
             get_settings,
             set_settings,
             get_remote_access_status,
-            set_remote_access_enabled
+            set_remote_access_enabled,
+            get_tailscale_status
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

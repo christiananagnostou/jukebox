@@ -4,7 +4,7 @@ import { audioDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
 import { exists } from '@tauri-apps/plugin-fs'
 
-import type { RemoteAccessStatus, Settings } from '~/App'
+import type { RemoteAccessStatus, Settings, TailscaleStatus } from '~/App'
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
 import { getErrorMessage } from '~/utils/Errors'
@@ -22,23 +22,40 @@ export default component$(() => {
     confirmAction: '' as '' | 'missing' | 'clear',
     removed: 0,
     remoteAccessBusy: false,
+    tailscaleBusy: false,
+    tailscaleCopied: false,
     remoteAccess: {
       enabled: false,
       port: 45321,
       running: false,
       url: 'http://127.0.0.1:45321',
     } as RemoteAccessStatus,
+    tailscale: {
+      connected: false,
+      installed: false,
+      serveConfigured: false,
+    } as TailscaleStatus,
   })
   const isBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
 
   useVisibleTask$(async () => {
-    state.remoteAccess = await invoke<RemoteAccessStatus>('get_remote_access_status').catch(() => ({
-      enabled: store.settings.remoteAccessEnabled,
-      error: 'Remote access status is unavailable',
-      port: 45321,
-      running: false,
-      url: 'http://127.0.0.1:45321',
-    }))
+    const [remoteAccess, tailscale] = await Promise.all([
+      invoke<RemoteAccessStatus>('get_remote_access_status').catch(() => ({
+        enabled: store.settings.remoteAccessEnabled,
+        error: 'Remote access status is unavailable',
+        port: 45321,
+        running: false,
+        url: 'http://127.0.0.1:45321',
+      })),
+      invoke<TailscaleStatus>('get_tailscale_status').catch(() => ({
+        connected: false,
+        error: 'Tailscale status is unavailable',
+        installed: false,
+        serveConfigured: false,
+      })),
+    ])
+    state.remoteAccess = remoteAccess
+    state.tailscale = tailscale
   })
 
   const saveSettings = $(async (settings: Settings) => {
@@ -89,6 +106,30 @@ export default component$(() => {
       store.sync.message = getErrorMessage(error)
     } finally {
       state.remoteAccessBusy = false
+    }
+  })
+
+  const refreshTailscale = $(async () => {
+    if (state.tailscaleBusy) return
+    state.tailscaleBusy = true
+    state.tailscaleCopied = false
+    try {
+      state.tailscale = await invoke<TailscaleStatus>('get_tailscale_status')
+    } catch (error) {
+      store.sync.status = 'error'
+      store.sync.message = getErrorMessage(error)
+    } finally {
+      state.tailscaleBusy = false
+    }
+  })
+
+  const copyTailscaleCommand = $(async () => {
+    try {
+      await navigator.clipboard.writeText('tailscale serve --bg 45321')
+      state.tailscaleCopied = true
+    } catch (error) {
+      store.sync.status = 'error'
+      store.sync.message = getErrorMessage(error)
     }
   })
 
@@ -209,12 +250,45 @@ export default component$(() => {
             </button>
           </div>
           {state.remoteAccess.enabled && (
-            <div class="text-xs text-gray-400">
+            <div class="flex flex-col gap-3 text-xs text-gray-400">
               <p>
                 {state.remoteAccess.running ? `Local server ready at ${state.remoteAccess.url}` : 'Starting server…'}
               </p>
-              <p class="mt-1">For iPhone access, expose this port with Tailscale Serve. Do not use a public Funnel.</p>
-              {state.remoteAccess.error && <p class="mt-1 text-red-300">{state.remoteAccess.error}</p>}
+              {state.remoteAccess.error && <p class="text-red-300">{state.remoteAccess.error}</p>}
+              <div class="border border-gray-700 bg-gray-900 p-3">
+                <p class="font-medium text-gray-200">Private iPhone access</p>
+                {!state.tailscale.installed ? (
+                  <p class="mt-1">
+                    Install Tailscale on this Mac and your iPhone, then sign both into the same tailnet.
+                  </p>
+                ) : state.tailscale.serveConfigured ? (
+                  <p class="mt-1 text-emerald-300">
+                    Ready{state.tailscale.url ? ` at ${state.tailscale.url}` : ' through Tailscale Serve'}
+                  </p>
+                ) : state.tailscale.connected ? (
+                  <div class="mt-2 flex flex-col gap-2">
+                    <p>Tailscale is connected. Run this once in Terminal to add private HTTPS:</p>
+                    <code class="overflow-x-auto border border-gray-700 bg-black px-2 py-2 text-gray-200">
+                      tailscale serve --bg 45321
+                    </code>
+                    <button class={BUTTON_CLASS} onClick$={copyTailscaleCommand}>
+                      {state.tailscaleCopied ? 'Copied' : 'Copy command'}
+                    </button>
+                  </div>
+                ) : (
+                  <div class="mt-1">
+                    <p>Open Tailscale and sign in before configuring private HTTPS.</p>
+                    {state.tailscale.backendState && <p class="mt-1">State: {state.tailscale.backendState}</p>}
+                    {state.tailscale.error && <p class="mt-1 text-red-300">{state.tailscale.error}</p>}
+                  </div>
+                )}
+                <div class="mt-3 flex flex-wrap items-center gap-3">
+                  <button class={BUTTON_CLASS} disabled={state.tailscaleBusy} onClick$={refreshTailscale}>
+                    {state.tailscaleBusy ? 'Checking…' : 'Check again'}
+                  </button>
+                  <span>Uses Tailscale Serve only. Public Funnel is not supported.</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
