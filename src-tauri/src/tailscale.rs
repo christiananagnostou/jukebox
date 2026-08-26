@@ -9,7 +9,8 @@ use std::time::Duration;
 use tokio::process::Command;
 
 const JUKEBOX_PORT: &str = "45321";
-const HTTPS_PORT_CANDIDATES: [u16; 4] = [443, 8443, 9443, 10_443];
+// Keep the default HTTPS port available for an existing primary app such as Coach.
+const HTTPS_PORT_CANDIDATES: [u16; 4] = [8443, 9443, 10_443, 443];
 const STATUS_COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
 const MUTATION_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_ERROR_LENGTH: usize = 240;
@@ -110,7 +111,7 @@ async fn start_tailscale_serve_with<R: CommandRunner>(
     let output = runner
         .run(
             &runtime.binary,
-            &["serve", "--bg", &https_flag, JUKEBOX_PORT],
+            &["serve", "--bg", "--yes", &https_flag, JUKEBOX_PORT],
             MUTATION_COMMAND_TIMEOUT,
         )
         .await
@@ -152,7 +153,7 @@ async fn stop_tailscale_serve_with<R: CommandRunner>(
     let output = runner
         .run(
             &runtime.binary,
-            &["serve", &https_flag, "off"],
+            &["serve", "--yes", &https_flag, "off"],
             MUTATION_COMMAND_TIMEOUT,
         )
         .await
@@ -625,6 +626,7 @@ mod tests {
                 args: vec![
                     "serve".to_string(),
                     "--bg".to_string(),
+                    "--yes".to_string(),
                     "--https=8443".to_string(),
                     "45321".to_string(),
                 ],
@@ -727,7 +729,10 @@ mod tests {
         .expect("stop dedicated endpoint");
 
         assert!(!status.serve_configured);
-        assert_eq!(runner.calls()[2].args, vec!["serve", "--https=9443", "off"]);
+        assert_eq!(
+            runner.calls()[2].args,
+            vec!["serve", "--yes", "--https=9443", "off"]
+        );
     }
 
     #[test]
@@ -797,6 +802,14 @@ mod tests {
         let inspection = parse_serve_status(&status);
         assert_eq!(inspection.mapping, None);
         assert_eq!(recommended_https_port(&inspection), Some(8443));
+    }
+
+    #[test]
+    fn reserves_the_default_https_port_when_no_routes_are_running() {
+        assert_eq!(
+            recommended_https_port(&ServeInspection::default()),
+            Some(8443)
+        );
     }
 
     #[test]

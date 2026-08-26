@@ -296,12 +296,12 @@ export default component$(() => {
                       </code>
                     )}
                     <p>
-                      Open this address in Safari, then use Share → Add to Home Screen. It installs separately from
-                      Coach.
+                      Jukebox has its own private HTTPS address, so it can stay installed separately from Coach. Open
+                      the address in Safari, then use Share → Add to Home Screen.
                     </p>
                     {state.tailscale.serveManaged ? (
                       <button class={BUTTON_CLASS} disabled={Boolean(state.tailscaleAction)} onClick$={stopTailscale}>
-                        {state.tailscaleAction === 'stop' ? 'Stopping…' : 'Stop private access'}
+                        {state.tailscaleAction === 'stop' ? 'Stopping…' : 'Stop Jukebox on Tailscale'}
                       </button>
                     ) : (
                       <p class="text-amber-300">
@@ -316,15 +316,15 @@ export default component$(() => {
                     ) : state.tailscale.recommendedHttpsPort ? (
                       <>
                         <p>
-                          Jukebox will use HTTPS port {state.tailscale.recommendedHttpsPort}. Existing Tailscale apps
-                          keep their current ports and routes.
+                          Jukebox will use its own HTTPS port ({state.tailscale.recommendedHttpsPort}). Coach and other
+                          Tailscale apps keep their current ports and routes.
                         </p>
                         <button
                           class={BUTTON_CLASS}
                           disabled={Boolean(state.tailscaleAction) || !state.remoteAccess.running}
                           onClick$={startTailscale}
                         >
-                          {state.tailscaleAction === 'start' ? 'Starting…' : 'Start private access'}
+                          {state.tailscaleAction === 'start' ? 'Starting…' : 'Start Jukebox on Tailscale'}
                         </button>
                       </>
                     ) : (
