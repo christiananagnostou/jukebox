@@ -82,6 +82,12 @@ export default component$(() => {
         </button>
       </div>
 
+      {store.player.error && (
+        <p role="alert" class="mt-3 border border-red-900 bg-red-950 px-3 py-2 text-xs text-red-200">
+          {store.player.error}
+        </p>
+      )}
+
       <dl class="mt-4 grid gap-3 border-b border-slate-700 p-2">
         <div>
           <dt class="text-xs text-gray-400">Title</dt>
