@@ -52,8 +52,15 @@ struct RemoteServerHandle {
 
 #[derive(Clone)]
 struct HttpState {
-    app: tauri::AppHandle,
+    music_root: MusicRootSource,
     pool: SqlitePool,
+}
+
+#[derive(Clone)]
+enum MusicRootSource {
+    App(tauri::AppHandle),
+    #[cfg(test)]
+    Fixed(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -217,7 +224,23 @@ impl HttpState {
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
             .connect_lazy_with(options);
-        Ok(Self { app, pool })
+        Ok(Self {
+            music_root: MusicRootSource::App(app),
+            pool,
+        })
+    }
+
+    fn music_root(&self) -> Result<String, ApiError> {
+        match &self.music_root {
+            MusicRootSource::App(app) => app
+                .state::<AppState>()
+                .settings
+                .read()
+                .map(|settings| settings.music_folder.clone())
+                .map_err(|_| ApiError::internal()),
+            #[cfg(test)]
+            MusicRootSource::Fixed(root) => Ok(root.clone()),
+        }
     }
 }
 
@@ -364,14 +387,7 @@ async fn stream_track(
         .await
         .map_err(|_| ApiError::internal())?
         .ok_or_else(ApiError::not_found)?;
-    let music_root = state
-        .app
-        .state::<AppState>()
-        .settings
-        .read()
-        .map_err(|_| ApiError::internal())?
-        .music_folder
-        .clone();
+    let music_root = state.music_root()?;
     let path = approved_track_path(&music_root, &track_path).await?;
     stream_file(&path, headers.get(RANGE)).await
 }
@@ -564,10 +580,210 @@ pub async fn set_remote_access_enabled(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
+    use axum::http::Request;
+    use serde_json::Value;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tower::ServiceExt;
 
     fn run_async<T>(future: impl std::future::Future<Output = T>) -> T {
         tauri::async_runtime::block_on(future)
+    }
+
+    fn test_path(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("jukebox-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    async fn insert_song(
+        pool: &SqlitePool,
+        id: &str,
+        path: &FilePath,
+        title: &str,
+        album: &str,
+        artist: &str,
+        track_number: i64,
+    ) {
+        sqlx::query(
+            "INSERT INTO songs (
+                id, path, file, title, album, artist, genre, bpm, compilation, date, encoder,
+                trackTotal, trackNumber, codec, duration, sampleRate, side, startTime,
+                favorRating, dateAdded, visualsPath
+             ) VALUES (?, ?, ?, ?, ?, ?, '', 0, 0, '', '', 0, ?, 'mp3', '0:00:10.000',
+                       '44100', 0, 0, 0, '2026-08-26', '')",
+        )
+        .bind(id)
+        .bind(path.to_string_lossy().as_ref())
+        .bind(
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("track.mp3"),
+        )
+        .bind(title)
+        .bind(album)
+        .bind(artist)
+        .bind(track_number)
+        .execute(pool)
+        .await
+        .expect("insert fixture song");
+    }
+
+    async fn request(router: &Router, uri: &str, range: Option<&str>) -> Response {
+        let mut builder = Request::builder().uri(uri);
+        if let Some(range) = range {
+            builder = builder.header(RANGE, range);
+        }
+        router
+            .clone()
+            .oneshot(builder.body(Body::empty()).expect("fixture request"))
+            .await
+            .expect("router response")
+    }
+
+    async fn response_bytes(response: Response) -> Vec<u8> {
+        to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body")
+            .to_vec()
+    }
+
+    #[test]
+    fn production_router_enforces_catalog_and_stream_contracts() {
+        run_async(async {
+            let fixture = test_path("router");
+            let root = fixture.join("music");
+            let outside = fixture.join("outside.mp3");
+            let percent = root.join("percent.mp3");
+            let similar = root.join("similar.mp3");
+            let alpha = root.join("alpha.mp3");
+            std::fs::create_dir_all(&root).expect("create fixture root");
+            std::fs::write(&percent, b"0123456789").expect("write percent fixture");
+            std::fs::write(&similar, b"similar").expect("write similar fixture");
+            std::fs::write(&alpha, b"alpha").expect("write alpha fixture");
+            std::fs::write(&outside, b"outside").expect("write outside fixture");
+
+            let database_path = fixture.join("library.db");
+            let options = SqliteConnectOptions::new()
+                .filename(&database_path)
+                .create_if_missing(true);
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await
+                .expect("open fixture database");
+            sqlx::raw_sql(include_str!("../migrations/0001_initial.sql"))
+                .execute(&pool)
+                .await
+                .expect("migrate fixture database");
+            insert_song(&pool, "percent", &percent, "100% Mix", "B", "Zulu", 1).await;
+            insert_song(&pool, "similar", &similar, "100X Mix", "A", "Zulu", 2).await;
+            insert_song(&pool, "alpha", &alpha, "Alpha", "A", "Alpha", 1).await;
+            insert_song(&pool, "outside", &outside, "Outside", "A", "Alpha", 2).await;
+
+            let app = router(HttpState {
+                music_root: MusicRootSource::Fixed(root.to_string_lossy().into_owned()),
+                pool: pool.clone(),
+            });
+
+            let shell = request(&app, "/", None).await;
+            assert_eq!(shell.status(), StatusCode::OK);
+            assert_eq!(shell.headers()[CACHE_CONTROL], "no-store");
+            assert!(shell.headers().contains_key("content-security-policy"));
+            assert_eq!(shell.headers()["x-content-type-options"], "nosniff");
+
+            let escaped_search = request(&app, "/api/tracks?q=100%25&limit=100", None).await;
+            assert_eq!(escaped_search.status(), StatusCode::OK);
+            assert_eq!(escaped_search.headers()[CACHE_CONTROL], "no-store");
+            let escaped_json: Value =
+                serde_json::from_slice(&response_bytes(escaped_search).await).expect("search JSON");
+            let escaped_ids = escaped_json
+                .as_array()
+                .expect("search array")
+                .iter()
+                .map(|track| track["id"].as_str().expect("track id"))
+                .collect::<Vec<_>>();
+            assert_eq!(escaped_ids, vec!["percent"]);
+
+            let ordered_search = request(&app, "/api/tracks?limit=100", None).await;
+            let ordered_json: Value = serde_json::from_slice(&response_bytes(ordered_search).await)
+                .expect("ordered JSON");
+            let ordered_ids = ordered_json
+                .as_array()
+                .expect("ordered array")
+                .iter()
+                .map(|track| track["id"].as_str().expect("track id"))
+                .collect::<Vec<_>>();
+            assert_eq!(ordered_ids, vec!["alpha", "outside", "similar", "percent"]);
+
+            let bounded_search = request(&app, "/api/tracks?limit=0", None).await;
+            let bounded_json: Value = serde_json::from_slice(&response_bytes(bounded_search).await)
+                .expect("bounded JSON");
+            assert_eq!(bounded_json.as_array().map(Vec::len), Some(1));
+
+            let full = request(&app, "/api/tracks/percent/stream", None).await;
+            assert_eq!(full.status(), StatusCode::OK);
+            assert_eq!(full.headers()[ACCEPT_RANGES], "bytes");
+            assert_eq!(full.headers()[CONTENT_LENGTH], "10");
+            assert_eq!(full.headers()[CONTENT_TYPE], "audio/mpeg");
+            assert_eq!(response_bytes(full).await, b"0123456789");
+
+            let partial = request(&app, "/api/tracks/percent/stream", Some("bytes=2-5")).await;
+            assert_eq!(partial.status(), StatusCode::PARTIAL_CONTENT);
+            assert_eq!(partial.headers()[CONTENT_RANGE], "bytes 2-5/10");
+            assert_eq!(response_bytes(partial).await, b"2345");
+
+            for invalid_range in ["bytes=8-2", "bytes=0-1,4-5"] {
+                let rejected =
+                    request(&app, "/api/tracks/percent/stream", Some(invalid_range)).await;
+                assert_eq!(rejected.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+                assert_eq!(rejected.headers()[CONTENT_RANGE], "bytes */10");
+            }
+
+            assert_eq!(
+                request(&app, "/api/tracks/missing/stream", None)
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+            assert_eq!(
+                request(&app, "/api/tracks/outside/stream", None)
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+
+            drop(app);
+            pool.close().await;
+            std::fs::remove_dir_all(fixture).expect("remove router fixture");
+        });
+    }
+
+    #[test]
+    fn production_router_reports_an_unavailable_database() {
+        run_async(async {
+            let fixture = test_path("missing-database");
+            std::fs::create_dir_all(&fixture).expect("create fixture");
+            let options = SqliteConnectOptions::new()
+                .filename(fixture.join("missing.db"))
+                .read_only(true);
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_lazy_with(options);
+            let app = router(HttpState {
+                music_root: MusicRootSource::Fixed(fixture.to_string_lossy().into_owned()),
+                pool,
+            });
+
+            let response = request(&app, "/api/tracks", None).await;
+            assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
+
+            drop(app);
+            std::fs::remove_dir_all(fixture).expect("remove fixture");
+        });
     }
 
     #[test]

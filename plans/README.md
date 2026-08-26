@@ -8,7 +8,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 
 | Plan                                               | Title                                                               | Priority | Effort | Depends on | Status |
 | -------------------------------------------------- | ------------------------------------------------------------------- | -------- | ------ | ---------- | ------ |
-| [007](007-private-listening-contract-tests.md)     | Harden Tailscale discovery and private-listening boundaries         | P1       | M      | —          | TODO   |
+| [007](007-private-listening-contract-tests.md)     | Harden Tailscale discovery and private-listening boundaries         | P1       | M      | —          | DONE   |
 | [008](008-library-mutation-safety.md)              | Make library cleanup and chunked mutations failure-safe             | P1       | M      | —          | TODO   |
 | [009](009-playback-transition-characterization.md) | Characterize playback transitions and preserve failed queue entries | P1       | M      | —          | TODO   |
 | [010](010-settings-and-bootstrap-durability.md)    | Make settings persistence atomic and bootstrap failures visible     | P1       | M      | —          | TODO   |

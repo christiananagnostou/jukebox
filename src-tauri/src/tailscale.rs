@@ -1,7 +1,9 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
@@ -27,10 +29,35 @@ pub struct TailscaleStatus {
     error: Option<String>,
 }
 
+#[derive(Clone, Debug)]
 struct CommandOutput {
     stdout: String,
     stderr: String,
     success: bool,
+}
+
+type CommandFuture<'a> = Pin<Box<dyn Future<Output = Option<CommandOutput>> + Send + 'a>>;
+
+trait CommandRunner: Send + Sync {
+    fn run<'a>(
+        &'a self,
+        binary: &'a Path,
+        args: &'a [&'a str],
+        timeout: Duration,
+    ) -> CommandFuture<'a>;
+}
+
+struct SystemCommandRunner;
+
+impl CommandRunner for SystemCommandRunner {
+    fn run<'a>(
+        &'a self,
+        binary: &'a Path,
+        args: &'a [&'a str],
+        timeout: Duration,
+    ) -> CommandFuture<'a> {
+        Box::pin(run_command(binary, args, timeout))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,6 +73,7 @@ struct ServeInspection {
     occupied_ports: BTreeSet<u16>,
 }
 
+#[derive(Debug)]
 struct TailscaleRuntime {
     binary: PathBuf,
     backend_state: Option<String>,
@@ -55,36 +83,44 @@ struct TailscaleRuntime {
 
 #[tauri::command]
 pub async fn get_tailscale_status() -> TailscaleStatus {
-    inspect_tailscale().await
+    inspect_tailscale_with(&SystemCommandRunner, candidates()).await
 }
 
 #[tauri::command]
 pub async fn start_tailscale_serve() -> Result<TailscaleStatus, String> {
-    let runtime = load_runtime().await?;
+    start_tailscale_serve_with(&SystemCommandRunner, candidates()).await
+}
+
+async fn start_tailscale_serve_with<R: CommandRunner>(
+    runner: &R,
+    candidate_paths: Vec<PathBuf>,
+) -> Result<TailscaleStatus, String> {
+    let runtime = load_runtime_with(runner, candidate_paths).await?;
     if !runtime.connected {
         return Err("Open Tailscale and sign in before starting private access".to_string());
     }
 
-    let inspection = inspect_serve(&runtime.binary).await?;
+    let inspection = inspect_serve_with(runner, &runtime.binary).await?;
     if inspection.mapping.is_some() {
         return Ok(status_from(runtime, inspection, None));
     }
     let port = recommended_https_port(&inspection)
         .ok_or_else(|| "No supported private HTTPS port is available".to_string())?;
     let https_flag = format!("--https={port}");
-    let output = run_command(
-        &runtime.binary,
-        &["serve", "--bg", &https_flag, JUKEBOX_PORT],
-        MUTATION_COMMAND_TIMEOUT,
-    )
-    .await
-    .ok_or_else(|| "Tailscale Serve timed out or could not be started".to_string())?;
+    let output = runner
+        .run(
+            &runtime.binary,
+            &["serve", "--bg", &https_flag, JUKEBOX_PORT],
+            MUTATION_COMMAND_TIMEOUT,
+        )
+        .await
+        .ok_or_else(|| "Tailscale Serve timed out or could not be started".to_string())?;
     if !output.success {
         return Err(command_error(&output)
             .unwrap_or_else(|| "Tailscale Serve could not be started".to_string()));
     }
 
-    let refreshed = inspect_serve(&runtime.binary).await?;
+    let refreshed = inspect_serve_with(runner, &runtime.binary).await?;
     if refreshed.mapping.is_none() {
         return Err("Tailscale did not report the Jukebox endpoint after starting it".to_string());
     }
@@ -93,8 +129,15 @@ pub async fn start_tailscale_serve() -> Result<TailscaleStatus, String> {
 
 #[tauri::command]
 pub async fn stop_tailscale_serve() -> Result<TailscaleStatus, String> {
-    let runtime = load_runtime().await?;
-    let inspection = inspect_serve(&runtime.binary).await?;
+    stop_tailscale_serve_with(&SystemCommandRunner, candidates()).await
+}
+
+async fn stop_tailscale_serve_with<R: CommandRunner>(
+    runner: &R,
+    candidate_paths: Vec<PathBuf>,
+) -> Result<TailscaleStatus, String> {
+    let runtime = load_runtime_with(runner, candidate_paths).await?;
+    let inspection = inspect_serve_with(runner, &runtime.binary).await?;
     let Some(mapping) = inspection.mapping.as_ref() else {
         return Ok(status_from(runtime, inspection, None));
     };
@@ -106,75 +149,117 @@ pub async fn stop_tailscale_serve() -> Result<TailscaleStatus, String> {
     }
 
     let https_flag = format!("--https={}", mapping.port);
-    let output = run_command(
-        &runtime.binary,
-        &["serve", &https_flag, "off"],
-        MUTATION_COMMAND_TIMEOUT,
-    )
-    .await
-    .ok_or_else(|| "Tailscale Serve timed out or could not be stopped".to_string())?;
+    let output = runner
+        .run(
+            &runtime.binary,
+            &["serve", &https_flag, "off"],
+            MUTATION_COMMAND_TIMEOUT,
+        )
+        .await
+        .ok_or_else(|| "Tailscale Serve timed out or could not be stopped".to_string())?;
     if !output.success {
         return Err(command_error(&output)
             .unwrap_or_else(|| "Tailscale Serve could not be stopped".to_string()));
     }
 
-    let refreshed = inspect_serve(&runtime.binary).await?;
+    let refreshed = inspect_serve_with(runner, &runtime.binary).await?;
     if refreshed.mapping.is_some() {
         return Err("Tailscale still reports a Jukebox endpoint after stopping it".to_string());
     }
     Ok(status_from(runtime, refreshed, None))
 }
 
-async fn inspect_tailscale() -> TailscaleStatus {
-    let runtime = match load_runtime().await {
+async fn inspect_tailscale_with<R: CommandRunner>(
+    runner: &R,
+    candidate_paths: Vec<PathBuf>,
+) -> TailscaleStatus {
+    let runtime = match load_runtime_with(runner, candidate_paths).await {
         Ok(runtime) => runtime,
         Err(error) => return unavailable_status(error),
     };
-    match inspect_serve(&runtime.binary).await {
+    match inspect_serve_with(runner, &runtime.binary).await {
         Ok(inspection) => status_from(runtime, inspection, None),
         Err(error) => status_from(runtime, ServeInspection::default(), Some(error)),
     }
 }
 
-async fn load_runtime() -> Result<TailscaleRuntime, String> {
-    let Some((binary, status)) = first_available_status().await else {
-        return Err("Tailscale is not installed".to_string());
-    };
-    if !status.success {
-        return Err(command_error(&status)
-            .unwrap_or_else(|| "Tailscale is installed but not ready".to_string()));
+async fn load_runtime_with<R: CommandRunner>(
+    runner: &R,
+    candidate_paths: Vec<PathBuf>,
+) -> Result<TailscaleRuntime, String> {
+    let mut last_error = None;
+    let mut installed_candidate_seen = false;
+
+    for binary in candidate_paths {
+        if binary.is_absolute() && !binary.is_file() {
+            continue;
+        }
+        let Some(status) = runner
+            .run(&binary, &["status", "--json"], STATUS_COMMAND_TIMEOUT)
+            .await
+        else {
+            if binary.is_absolute() {
+                installed_candidate_seen = true;
+                last_error.get_or_insert_with(|| {
+                    "Tailscale status timed out or could not be read".to_string()
+                });
+            }
+            continue;
+        };
+        installed_candidate_seen = true;
+        if !status.success {
+            last_error = command_error(&status)
+                .or_else(|| Some("Tailscale is installed but not ready".to_string()));
+            continue;
+        }
+
+        let status_json: Value = match serde_json::from_str(&status.stdout) {
+            Ok(value) => value,
+            Err(_) => {
+                last_error
+                    .get_or_insert_with(|| "Tailscale returned an unreadable status".to_string());
+                continue;
+            }
+        };
+        let backend_state = status_json
+            .get("BackendState")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let connected = backend_state.as_deref() == Some("Running");
+        let dns_name = status_json
+            .get("Self")
+            .and_then(|value| value.get("DNSName"))
+            .and_then(Value::as_str)
+            .map(|value| value.trim_end_matches('.').to_string())
+            .filter(|value| !value.is_empty());
+
+        return Ok(TailscaleRuntime {
+            binary,
+            backend_state,
+            connected,
+            dns_name,
+        });
     }
 
-    let status_json: Value = serde_json::from_str(&status.stdout)
-        .map_err(|_| "Tailscale returned an unreadable status".to_string())?;
-    let backend_state = status_json
-        .get("BackendState")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let connected = backend_state.as_deref() == Some("Running");
-    let dns_name = status_json
-        .get("Self")
-        .and_then(|value| value.get("DNSName"))
-        .and_then(Value::as_str)
-        .map(|value| value.trim_end_matches('.').to_string())
-        .filter(|value| !value.is_empty());
-
-    Ok(TailscaleRuntime {
-        binary,
-        backend_state,
-        connected,
-        dns_name,
-    })
+    if installed_candidate_seen {
+        Err(last_error.unwrap_or_else(|| "Tailscale is installed but not ready".to_string()))
+    } else {
+        Err("Tailscale is not installed".to_string())
+    }
 }
 
-async fn inspect_serve(binary: &Path) -> Result<ServeInspection, String> {
-    let output = run_command(
-        binary,
-        &["serve", "status", "--json"],
-        STATUS_COMMAND_TIMEOUT,
-    )
-    .await
-    .ok_or_else(|| "Tailscale Serve status timed out or could not be read".to_string())?;
+async fn inspect_serve_with<R: CommandRunner>(
+    runner: &R,
+    binary: &Path,
+) -> Result<ServeInspection, String> {
+    let output = runner
+        .run(
+            binary,
+            &["serve", "status", "--json"],
+            STATUS_COMMAND_TIMEOUT,
+        )
+        .await
+        .ok_or_else(|| "Tailscale Serve status timed out or could not be read".to_string())?;
     if !output.success {
         return Err(command_error(&output)
             .unwrap_or_else(|| "Tailscale Serve status is unavailable".to_string()));
@@ -238,29 +323,6 @@ fn recommended_https_port(inspection: &ServeInspection) -> Option<u16> {
     HTTPS_PORT_CANDIDATES
         .into_iter()
         .find(|port| !inspection.occupied_ports.contains(port))
-}
-
-async fn first_available_status() -> Option<(PathBuf, CommandOutput)> {
-    for candidate in candidates() {
-        if candidate.is_absolute() {
-            if !candidate.is_file() {
-                continue;
-            }
-            let output = run_command(&candidate, &["status", "--json"], STATUS_COMMAND_TIMEOUT)
-                .await
-                .unwrap_or_else(|| CommandOutput {
-                    stdout: String::new(),
-                    stderr: "Tailscale status timed out or could not be read".to_string(),
-                    success: false,
-                });
-            return Some((candidate, output));
-        } else if let Some(output) =
-            run_command(&candidate, &["status", "--json"], STATUS_COMMAND_TIMEOUT).await
-        {
-            return Some((candidate, output));
-        }
-    }
-    None
 }
 
 async fn run_command(binary: &Path, args: &[&str], timeout: Duration) -> Option<CommandOutput> {
@@ -398,6 +460,297 @@ fn command_error(output: &CommandOutput) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+    use std::sync::Mutex as StdMutex;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct RecordedCommand {
+        binary: PathBuf,
+        args: Vec<String>,
+        timeout: Duration,
+    }
+
+    struct FakeCommandRunner {
+        responses: StdMutex<VecDeque<Option<CommandOutput>>>,
+        calls: StdMutex<Vec<RecordedCommand>>,
+    }
+
+    impl FakeCommandRunner {
+        fn new(responses: Vec<Option<CommandOutput>>) -> Self {
+            Self {
+                responses: StdMutex::new(responses.into()),
+                calls: StdMutex::new(Vec::new()),
+            }
+        }
+
+        fn calls(&self) -> Vec<RecordedCommand> {
+            self.calls.lock().expect("calls lock").clone()
+        }
+    }
+
+    impl CommandRunner for FakeCommandRunner {
+        fn run<'a>(
+            &'a self,
+            binary: &'a Path,
+            args: &'a [&'a str],
+            timeout: Duration,
+        ) -> CommandFuture<'a> {
+            Box::pin(async move {
+                self.calls
+                    .lock()
+                    .expect("calls lock")
+                    .push(RecordedCommand {
+                        binary: binary.to_path_buf(),
+                        args: args.iter().map(|value| (*value).to_string()).collect(),
+                        timeout,
+                    });
+                self.responses
+                    .lock()
+                    .expect("responses lock")
+                    .pop_front()
+                    .flatten()
+            })
+        }
+    }
+
+    fn run_async<T>(future: impl Future<Output = T>) -> T {
+        tauri::async_runtime::block_on(future)
+    }
+
+    fn output(stdout: impl Into<String>) -> Option<CommandOutput> {
+        Some(CommandOutput {
+            stdout: stdout.into(),
+            stderr: String::new(),
+            success: true,
+        })
+    }
+
+    fn failure(message: &str) -> Option<CommandOutput> {
+        Some(CommandOutput {
+            stdout: String::new(),
+            stderr: message.to_string(),
+            success: false,
+        })
+    }
+
+    fn runtime_status() -> String {
+        serde_json::json!({
+            "BackendState": "Running",
+            "Self": { "DNSName": "mac.tailnet.ts.net." }
+        })
+        .to_string()
+    }
+
+    fn candidate_paths() -> Vec<PathBuf> {
+        vec![
+            PathBuf::from("first-tailscale"),
+            PathBuf::from("second-tailscale"),
+        ]
+    }
+
+    fn serve_status(proxy: &str, port: u16) -> String {
+        serde_json::json!({
+            "TCP": { port.to_string(): { "HTTPS": true } },
+            "Web": {
+                format!("mac.tailnet.ts.net:{port}"): {
+                    "Handlers": { "/": { "Proxy": proxy } }
+                }
+            }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn falls_back_after_a_failing_candidate() {
+        let runner =
+            FakeCommandRunner::new(vec![failure("stale client"), output(runtime_status())]);
+
+        let runtime = run_async(load_runtime_with(&runner, candidate_paths()))
+            .expect("second candidate should work");
+
+        assert_eq!(runtime.binary, PathBuf::from("second-tailscale"));
+        assert_eq!(runner.calls().len(), 2);
+    }
+
+    #[test]
+    fn falls_back_after_an_unreadable_status() {
+        let runner = FakeCommandRunner::new(vec![output("not json"), output(runtime_status())]);
+
+        let runtime = run_async(load_runtime_with(&runner, candidate_paths()))
+            .expect("second candidate should work");
+
+        assert_eq!(runtime.binary, PathBuf::from("second-tailscale"));
+    }
+
+    #[test]
+    fn distinguishes_missing_candidates_from_failed_installations() {
+        let missing = FakeCommandRunner::new(vec![None, None]);
+        let unavailable = run_async(load_runtime_with(&missing, candidate_paths()))
+            .expect_err("no command should be available");
+        assert_eq!(unavailable, "Tailscale is not installed");
+
+        let failing =
+            FakeCommandRunner::new(vec![failure("first failed"), failure("second failed")]);
+        let error = run_async(load_runtime_with(&failing, candidate_paths()))
+            .expect_err("all candidates should fail");
+        assert_eq!(error, "second failed");
+
+        let actionable =
+            FakeCommandRunner::new(vec![failure("first actionable error"), output("not json")]);
+        let error = run_async(load_runtime_with(&actionable, candidate_paths()))
+            .expect_err("no candidate should be usable");
+        assert_eq!(error, "first actionable error");
+    }
+
+    #[test]
+    fn starts_on_a_free_port_without_replacing_another_app() {
+        let runner = FakeCommandRunner::new(vec![
+            output(runtime_status()),
+            output(serve_status("http://127.0.0.1:3000", 443)),
+            output(""),
+            output(serve_status("http://127.0.0.1:45321", 8443)),
+        ]);
+
+        let status = run_async(start_tailscale_serve_with(
+            &runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect("start Jukebox endpoint");
+
+        assert_eq!(status.https_port, Some(8443));
+        assert_eq!(
+            runner.calls()[2],
+            RecordedCommand {
+                binary: PathBuf::from("tailscale"),
+                args: vec![
+                    "serve".to_string(),
+                    "--bg".to_string(),
+                    "--https=8443".to_string(),
+                    "45321".to_string(),
+                ],
+                timeout: MUTATION_COMMAND_TIMEOUT,
+            }
+        );
+    }
+
+    #[test]
+    fn reports_start_timeout_and_failed_postcondition() {
+        let timeout_runner =
+            FakeCommandRunner::new(vec![output(runtime_status()), output("{}"), None]);
+        let timeout_error = run_async(start_tailscale_serve_with(
+            &timeout_runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect_err("mutation should time out");
+        assert_eq!(
+            timeout_error,
+            "Tailscale Serve timed out or could not be started"
+        );
+
+        let postcondition_runner = FakeCommandRunner::new(vec![
+            output(runtime_status()),
+            output("{}"),
+            output(""),
+            output("{}"),
+        ]);
+        let postcondition_error = run_async(start_tailscale_serve_with(
+            &postcondition_runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect_err("mapping should still be absent");
+        assert_eq!(
+            postcondition_error,
+            "Tailscale did not report the Jukebox endpoint after starting it"
+        );
+    }
+
+    #[test]
+    fn reports_a_nonzero_start_command() {
+        let runner = FakeCommandRunner::new(vec![
+            output(runtime_status()),
+            output("{}"),
+            failure("HTTPS certificate approval is required"),
+        ]);
+
+        let error = run_async(start_tailscale_serve_with(
+            &runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect_err("nonzero command should fail");
+
+        assert_eq!(error, "HTTPS certificate approval is required");
+        assert_eq!(runner.calls().len(), 3);
+    }
+
+    #[test]
+    fn refuses_to_stop_a_shared_endpoint_without_mutating_it() {
+        let shared = serde_json::json!({
+            "Services": {
+                "svc:apps": {
+                    "Web": {
+                        "apps.tailnet.ts.net:443": {
+                            "Handlers": {
+                                "/coach": { "Proxy": "http://127.0.0.1:3000" },
+                                "/jukebox": { "Proxy": "http://127.0.0.1:45321" }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let runner =
+            FakeCommandRunner::new(vec![output(runtime_status()), output(shared.to_string())]);
+
+        let error = run_async(stop_tailscale_serve_with(
+            &runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect_err("shared endpoint must be unmanaged");
+
+        assert!(error.contains("shares this Tailscale endpoint"));
+        assert_eq!(runner.calls().len(), 2);
+    }
+
+    #[test]
+    fn stops_only_the_dedicated_port_and_checks_the_result() {
+        let runner = FakeCommandRunner::new(vec![
+            output(runtime_status()),
+            output(serve_status("http://localhost:45321", 9443)),
+            output(""),
+            output("{}"),
+        ]);
+
+        let status = run_async(stop_tailscale_serve_with(
+            &runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect("stop dedicated endpoint");
+
+        assert!(!status.serve_configured);
+        assert_eq!(runner.calls()[2].args, vec!["serve", "--https=9443", "off"]);
+    }
+
+    #[test]
+    fn reports_when_stop_does_not_remove_the_mapping() {
+        let mapping = serve_status("http://127.0.0.1:45321", 10_443);
+        let runner = FakeCommandRunner::new(vec![
+            output(runtime_status()),
+            output(mapping.clone()),
+            output(""),
+            output(mapping),
+        ]);
+
+        let error = run_async(stop_tailscale_serve_with(
+            &runner,
+            vec![PathBuf::from("tailscale")],
+        ))
+        .expect_err("mapping should still exist");
+
+        assert_eq!(
+            error,
+            "Tailscale still reports a Jukebox endpoint after stopping it"
+        );
+    }
 
     #[test]
     fn detects_a_dedicated_jukebox_endpoint_and_exact_url() {
