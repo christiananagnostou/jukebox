@@ -1,6 +1,6 @@
 # Jukebox implementation plans
 
-Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-016 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
+Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-017 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
 
 The product direction remains local-first: a fast native catalog, dependable playback, durable collections, a compact accessible interface, and private iPhone listening through loopback-only Jukebox HTTP plus Tailscale Serve. Public sharing, mandatory accounts, visualizers, and large decorative animations remain out of scope.
 
@@ -18,15 +18,16 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [014](014-scan-metadata-staging.md)                | Prepare changed metadata without changing the visible catalog       | P1       | L      | 013        | DONE   |
 | [015](015-atomic-scan-reconciliation.md)           | Apply one scan snapshot through a failure-safe catalog transaction  | P1       | L      | 014        | DONE   |
 | [016](016-native-library-refresh.md)               | Compose scan, preparation, and apply into one cancellable operation | P1       | M      | 015        | DONE   |
+| [017](017-library-watchers.md)                     | Schedule recoverable full refreshes from bounded filesystem hints   | P1       | M      | 016        | DONE   |
 
-Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Watchers remain a separate recovery and scheduling layer over that authoritative full refresh.
+Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh.
 
 ## Strategic roadmap status
 
 | Plan                                              | Outcome                                                         | Status on 2026-08-26                                                                                                                                                                                              |
 | ------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [001](001-quality-security-release-foundation.md) | Migrations, diagnostics, permissions, identity, release quality | IN PROGRESS — migrations plus Rust fmt/test/Clippy CI landed in PR #48; diagnostics, permission narrowing, identity migration, Windows, signing, and updater remain                                               |
-| [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-016 delivered bounded queries/memory and a persisted, cancellable, atomic native refresh pipeline; watcher scheduling, recovery triggers, and frontend adoption remain                    |
+| [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-017 delivered bounded queries/memory plus a persisted, cancellable, atomic, watcher-driven native refresh pipeline; benchmarks and frontend adoption remain                               |
 | [003](003-playback-engine-and-os-integration.md)  | Reliable restart-safe playback and OS integration               | TODO — plan 009 establishes the characterization gate                                                                                                                                                             |
 | [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | TODO — depends on stable catalog and playback contracts                                                                                                                                                           |
 | [005](005-fast-accessible-interface.md)           | Compact, keyboard-complete, motion-light UI                     | TODO — small accessibility fixes may land continuously; structural work follows stable APIs                                                                                                                       |
@@ -44,7 +45,7 @@ Plans 007-010 are deliberately independent and may be delivered as separate PRs.
 
 ## Findings considered and deferred
 
-- Watcher recovery, art-cache deduplication, FTS-rich facets, benchmark fixtures, and frontend adoption remain high-impact plan 002 work; plans 011-016 provide the bounded query and complete native refresh foundation.
+- Art-cache deduplication, FTS-rich facets, benchmark fixtures, and frontend adoption remain high-impact plan 002 work; plans 011-017 provide the bounded query and recoverable native refresh foundation.
 - A native playback backend and gapless output remain plan 003. Do not choose a decoder/output stack before plan 009's state-machine tests and the existing feasibility gate.
 - Windows packaging, signing, updater support, CSP/runtime scope narrowing, diagnostics, and app-identity migration remain plan 001. Permission narrowing depends on catalog/filesystem ownership moving behind Rust.
 - Mobile album/artist browsing, Media Session transport handlers, shared queue, and optional HLS fallback remain phases 3-5 of plan 006 and depend on plans 009 and 011.
