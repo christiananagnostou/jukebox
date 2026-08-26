@@ -5,7 +5,9 @@ use crate::metadata::Metadata;
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
 };
-use crate::settings::{get_settings, load_settings, set_settings, AppState};
+use crate::settings::{
+    get_settings, load_settings, set_settings, should_start_remote_access, AppState,
+};
 use crate::tailscale::{get_tailscale_status, start_tailscale_serve, stop_tailscale_serve};
 use std::sync::RwLock;
 use tauri::command;
@@ -43,10 +45,11 @@ fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f:
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
-            let settings = load_settings(app.handle());
-            let start_remote_access = settings.remote_access_enabled;
+            let settings_snapshot = load_settings(app.handle());
+            let start_remote_access = should_start_remote_access(&settings_snapshot);
             app.manage(AppState {
-                settings: RwLock::new(settings),
+                settings: RwLock::new(settings_snapshot.settings),
+                settings_warning: RwLock::new(settings_snapshot.warning),
             });
 
             let remote_access = RemoteAccessState::default();

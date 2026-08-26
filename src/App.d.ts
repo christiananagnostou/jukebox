@@ -4,6 +4,7 @@ export interface Store {
   playlist: Song[]
   searchTerm: string
   settings: Settings
+  bootstrap: BootstrapState
   sync: SyncState
 
   sorting:
@@ -66,6 +67,22 @@ export interface Settings {
   closeOnX: boolean
   musicFolder: string
   remoteAccessEnabled: boolean
+}
+
+export interface SettingsWarning {
+  code: 'unreadable' | 'invalid_json'
+  message: string
+}
+
+export interface SettingsSnapshot {
+  settings: Settings
+  warning?: SettingsWarning | null
+}
+
+export interface BootstrapState {
+  libraryStatus: 'loading' | 'ready' | 'error'
+  libraryError: string
+  settingsWarning: string
 }
 
 export interface RemoteAccessStatus {
