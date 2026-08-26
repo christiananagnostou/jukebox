@@ -4,7 +4,7 @@ const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }))
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
-import type { LibraryCatalogState, Song } from '~/App'
+import type { LibraryCatalogState, Song, StorageNode } from '~/App'
 import {
   aggregateItemAt,
   AggregatePager,
@@ -19,7 +19,10 @@ import {
   MAX_RETAINED_LIBRARY_PAGES,
   queryAlbums,
   queryArtists,
+  queryStorage,
   queryTracks,
+  storageNodeAt,
+  StoragePager,
   type TrackPageFetcher,
 } from './library-client'
 
@@ -109,6 +112,22 @@ describe('native library commands', () => {
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'query_artists', { query })
     expect(invokeMock).toHaveBeenNthCalledWith(2, 'query_albums', { query })
+  })
+
+  it('sends bounded storage traversal payloads through the native boundary', async () => {
+    invokeMock.mockResolvedValue({ items: [], revision: 3, total: 0 })
+    const query = {
+      direction: 'asc' as const,
+      limit: 100,
+      offset: 200,
+      parent: 'Albums/Live',
+      q: '',
+      rootId: 4,
+    }
+
+    await queryStorage(query)
+
+    expect(invokeMock).toHaveBeenCalledWith('query_storage', { query })
   })
 })
 
@@ -244,6 +263,42 @@ describe('AggregatePager', () => {
   })
 })
 
+describe('StoragePager', () => {
+  const storageState = (): AggregateCatalogState<StorageNode> => ({
+    error: '',
+    pages: {},
+    revision: 0,
+    status: 'loading',
+    total: 0,
+  })
+
+  it('preserves root and parent filters while paging bounded directory rows', async () => {
+    const requests: Array<{ offset: number; parent: string; rootId?: number }> = []
+    const catalog = storageState()
+    const pager = new StoragePager(catalog, async (query) => {
+      requests.push({ offset: query.offset, parent: query.parent, rootId: query.rootId })
+      const node: StorageNode = {
+        displayPath: '/Music/Albums/Live',
+        kind: 'directory',
+        name: 'Live',
+        relativePath: 'Albums/Live',
+        rootId: 4,
+        trackCount: 12,
+      }
+      return { items: [node], revision: 5, total: 201 }
+    })
+
+    await pager.reset({ direction: 'asc', parent: 'Albums', q: '', rootId: 4 })
+    await pager.ensureRange(200, 200)
+
+    expect(requests).toEqual([
+      { offset: 0, parent: 'Albums', rootId: 4 },
+      { offset: 200, parent: 'Albums', rootId: 4 },
+    ])
+    expect(storageNodeAt(catalog, 200)?.relativePath).toBe('Albums/Live')
+  })
+})
+
 describe('loadLegacyCatalog', () => {
   it('uses repeated bounded pages only when explicitly requested', async () => {
     const requests: string[] = []
@@ -264,5 +319,27 @@ describe('loadTrackSelection', () => {
 
     expect(songs).toHaveLength(205)
     expect(requests).toHaveLength(3)
+  })
+
+  it('preserves root and path filters across every selection page', async () => {
+    const requests: Array<{ pathPrefix?: string; rootId?: number }> = []
+    const songs = await loadTrackSelection(
+      { direction: 'asc', pathPrefix: 'Albums/Live', q: '', rootId: 4, sort: 'default' },
+      async (query) => {
+        requests.push({ pathPrefix: query.pathPrefix, rootId: query.rootId })
+        return {
+          items: query.cursor ? [] : [song(1)],
+          nextCursor: query.cursor ? undefined : 'next',
+          revision: 1,
+          total: 1,
+        }
+      }
+    )
+
+    expect(songs).toHaveLength(1)
+    expect(requests).toEqual([
+      { pathPrefix: 'Albums/Live', rootId: 4 },
+      { pathPrefix: 'Albums/Live', rootId: 4 },
+    ])
   })
 })

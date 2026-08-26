@@ -1,10 +1,18 @@
 import { $, useOnWindow } from '@builder.io/qwik'
 import { useLocation, useNavigate } from '@builder.io/qwik-city'
+
 import type { Store, StoreActions } from '~/App'
-import { useStoragePage } from './useStoragePage'
+import { lastLoadedLibraryIndex, librarySongAt, storageNodeAt } from '~/services/library-client'
+
 import { useArtistPage } from './useArtistPage'
 import { useLibraryPage } from './useLibraryPage'
-import { lastLoadedLibraryIndex, librarySongAt } from '~/services/library-client'
+import {
+  useStorageHighlightDown,
+  useStorageHighlightUp,
+  useStorageOpenNode,
+  useStorageOpenParent,
+  useStoragePlayNode,
+} from './useStoragePage'
 
 export const KeyboardCommands = [
   {
@@ -58,7 +66,11 @@ export const KeyboardCommands = [
 export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
   const nav = useNavigate()
   const location = useLocation()
-  const storageActions = useStoragePage(store, storeActions)
+  const highlightDown = useStorageHighlightDown(store)
+  const highlightUp = useStorageHighlightUp(store)
+  const openNode = useStorageOpenNode(store)
+  const openParent = useStorageOpenParent(store)
+  const playNode = useStoragePlayNode(store, storeActions)
   const artistActions = useArtistPage(store, storeActions)
   const libraryActions = useLibraryPage(store, storeActions)
 
@@ -93,11 +105,16 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       }
 
       if (pathname === '/storage/') {
-        if (key === 'j') storageActions.highlightDown()
-        if (key === 'k') storageActions.highlightUp()
+        if (key === 'j') highlightDown()
+        if (key === 'k') highlightUp()
+        if (key === 'h') openParent()
+        if (key === 'l') {
+          const node = storageNodeAt(store.storageView.nodes, store.storageView.cursorIdx)
+          openNode(node)
+        }
         if (key === 'Enter') {
-          const file = store.storageView.pathIndexMap[store.storageView.cursorIdx]
-          storageActions.playFile(file)
+          const node = storageNodeAt(store.storageView.nodes, store.storageView.cursorIdx)
+          playNode(node)
         }
       }
 

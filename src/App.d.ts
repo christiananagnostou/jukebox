@@ -47,9 +47,11 @@ export interface Store {
 
   storageView: {
     cursorIdx: number
-    rootFile: FileNode
-    pathIndexMap: PathIndexMap
-    nodeCount: number
+    nodes: AggregateCatalogState<StorageNode>
+    parent: string
+    rootDisplayPath: string
+    rootId: number | null
+    rootName: string
   }
 
   isTyping: boolean
@@ -211,15 +213,12 @@ export interface StoreActions {
   requestLibraryRange: QRL<(startIndex: number, endIndex: number) => Promise<void>>
 }
 
-export interface FileNode {
+export interface StorageNode {
+  displayPath: string
+  kind: 'directory' | 'root' | 'track'
   name: string
-  children: FileNode[]
-  song?: Song
-  level: number
-  isClosed: boolean
-  hidden: boolean
-}
-
-export interface PathIndexMap {
-  [index: number]: FileNode
+  relativePath: string
+  rootId: number
+  songId?: string
+  trackCount: number
 }
