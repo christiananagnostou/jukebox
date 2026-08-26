@@ -14,9 +14,10 @@ const TRAY_HIDE: &str = "tray_hide";
 const TRAY_QUIT: &str = "tray_quit";
 
 #[command]
-fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> String {
-    let song_metadata = Metadata::new(&app_handle, file_path);
-    serde_json::to_string(&song_metadata).unwrap_or_else(|_| "{}".to_string())
+async fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> Result<Metadata, String> {
+    tauri::async_runtime::spawn_blocking(move || Metadata::new(&app_handle, file_path))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f: F) {
