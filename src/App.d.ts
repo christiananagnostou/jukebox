@@ -3,7 +3,8 @@ export interface Store {
   filteredSongs: Song[]
   playlist: Song[]
   searchTerm: string
-  audioDir: string
+  settings: Settings
+  sync: SyncState
 
   sorting:
     | 'title-desc'
@@ -58,6 +59,19 @@ export interface Store {
     currentTime: number
     duration: number
   }
+}
+
+export interface Settings {
+  closeOnX: boolean
+  musicFolder: string
+}
+
+export interface SyncState {
+  status: 'idle' | 'scanning' | 'importing' | 'error'
+  processed: number
+  total: number
+  lastRunAt: string
+  message: string
 }
 
 export interface Album {

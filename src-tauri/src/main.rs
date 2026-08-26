@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::metadata::Metadata;
+use crate::settings::{get_settings, load_settings, set_settings, AppState};
+use std::sync::RwLock;
 use tauri::command;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, RunEvent, WindowEvent};
 
 mod metadata;
+mod settings;
 
 const MAIN_WINDOW: &str = "main";
 const TRAY_SHOW: &str = "tray_show";
@@ -29,6 +32,10 @@ fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f:
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
+            app.manage(AppState {
+                settings: RwLock::new(load_settings(app.handle())),
+            });
+
             let show = MenuItemBuilder::new("Show").id(TRAY_SHOW).build(app)?;
             let hide = MenuItemBuilder::new("Hide").id(TRAY_HIDE).build(app)?;
             let quit = MenuItemBuilder::new("Quit").id(TRAY_QUIT).build(app)?;
@@ -71,12 +78,27 @@ fn main() {
         .on_window_event(|window, event| {
             if window.label() == MAIN_WINDOW {
                 if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
+                    let close_on_x = window
+                        .state::<AppState>()
+                        .settings
+                        .read()
+                        .map(|settings| settings.close_on_x)
+                        .unwrap_or(false);
+
+                    if close_on_x {
+                        window.app_handle().exit(0);
+                    } else {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![get_metadata])
+        .invoke_handler(tauri::generate_handler![
+            get_metadata,
+            get_settings,
+            set_settings
+        ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())

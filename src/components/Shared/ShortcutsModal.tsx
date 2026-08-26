@@ -13,7 +13,6 @@ export const ShortcutsModal = component$(() => {
       class="fixed z-30 inset-0 h-full w-full grid place-items-center bg-[var(--modal-background)]"
       onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
     >
-      {/* Modal */}
       <div class="p-8 w-max h-max grid grid-cols-2 gap-12 border border-slate-700 rounded bg-[var(--body-bg-solid)]">
         {KeyboardCommands.map((shortcutGroup, i) => (
           <div key={i}>
