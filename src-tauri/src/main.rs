@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
+use crate::library::query_tracks;
 use crate::metadata::Metadata;
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
@@ -19,6 +20,7 @@ use tauri::{Manager, WindowEvent};
 
 mod catalog_mutations;
 mod database;
+mod library;
 mod metadata;
 mod remote_access;
 mod settings;
@@ -125,6 +127,7 @@ fn main() {
             upsert_songs,
             delete_songs,
             clear_library_songs,
+            query_tracks,
             get_metadata,
             get_settings,
             set_settings,
