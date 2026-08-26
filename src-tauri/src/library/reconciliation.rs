@@ -402,6 +402,10 @@ impl ReconciliationService {
                  FROM library_scan_metadata AS metadata
                  JOIN songs AS collision ON collision.id = metadata.candidate_id
                  WHERE metadata.scan_id = ? AND metadata.matched_song_id IS NULL
+                   AND NOT (
+                     collision.root_id IS NULL
+                     AND collision.path = metadata.path
+                   )
                    AND NOT EXISTS (
                      SELECT 1 FROM songs AS same_path
                      WHERE same_path.root_id = ?
@@ -1977,6 +1981,63 @@ mod tests {
                     .fetch_one(&pool)
                     .await
                     .expect("count collision-safe songs"),
+                1
+            );
+        });
+    }
+
+    #[test]
+    fn exact_path_legacy_song_is_adopted_without_losing_user_state() {
+        tauri::async_runtime::block_on(async {
+            let (pool, service, directory, root_id) = fixture().await;
+            let root = directory.path().canonicalize().expect("canonical root");
+            let path = root.join("track.wav");
+            write_wav(&path, 1);
+            let observed = observation(&root, "track.wav");
+            let song_id = hash_string(&path.to_string_lossy());
+            sqlx::query(
+                "INSERT INTO songs (
+                   id, path, file, title, album, artist, genre, bpm, compilation, date, encoder,
+                   trackTotal, trackNumber, codec, duration, sampleRate, side, startTime,
+                   favorRating, dateAdded, visualsPath
+                 ) VALUES (
+                   ?, ?, 'track.wav', 'Legacy title', '', '', '', 0, 0, '', '',
+                   0, 0, 'pcm', '', '8000', 0, 42, 2, 'original-date', 'legacy-art'
+                 )",
+            )
+            .bind(&song_id)
+            .bind(path.to_string_lossy().as_ref())
+            .execute(&pool)
+            .await
+            .expect("insert legacy song");
+            let scan_id = completed_scan(&pool, root_id, std::slice::from_ref(&observed)).await;
+            prepare_snapshot(&service, scan_id, root_id, &root, 1).await;
+
+            service.apply(scan_id).await.expect("adopt legacy song");
+
+            let adopted: (String, Option<i64>, Option<String>, i64, i64, String) = sqlx::query_as(
+                "SELECT id, root_id, normalized_path, startTime, favorRating, dateAdded
+                     FROM songs",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("read adopted song");
+            assert_eq!(
+                adopted,
+                (
+                    song_id,
+                    Some(root_id),
+                    Some("track.wav".to_owned()),
+                    42,
+                    2,
+                    "original-date".to_owned(),
+                )
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM songs")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count adopted songs"),
                 1
             );
         });
