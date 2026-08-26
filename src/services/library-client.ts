@@ -20,6 +20,7 @@ export interface TrackQuery {
 }
 
 export interface AggregateQuery {
+  artist?: string
   direction: 'asc' | 'desc'
   limit: number
   offset: number

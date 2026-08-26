@@ -267,7 +267,7 @@ pub(super) fn fts_expression(query: &str) -> Option<String> {
     (!tokens.is_empty()).then(|| tokens.join(" AND "))
 }
 
-fn push_exact_filter(
+pub(super) fn push_exact_filter(
     builder: &mut QueryBuilder<'_, Sqlite>,
     column: &'static str,
     value: Option<&str>,

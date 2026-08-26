@@ -1,11 +1,12 @@
 use super::query::{LibraryError, SortDirection, MAX_PAGE_SIZE};
-use super::repository::{fts_expression, push_search};
+use super::repository::{fts_expression, push_exact_filter, push_search};
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AggregateQuery {
+    pub artist: Option<String>,
     pub direction: SortDirection,
     pub limit: u32,
     pub offset: u32,
@@ -15,6 +16,7 @@ pub struct AggregateQuery {
 impl Default for AggregateQuery {
     fn default() -> Self {
         Self {
+            artist: None,
             direction: SortDirection::Asc,
             limit: 50,
             offset: 0,
@@ -62,6 +64,7 @@ pub struct AlbumPage {
 
 #[derive(Debug)]
 struct NormalizedAggregateQuery {
+    artist: Option<String>,
     direction: SortDirection,
     limit: u32,
     offset: u32,
@@ -79,7 +82,17 @@ impl AggregateQuery {
         if q.chars().count() > 256 {
             return Err(LibraryError::invalid_query("Aggregate search is too long."));
         }
+        if self
+            .artist
+            .as_deref()
+            .is_some_and(|artist| artist.chars().count() > 1_024)
+        {
+            return Err(LibraryError::invalid_query(
+                "Aggregate artist filter is too long.",
+            ));
+        }
         Ok(NormalizedAggregateQuery {
+            artist: self.artist,
             direction: self.direction,
             limit: self.limit.min(MAX_PAGE_SIZE),
             offset: self.offset,
@@ -98,7 +111,8 @@ pub(crate) async fn load_artist_page(
     let revision = read_revision(&mut transaction).await?;
 
     let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM (SELECT artist FROM songs");
-    push_search(&mut count, search.as_deref(), false);
+    let has_filter = push_search(&mut count, search.as_deref(), false);
+    push_exact_filter(&mut count, "artist", query.artist.as_deref(), has_filter);
     count.push(" GROUP BY artist)");
     let total = count
         .build_query_scalar::<i64>()
@@ -111,7 +125,8 @@ pub(crate) async fn load_artist_page(
                 COUNT(DISTINCT album) AS album_count, COUNT(*) AS track_count
          FROM songs",
     );
-    push_search(&mut page, search.as_deref(), false);
+    let has_filter = push_search(&mut page, search.as_deref(), false);
+    push_exact_filter(&mut page, "artist", query.artist.as_deref(), has_filter);
     page.push(" GROUP BY artist ORDER BY name COLLATE NOCASE");
     push_direction(&mut page, query.direction);
     page.push(", name COLLATE BINARY");
@@ -160,7 +175,8 @@ pub(crate) async fn load_album_page(
 
     let mut count =
         QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM (SELECT artist, album FROM songs");
-    push_search(&mut count, search.as_deref(), false);
+    let has_filter = push_search(&mut count, search.as_deref(), false);
+    push_exact_filter(&mut count, "artist", query.artist.as_deref(), has_filter);
     count.push(" GROUP BY artist, album)");
     let total = count
         .build_query_scalar::<i64>()
@@ -175,7 +191,8 @@ pub(crate) async fn load_album_page(
                 COALESCE(MIN(NULLIF(visualsPath, '')), '') AS visuals_path
          FROM songs",
     );
-    push_search(&mut page, search.as_deref(), false);
+    let has_filter = push_search(&mut page, search.as_deref(), false);
+    push_exact_filter(&mut page, "artist", query.artist.as_deref(), has_filter);
     page.push(" GROUP BY artist, album ORDER BY artist COLLATE NOCASE");
     push_direction(&mut page, query.direction);
     page.push(", name COLLATE NOCASE");
@@ -411,6 +428,21 @@ mod tests {
             assert_eq!(first_album.items[0].date, "2021");
             assert_eq!(first_album.items[0].track_count, 2);
             assert_eq!(first_album.items[0].visuals_path, "art-a");
+
+            let artist_albums = load_album_page(
+                &pool,
+                AggregateQuery {
+                    artist: Some("Björk".to_owned()),
+                    ..AggregateQuery::default()
+                },
+            )
+            .await
+            .expect("filter albums by exact artist");
+            assert_eq!(artist_albums.total, 2);
+            assert!(artist_albums
+                .items
+                .iter()
+                .all(|album| album.artist_value == "Björk"));
         });
     }
 }

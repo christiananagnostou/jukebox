@@ -96,7 +96,7 @@ describe('native library commands', () => {
 
   it('uses bounded aggregate query payloads for artist and album pages', async () => {
     invokeMock.mockResolvedValue({ items: [], revision: 3, total: 0 })
-    const query = { direction: 'desc' as const, limit: 50, offset: 100, q: 'ambient' }
+    const query = { artist: 'Björk', direction: 'desc' as const, limit: 50, offset: 100, q: 'ambient' }
 
     await queryArtists(query)
     await queryAlbums(query)

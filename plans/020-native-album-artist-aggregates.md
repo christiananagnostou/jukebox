@@ -11,7 +11,7 @@ Add bounded, revision-aware native album and artist summaries plus filtered trac
 ## Scope
 
 1. Add typed aggregate query/page contracts capped at 100 rows.
-2. Group artist and album summaries in the shared SQLx library boundary, using the existing FTS expression for search.
+2. Group artist and album summaries in the shared SQLx library boundary, using the existing FTS expression for search and an optional exact artist constraint for drill-down.
 3. Return the catalog revision with every page so frontend pagers can reject mixed snapshots.
 4. Extend track queries with exact artist/album filters for drill-down and user-triggered playback.
 5. Add deterministic grouping, search, pagination, bounds, empty-metadata, and revision tests.
