@@ -38,9 +38,11 @@ export interface Store {
     trackIdx: number
     cursorCol: number
 
-    artists: Artist[]
-    albums: Album[]
-    tracks: Song[]
+    artists: AggregateCatalogState<ArtistSummary>
+    albums: AggregateCatalogState<AlbumSummary>
+    tracks: LibraryCatalogState
+    selectedArtistKey: string
+    selectedAlbumKey: string
   }
 
   storageView: {
@@ -126,14 +128,29 @@ export interface LibraryCatalogState {
   total: number
 }
 
-export interface Album {
-  title: string
-  tracks: Song[]
+export interface AggregateCatalogState<Item> {
+  error: string
+  pages: Record<string, Item[]>
+  revision: number
+  status: 'loading' | 'ready' | 'error'
+  total: number
 }
 
-export interface Artist {
+export interface ArtistSummary {
+  albumCount: number
   name: string
-  albums: Album[]
+  trackCount: number
+  value: string
+}
+
+export interface AlbumSummary {
+  artist: string
+  artistValue: string
+  date: string
+  name: string
+  trackCount: number
+  value: string
+  visualsPath: string
 }
 
 export interface Song {

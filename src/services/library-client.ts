@@ -1,10 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
 import { $, noSerialize, useSignal, useTask$, useVisibleTask$, type NoSerialize } from '@builder.io/qwik'
 
-import type { LibraryCatalogState, Song, Store } from '~/App'
+import type { AggregateCatalogState, AlbumSummary, ArtistSummary, LibraryCatalogState, Song, Store } from '~/App'
+
+export type { AggregateCatalogState, AlbumSummary, ArtistSummary } from '~/App'
 
 export const LIBRARY_PAGE_SIZE = 100
 export const MAX_RETAINED_LIBRARY_PAGES = 5
+export const AGGREGATE_PAGE_SIZE = 100
+export const MAX_RETAINED_AGGREGATE_PAGES = 5
 
 type NativeTrackSort =
   'default' | 'album' | 'artist' | 'date' | 'date_added' | 'favorite' | 'sample_rate' | 'title' | 'track'
@@ -25,23 +29,6 @@ export interface AggregateQuery {
   limit: number
   offset: number
   q: string
-}
-
-export interface ArtistSummary {
-  albumCount: number
-  name: string
-  trackCount: number
-  value: string
-}
-
-export interface AlbumSummary {
-  artist: string
-  artistValue: string
-  date: string
-  name: string
-  trackCount: number
-  value: string
-  visualsPath: string
 }
 
 export interface AggregatePage<Item> {
@@ -84,6 +71,7 @@ export interface TrackPage {
 }
 
 export type TrackPageFetcher = (query: TrackQuery) => Promise<TrackPage>
+export type AggregatePageFetcher<Item> = (query: AggregateQuery) => Promise<AggregatePage<Item>>
 
 function toSong(track: NativeTrackSummary): Song {
   return {
@@ -107,6 +95,110 @@ export function queryArtists(query: AggregateQuery): Promise<AggregatePage<Artis
 
 export function queryAlbums(query: AggregateQuery): Promise<AggregatePage<AlbumSummary>> {
   return invoke('query_albums', { query })
+}
+
+export class AggregatePager<Item> {
+  private generation = 0
+  private query: Omit<AggregateQuery, 'limit' | 'offset'> = { direction: 'asc', q: '' }
+  private queryKey = ''
+  private queue = Promise.resolve()
+
+  constructor(
+    private readonly state: AggregateCatalogState<Item>,
+    private readonly fetchPage: AggregatePageFetcher<Item>
+  ) {}
+
+  reset(query: Omit<AggregateQuery, 'limit' | 'offset'>): Promise<void> {
+    const queryKey = JSON.stringify(query)
+    if (queryKey === this.queryKey && this.state.status !== 'error') return this.queue
+    this.query = query
+    this.queryKey = queryKey
+    return this.enqueueRange(0, 0, this.beginQuery())
+  }
+
+  reload(): Promise<void> {
+    this.queryKey = ''
+    return this.reset(this.query)
+  }
+
+  clear(): void {
+    this.queryKey = ''
+    this.beginQuery()
+  }
+
+  ensureRange(startIndex: number, endIndex: number): Promise<void> {
+    if (this.state.status === 'error' || endIndex < 0) return Promise.resolve()
+    const startPage = Math.max(0, Math.floor(startIndex / AGGREGATE_PAGE_SIZE))
+    const endPage = Math.max(startPage, Math.floor(endIndex / AGGREGATE_PAGE_SIZE))
+    return this.enqueueRange(startPage, endPage, this.generation)
+  }
+
+  dispose(): void {
+    this.generation += 1
+  }
+
+  private enqueueRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    this.queue = this.queue.then(() => this.loadRange(startPage, endPage, generation))
+    return this.queue
+  }
+
+  private async loadRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    try {
+      for (let pageIndex = startPage; pageIndex <= endPage; pageIndex += 1) {
+        if (generation !== this.generation) return
+        if (this.state.pages[String(pageIndex)]) continue
+        const page = await this.fetchPage({
+          ...this.query,
+          limit: AGGREGATE_PAGE_SIZE,
+          offset: pageIndex * AGGREGATE_PAGE_SIZE,
+        })
+        if (generation !== this.generation) return
+        if (this.state.revision && page.revision !== this.state.revision) {
+          await this.loadRange(0, 0, this.beginQuery())
+          return
+        }
+
+        this.state.pages[String(pageIndex)] = page.items
+        this.state.revision = page.revision
+        this.state.total = page.total
+      }
+      if (generation !== this.generation) return
+      this.evictDistantPages(startPage, endPage)
+      this.state.error = ''
+      this.state.status = 'ready'
+    } catch (error) {
+      if (generation !== this.generation) return
+      this.state.error = libraryErrorMessage(error)
+      this.state.status = 'error'
+    }
+  }
+
+  private beginQuery(): number {
+    this.generation += 1
+    this.state.error = ''
+    this.state.pages = {}
+    this.state.revision = 0
+    this.state.status = 'loading'
+    this.state.total = 0
+    return this.generation
+  }
+
+  private evictDistantPages(startPage: number, endPage: number): void {
+    const center = (startPage + endPage) / 2
+    const retained = Object.keys(this.state.pages)
+      .map(Number)
+      .sort((left, right) => Math.abs(left - center) - Math.abs(right - center))
+      .slice(0, MAX_RETAINED_AGGREGATE_PAGES)
+    const keep = new Set(retained.map(String))
+    for (const pageIndex of Object.keys(this.state.pages)) {
+      if (!keep.has(pageIndex)) delete this.state.pages[pageIndex]
+    }
+  }
+}
+
+export function aggregateItemAt<Item>(state: AggregateCatalogState<Item>, index: number): Item | undefined {
+  const pageIndex = Math.floor(index / AGGREGATE_PAGE_SIZE)
+  return state.pages[String(pageIndex)]?.[index % AGGREGATE_PAGE_SIZE]
 }
 
 export function catalogQuery(searchTerm: string, sorting: Store['sorting']): Omit<TrackQuery, 'cursor' | 'limit'> {
@@ -152,7 +244,10 @@ export class LibraryPager {
   ) {}
 
   reset(searchTerm: string, sorting: Store['sorting']): Promise<void> {
-    const query = catalogQuery(searchTerm, sorting)
+    return this.resetQuery(catalogQuery(searchTerm, sorting))
+  }
+
+  resetQuery(query: Omit<TrackQuery, 'cursor' | 'limit'>): Promise<void> {
     const queryKey = JSON.stringify(query)
     if (queryKey === this.queryKey && this.state.status !== 'error') return this.queue
 
@@ -163,7 +258,12 @@ export class LibraryPager {
 
   reload(): Promise<void> {
     this.queryKey = ''
-    return this.reset(this.query.q, this.sortingName())
+    return this.resetQuery(this.query)
+  }
+
+  clear(): void {
+    this.queryKey = ''
+    this.beginQuery()
   }
 
   ensureRange(startIndex: number, endIndex: number): Promise<void> {
@@ -175,21 +275,6 @@ export class LibraryPager {
 
   dispose(): void {
     this.generation += 1
-  }
-
-  private sortingName(): Store['sorting'] {
-    if (this.query.sort === 'default') return 'default'
-    const fields: Record<Exclude<NativeTrackSort, 'default'>, string> = {
-      album: 'album',
-      artist: 'artist',
-      date: 'date',
-      date_added: 'date-added',
-      favorite: 'fave',
-      sample_rate: 'hertz',
-      title: 'title',
-      track: 'track',
-    }
-    return `${fields[this.query.sort]}-${this.query.direction}` as Store['sorting']
   }
 
   private enqueueRange(startPage: number, endPage: number, generation: number): Promise<void> {
@@ -297,6 +382,22 @@ export async function loadLegacyCatalog(fetchPage: TrackPageFetcher = queryTrack
       q: '',
       sort: 'default',
     })
+    songs.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+
+  return songs
+}
+
+export async function loadTrackSelection(
+  query: Omit<TrackQuery, 'cursor' | 'limit'>,
+  fetchPage: TrackPageFetcher = queryTracks
+): Promise<Song[]> {
+  const songs: Song[] = []
+  let cursor: string | undefined
+
+  do {
+    const page = await fetchPage({ ...query, cursor, limit: LIBRARY_PAGE_SIZE })
     songs.push(...page.items)
     cursor = page.nextCursor
   } while (cursor)
