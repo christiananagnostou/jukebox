@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
-use crate::library::{query_tracks, LibraryState};
+use crate::library::{
+    add_library_root, list_library_roots, query_tracks, set_library_root_enabled, LibraryState,
+};
 use crate::metadata::Metadata;
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
@@ -130,6 +132,9 @@ fn main() {
             delete_songs,
             clear_library_songs,
             query_tracks,
+            add_library_root,
+            list_library_roots,
+            set_library_root_enabled,
             get_metadata,
             get_settings,
             set_settings,

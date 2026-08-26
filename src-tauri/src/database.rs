@@ -4,6 +4,8 @@ pub const LIBRARY_DB_URL: &str = "sqlite:library.db";
 
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
 pub(crate) const CATALOG_QUERY_SCHEMA: &str = include_str!("../migrations/0002_catalog_query.sql");
+pub(crate) const LIBRARY_SCAN_SCHEMA: &str =
+    include_str!("../migrations/0003_library_scan_state.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub fn migrations() -> Vec<Migration> {
@@ -18,6 +20,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 2,
             description: "add indexed catalog queries",
             sql: CATALOG_QUERY_SCHEMA,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add native library scan state",
+            sql: LIBRARY_SCAN_SCHEMA,
             kind: MigrationKind::Up,
         },
     ]
@@ -213,7 +221,141 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                2
+                3
+            );
+            let scan_columns: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name IN (
+                    'root_id', 'normalized_path', 'file_size', 'modified_at_ns',
+                    'quick_fingerprint', 'availability', 'last_seen_scan_id', 'metadata_version'
+                )",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("inspect scan columns");
+            let available_rows: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM songs WHERE availability = 'available'")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count available migrated rows");
+
+            assert_eq!(scan_columns, 8);
+            assert_eq!(available_rows, 5);
+        });
+    }
+
+    #[test]
+    fn scan_state_constraints_preserve_catalog_and_ignore_bookkeeping_updates() {
+        run_async(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open in-memory database");
+            sqlx::raw_sql(INITIAL_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply initial schema");
+            sqlx::raw_sql(CATALOG_QUERY_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply catalog schema");
+            sqlx::raw_sql(PRE_0002_FIXTURE)
+                .execute(&pool)
+                .await
+                .expect("insert fixture through catalog triggers");
+            sqlx::raw_sql(LIBRARY_SCAN_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply scan schema");
+
+            let root_id: i64 = sqlx::query_scalar(
+                "INSERT INTO library_roots (path, canonical_path) VALUES (?, ?) RETURNING id",
+            )
+            .bind("/Music")
+            .bind("/Music")
+            .fetch_one(&pool)
+            .await
+            .expect("insert root");
+            let scan_id: i64 = sqlx::query_scalar(
+                "INSERT INTO library_scans (root_id, status) VALUES (?, 'running') RETURNING id",
+            )
+            .bind(root_id)
+            .fetch_one(&pool)
+            .await
+            .expect("insert scan");
+
+            sqlx::query(
+                "UPDATE songs SET
+                    root_id = ?, normalized_path = ?, file_size = ?, modified_at_ns = ?,
+                    quick_fingerprint = ?, last_seen_scan_id = ?, metadata_version = ?
+                 WHERE id = '01'",
+            )
+            .bind(root_id)
+            .bind("Björk/Jóga.flac")
+            .bind(123_i64)
+            .bind(456_i64)
+            .bind("fingerprint")
+            .bind(scan_id)
+            .bind(2_i64)
+            .execute(&pool)
+            .await
+            .expect("update scan bookkeeping");
+
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT revision FROM catalog_meta WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read unchanged revision"),
+                5
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM songs_fts")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count unchanged search rows"),
+                5
+            );
+
+            sqlx::query("UPDATE songs SET availability = 'unavailable' WHERE id = '01'")
+                .execute(&pool)
+                .await
+                .expect("mark song unavailable");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT revision FROM catalog_meta WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read visibility revision"),
+                6
+            );
+
+            let invalid_counter =
+                sqlx::query("UPDATE library_scans SET discovered = -1 WHERE id = ?")
+                    .bind(scan_id)
+                    .execute(&pool)
+                    .await;
+            let invalid_status =
+                sqlx::query("INSERT INTO library_scans (root_id, status) VALUES (?, 'unknown')")
+                    .bind(root_id)
+                    .execute(&pool)
+                    .await;
+            let unknown_root = sqlx::query("UPDATE songs SET root_id = 999 WHERE id = '02'")
+                .execute(&pool)
+                .await;
+            assert!(invalid_counter.is_err());
+            assert!(invalid_status.is_err());
+            assert!(unknown_root.is_err());
+
+            sqlx::query("UPDATE library_roots SET enabled = 0 WHERE id = ?")
+                .bind(root_id)
+                .execute(&pool)
+                .await
+                .expect("disable root");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM songs")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count songs after disabling root"),
+                5
             );
         });
     }
