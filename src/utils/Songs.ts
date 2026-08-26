@@ -33,6 +33,15 @@ export function mergeSongs(existingSongs: Song[], importedSongs: Song[]): Song[]
   return [...songsById.values()].sort(compareSongsByAlbumTrack)
 }
 
+export function getUpcomingSongs(songs: Song[], currentIndex: number, limit = 5): Song[] {
+  if (songs.length < 2 || limit <= 0) return []
+
+  const normalizedIndex = ((currentIndex % songs.length) + songs.length) % songs.length
+  const start = (normalizedIndex + 1) % songs.length
+  const count = Math.min(limit, songs.length - 1)
+  return Array.from({ length: count }, (_, offset) => songs[(start + offset) % songs.length])
+}
+
 export function compareSongs(sorting: Store['sorting']): (left: Song, right: Song) => number {
   if (sorting === 'default') return compareSongsByAlbumTrack
 

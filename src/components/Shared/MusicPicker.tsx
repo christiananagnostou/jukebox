@@ -5,8 +5,7 @@ import { message, open } from '@tauri-apps/plugin-dialog'
 
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { StoreContext } from '~/routes/layout'
-
-const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+import { getErrorMessage } from '~/utils/Errors'
 
 export default component$(({ styles }: { styles: { button: string; icon: string } }) => {
   const store = useContext(StoreContext)
@@ -22,7 +21,7 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
         )
       }
     } catch (error) {
-      await message(errorMessage(error), { kind: 'error', title: 'Jukebox import failed' })
+      await message(getErrorMessage(error), { kind: 'error', title: 'Jukebox import failed' })
     }
   })
 

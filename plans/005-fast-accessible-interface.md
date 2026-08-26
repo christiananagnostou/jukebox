@@ -11,8 +11,8 @@ Turn the current functional shell into a top-tier desktop player interface: info
 - `VirtualList.tsx` assumes fixed row heights and exposes no semantic grid/list metadata, focus model, page-up/down, or page cache integration.
 - Artist and storage views use three fixed equal columns/tree indentation without empty states or contextual actions.
 - Error/loading/import status is compressed into the footer; there is no consistent notice/toast/details pattern.
-- Bundled Poppins font files are present but the global CSS uses the system stack; there are stale range styles and duplicate sound keyframes.
-- The sound-bars indicator animates continuously and has no reduced-motion rule.
+- Bundled Poppins font files are present but the global CSS uses the system stack.
+- The sound-bars indicator honors reduced motion, but the broader interface still needs a unified motion policy and accessibility regression coverage.
 
 ## Scope
 
@@ -45,7 +45,7 @@ Turn the current functional shell into a top-tier desktop player interface: info
 - Replace scattered literal colors/sizes with semantic CSS variables for surfaces, borders, text levels, selection, focus, destructive actions, row height, and density.
 - Decide whether to use bundled Poppins or the system stack; use one and remove unused font assets/declarations.
 - Add primitives for button, icon button, field, notice, progress, inline confirmation, tooltip, empty state, split pane, and command menu under `src/components/ui/`.
-- Remove stale CSS, duplicate keyframes, and unused selectors. Add `prefers-reduced-motion` rules that stop SoundBars and any nonessential transition.
+- Remove unused font assets/declarations and extend the existing `prefers-reduced-motion` treatment to every nonessential transition.
 
 ### 2. Make the shell adaptive
 

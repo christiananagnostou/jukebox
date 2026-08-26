@@ -8,12 +8,12 @@ export const SoundBars = component$<SoundBarsProps>(({ show }) => {
   return (
     <div class="sound-wave pl-2">
       {show && (
-        <>
-          <i class="bar"></i>
-          <i class="bar"></i>
-          <i class="bar"></i>
-          <i class="bar"></i>
-        </>
+        <div aria-hidden="true" class="flex">
+          <i class="bar" />
+          <i class="bar" />
+          <i class="bar" />
+          <i class="bar" />
+        </div>
       )}
     </div>
   )
