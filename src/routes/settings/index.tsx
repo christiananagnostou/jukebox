@@ -1,10 +1,10 @@
-import { $, component$, useContext, useStore } from '@builder.io/qwik'
+import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { invoke } from '@tauri-apps/api/core'
 import { audioDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
 import { exists } from '@tauri-apps/plugin-fs'
 
-import type { Settings } from '~/App'
+import type { RemoteAccessStatus, Settings } from '~/App'
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
 import { getErrorMessage } from '~/utils/Errors'
@@ -18,8 +18,28 @@ const FILE_CHECK_CONCURRENCY = 32
 export default component$(() => {
   const store = useContext(StoreContext)
   const { importPaths } = useLibraryImporter(store)
-  const state = useStore({ confirmAction: '' as '' | 'missing' | 'clear', removed: 0 })
+  const state = useStore({
+    confirmAction: '' as '' | 'missing' | 'clear',
+    removed: 0,
+    remoteAccessBusy: false,
+    remoteAccess: {
+      enabled: false,
+      port: 45321,
+      running: false,
+      url: 'http://127.0.0.1:45321',
+    } as RemoteAccessStatus,
+  })
   const isBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
+
+  useVisibleTask$(async () => {
+    state.remoteAccess = await invoke<RemoteAccessStatus>('get_remote_access_status').catch(() => ({
+      enabled: store.settings.remoteAccessEnabled,
+      error: 'Remote access status is unavailable',
+      port: 45321,
+      running: false,
+      url: 'http://127.0.0.1:45321',
+    }))
+  })
 
   const saveSettings = $(async (settings: Settings) => {
     try {
@@ -54,6 +74,22 @@ export default component$(() => {
 
   const scanMusicFolder = $(async () => {
     if (store.settings.musicFolder) await importPaths([store.settings.musicFolder], 'scan')
+  })
+
+  const toggleRemoteAccess = $(async () => {
+    if (state.remoteAccessBusy) return
+    state.remoteAccessBusy = true
+    try {
+      state.remoteAccess = await invoke<RemoteAccessStatus>('set_remote_access_enabled', {
+        enabled: !state.remoteAccess.enabled,
+      })
+      store.settings.remoteAccessEnabled = state.remoteAccess.enabled
+    } catch (error) {
+      store.sync.status = 'error'
+      store.sync.message = getErrorMessage(error)
+    } finally {
+      state.remoteAccessBusy = false
+    }
   })
 
   const resetPlayback = $(() => {
@@ -151,6 +187,37 @@ export default component$(() => {
           <h1 class="text-xl">Settings</h1>
           <p class="mt-1 text-sm text-gray-400">Playback behavior and library maintenance.</p>
         </header>
+
+        <div class={SECTION_CLASS}>
+          <div class="flex items-center justify-between gap-6">
+            <div>
+              <h2 class="text-sm font-medium">Listen from another device</h2>
+              <p class="mt-1 text-xs text-gray-400">
+                Runs a private player on this Mac. It only accepts local connections until you securely proxy it.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={state.remoteAccess.enabled}
+              aria-busy={state.remoteAccessBusy}
+              disabled={state.remoteAccessBusy}
+              class={`h-6 w-11 border ${state.remoteAccess.enabled ? 'border-emerald-400 bg-emerald-700' : 'border-gray-600 bg-gray-800'}`}
+              onClick$={toggleRemoteAccess}
+            >
+              <span class="sr-only">Listen from another device</span>
+              {state.remoteAccess.enabled ? 'On' : 'Off'}
+            </button>
+          </div>
+          {state.remoteAccess.enabled && (
+            <div class="text-xs text-gray-400">
+              <p>
+                {state.remoteAccess.running ? `Local server ready at ${state.remoteAccess.url}` : 'Starting server…'}
+              </p>
+              <p class="mt-1">For iPhone access, expose this port with Tailscale Serve. Do not use a public Funnel.</p>
+              {state.remoteAccess.error && <p class="mt-1 text-red-300">{state.remoteAccess.error}</p>}
+            </div>
+          )}
+        </div>
 
         <div class={SECTION_CLASS}>
           <div class="flex items-center justify-between gap-6">

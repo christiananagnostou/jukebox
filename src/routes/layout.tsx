@@ -37,6 +37,7 @@ export default component$(() => {
       settings: {
         closeOnX: false,
         musicFolder: '',
+        remoteAccessEnabled: false,
       },
       sync: {
         status: 'idle',
@@ -65,7 +66,11 @@ export default component$(() => {
   useVisibleTask$(async () => {
     const [songs, savedSettings] = await Promise.all([
       loadLibrarySongs(),
-      invoke<Settings>('get_settings').catch(() => ({ closeOnX: false, musicFolder: '' })),
+      invoke<Settings>('get_settings').catch(() => ({
+        closeOnX: false,
+        musicFolder: '',
+        remoteAccessEnabled: false,
+      })),
     ])
 
     store.allSongs = songs

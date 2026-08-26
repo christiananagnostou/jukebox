@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111827" />
+    <title>Jukebox</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Jukebox</h1>
+        <form id="search-form" role="search">
+          <input id="search" type="search" placeholder="Search title, artist, or album" aria-label="Search library" />
+          <button type="submit">Search</button>
+        </form>
+        <p id="status" role="status">Loading library…</p>
+      </header>
+      <section id="tracks" aria-label="Tracks"></section>
+    </main>
+    <footer><audio id="player" controls preload="metadata"></audio></footer>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::metadata::Metadata;
+use crate::remote_access::{
+    get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
+};
 use crate::settings::{get_settings, load_settings, set_settings, AppState};
 use std::sync::RwLock;
 use tauri::command;
@@ -12,6 +15,7 @@ use tauri::{Manager, WindowEvent};
 
 mod database;
 mod metadata;
+mod remote_access;
 mod settings;
 
 const MAIN_WINDOW: &str = "main";
@@ -35,9 +39,22 @@ fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f:
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
+            let settings = load_settings(app.handle());
+            let start_remote_access = settings.remote_access_enabled;
             app.manage(AppState {
-                settings: RwLock::new(load_settings(app.handle())),
+                settings: RwLock::new(settings),
             });
+
+            let remote_access = RemoteAccessState::default();
+            app.manage(remote_access.clone());
+            if start_remote_access {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = remote_access.start(app_handle).await {
+                        eprintln!("remote access failed to start: {error}");
+                    }
+                });
+            }
 
             let show = MenuItemBuilder::new("Show").id(TRAY_SHOW).build(app)?;
             let hide = MenuItemBuilder::new("Hide").id(TRAY_HIDE).build(app)?;
@@ -100,7 +117,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_metadata,
             get_settings,
-            set_settings
+            set_settings,
+            get_remote_access_status,
+            set_remote_access_enabled
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
