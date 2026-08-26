@@ -409,25 +409,6 @@ export function lastLoadedLibraryIndex(state: LibraryCatalogState): number {
   }, 0)
 }
 
-export async function loadLegacyCatalog(fetchPage: TrackPageFetcher = queryTracks): Promise<Song[]> {
-  const songs: Song[] = []
-  let cursor: string | undefined
-
-  do {
-    const page = await fetchPage({
-      cursor,
-      direction: 'asc',
-      limit: LIBRARY_PAGE_SIZE,
-      q: '',
-      sort: 'default',
-    })
-    songs.push(...page.items)
-    cursor = page.nextCursor
-  } while (cursor)
-
-  return songs
-}
-
 export async function loadTrackSelection(
   query: Omit<TrackQuery, 'cursor' | 'limit'>,
   fetchPage: TrackPageFetcher = queryTracks
@@ -442,31 +423,6 @@ export async function loadTrackSelection(
   } while (cursor)
 
   return songs
-}
-
-let legacyCatalogRequest: Promise<Song[]> | undefined
-
-export async function ensureLegacyCatalog(store: Store): Promise<Song[]> {
-  if (store.legacyCatalogLoaded) return store.legacyCatalog
-  legacyCatalogRequest ||= loadLegacyCatalog()
-  try {
-    const songs = await legacyCatalogRequest
-    store.legacyCatalog = songs
-    store.legacyCatalogLoaded = true
-    return songs
-  } catch {
-    store.bootstrap.libraryStatus = 'error'
-    store.bootstrap.libraryError = 'Jukebox could not load the complete library for this view.'
-    throw new Error(store.bootstrap.libraryError)
-  } finally {
-    legacyCatalogRequest = undefined
-  }
-}
-
-export function useLegacyCatalog(store: Store): void {
-  useVisibleTask$(async () => {
-    await ensureLegacyCatalog(store).catch(() => undefined)
-  })
 }
 
 export function useLibraryCatalog(store: Store) {

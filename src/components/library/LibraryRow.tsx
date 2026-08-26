@@ -41,13 +41,14 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
   })
 
   const handleFavorClick = $(async (rating: Song['favorRating']) => {
-    await updateFavoriteRating(song.id, rating)
-    song.favorRating = rating
-    if (store.legacyCatalogLoaded) {
-      const legacySong = store.legacyCatalog.find((item) => item.id === song.id)
-      if (legacySong) legacySong.favorRating = rating
+    try {
+      await updateFavoriteRating(song.id, rating)
+      song.favorRating = rating
+      store.libraryCatalog.refreshKey += 1
+      store.bootstrap.libraryError = ''
+    } catch {
+      store.bootstrap.libraryError = 'Jukebox could not update that favorite rating.'
     }
-    store.libraryCatalog.refreshKey += 1
   })
 
   const nextRating = ((song.favorRating + 1) % 3) as Song['favorRating']

@@ -127,8 +127,6 @@ export function applyLibraryRefreshEvent(store: Store, refresh: LibraryRefresh, 
   store.sync.message = refresh.status === 'cancelled' ? 'Library refresh cancelled' : ''
   if (refresh.status !== 'completed' || !isNewTerminalEvent) return false
 
-  store.legacyCatalog = []
-  store.legacyCatalogLoaded = false
   store.libraryCatalog.refreshKey += 1
   return true
 }

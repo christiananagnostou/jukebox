@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
+use crate::catalog_mutations::{
+    clear_library_songs, delete_songs, update_favorite_rating, upsert_songs,
+};
 use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
     cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
@@ -140,6 +142,7 @@ fn main() {
             upsert_songs,
             delete_songs,
             clear_library_songs,
+            update_favorite_rating,
             query_tracks,
             query_artists,
             query_albums,

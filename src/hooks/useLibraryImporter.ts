@@ -7,8 +7,6 @@ import type { Metadata, Song, Store } from '~/App'
 import { upsertSongs } from '~/services/library-db'
 import { getErrorMessage } from '~/utils/Errors'
 import { isAudioFile } from '~/utils/Files'
-import { mergeSongs } from '~/utils/Songs'
-import { ensureLegacyCatalog } from '~/services/library-client'
 import { addLibraryRoot } from '~/services/library-refresh'
 
 const IMPORT_CONCURRENCY = 4
@@ -144,8 +142,6 @@ export function useLibraryImporter(store: Store) {
             : 'No audio files found'
         return { errors: rootErrors, folders: directories.length - rootErrors.length, imported: 0 }
       }
-      const legacyCatalog = await ensureLegacyCatalog(store)
-      const existingById = new Map(legacyCatalog.map((song) => [song.id, song]))
       store.sync.total = files.length
       store.sync.message = files.length ? 'Reading metadata' : 'No audio files found'
 
@@ -155,17 +151,7 @@ export function useLibraryImporter(store: Store) {
         async (file): Promise<ImportResult> => {
           try {
             const song = await readSong(file)
-            const existingSong = existingById.get(song.id)
-            return {
-              song: existingSong
-                ? {
-                    ...song,
-                    startTime: existingSong.startTime,
-                    favorRating: existingSong.favorRating,
-                    dateAdded: existingSong.dateAdded,
-                  }
-                : song,
-            }
+            return { song }
           } catch (error) {
             return { error: `${file.path}: ${getErrorMessage(error)}` }
           }
@@ -177,7 +163,6 @@ export function useLibraryImporter(store: Store) {
 
       const songs = results.flatMap((result) => (result.song ? [result.song] : []))
       await upsertSongs(songs)
-      store.legacyCatalog = mergeSongs(store.legacyCatalog, songs)
       store.libraryCatalog.refreshKey += 1
 
       const errors = [...rootErrors, ...results.flatMap((result) => (result.error ? [result.error] : []))]
