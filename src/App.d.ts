@@ -55,6 +55,7 @@ export interface Store {
     currSong?: Song
     currSongIndex: number
     audioElem?: HTMLAudioElement
+    error: string
     isPaused: boolean
     currentTime: number
     duration: number
