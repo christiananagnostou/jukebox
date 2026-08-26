@@ -1,4 +1,4 @@
-use super::{AggregateQuery, LibraryState, TrackQuery};
+use super::{AggregateQuery, LibraryState, StorageQuery, TrackQuery};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use std::hint::black_box;
@@ -51,6 +51,16 @@ fn reference_100k_library_performance() {
             measure_query(&library, "browse_continuation", continuation).await,
             measure_artist_query(&library).await,
             measure_album_query(&library).await,
+            measure_storage_query(&library, "storage_roots", StorageQuery::default()).await,
+            measure_storage_query(
+                &library,
+                "storage_root_children",
+                StorageQuery {
+                    root_id: Some(1),
+                    ..StorageQuery::default()
+                },
+            )
+            .await,
         ];
         for budget in &query_budgets {
             assert!(
@@ -153,6 +163,32 @@ async fn measure_album_query(library: &LibraryState) -> QueryBudget {
     samples.sort_unstable();
     QueryBudget {
         name: "album_first_page",
+        p95: samples[(QUERY_SAMPLES * 95).div_ceil(100) - 1],
+    }
+}
+
+async fn measure_storage_query(
+    library: &LibraryState,
+    name: &'static str,
+    query: StorageQuery,
+) -> QueryBudget {
+    library
+        .query_storage(query.clone())
+        .await
+        .expect("warm reference storage query");
+    let mut samples = Vec::with_capacity(QUERY_SAMPLES);
+    for _ in 0..QUERY_SAMPLES {
+        let started = Instant::now();
+        let page = library
+            .query_storage(query.clone())
+            .await
+            .expect("run reference storage query");
+        samples.push(started.elapsed());
+        black_box(page.items.len());
+    }
+    samples.sort_unstable();
+    QueryBudget {
+        name,
         p95: samples[(QUERY_SAMPLES * 95).div_ceil(100) - 1],
     }
 }
@@ -302,6 +338,14 @@ async fn reference_fixture() -> (tempfile::TempDir, SqlitePool, i64) {
         .commit()
         .await
         .expect("commit reference fixture");
+    let mut transaction = pool.begin().await.expect("begin storage index build");
+    super::storage::rebuild_storage_index(&mut transaction, root_id)
+        .await
+        .expect("build reference storage index");
+    transaction
+        .commit()
+        .await
+        .expect("commit reference storage index");
     (directory, pool, scan_id)
 }
 

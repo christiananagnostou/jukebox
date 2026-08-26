@@ -550,6 +550,8 @@ impl ReconciliationService {
             .await
             .map_err(|_| LibraryError::database())?;
 
+            super::storage::rebuild_storage_index(&mut transaction, root_id).await?;
+
             let renamed: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM library_scan_metadata
                  WHERE scan_id = ? AND matched_song_id IS NOT NULL",
@@ -1768,6 +1770,16 @@ mod tests {
             assert!(rows
                 .iter()
                 .any(|row| row.0 == "missing-id" && row.2 == "unavailable"));
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM library_storage_nodes WHERE root_id = ? AND kind = 'track'",
+                )
+                .bind(root_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count reconciled storage tracks"),
+                4
+            );
             assert_eq!(
                 sqlx::query_scalar::<_, i64>(
                     "SELECT COUNT(*) FROM library_scan_metadata WHERE scan_id = ?",
