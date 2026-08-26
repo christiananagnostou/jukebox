@@ -2,8 +2,9 @@
 
 use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
 use crate::library::{
-    add_library_root, cancel_library_scan, get_library_scan, list_library_roots, query_tracks,
-    set_library_root_enabled, start_library_scan, LibraryState,
+    add_library_root, cancel_library_reconciliation, cancel_library_scan,
+    get_library_reconciliation, get_library_scan, list_library_roots, prepare_library_scan,
+    query_tracks, set_library_root_enabled, start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
 use crate::remote_access::{
@@ -139,6 +140,9 @@ fn main() {
             start_library_scan,
             cancel_library_scan,
             get_library_scan,
+            prepare_library_scan,
+            cancel_library_reconciliation,
+            get_library_reconciliation,
             get_metadata,
             get_settings,
             set_settings,

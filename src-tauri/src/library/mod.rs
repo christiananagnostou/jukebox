@@ -1,9 +1,11 @@
 mod query;
+mod reconciliation;
 mod repository;
 mod roots;
 mod scanner;
 
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
+pub use reconciliation::LibraryReconciliation;
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 pub use roots::LibraryRoot;
 pub use scanner::LibraryScan;
@@ -19,6 +21,7 @@ use tokio::sync::OnceCell;
 pub struct LibraryState {
     initialized: Arc<OnceCell<Result<(), LibraryError>>>,
     repository: LibraryRepository,
+    reconciliation: reconciliation::ReconciliationService,
     scanner: scanner::ScannerService,
 }
 
@@ -43,6 +46,7 @@ impl LibraryState {
         Self {
             initialized: Arc::new(OnceCell::new()),
             repository: LibraryRepository::new(pool.clone()),
+            reconciliation: reconciliation::ReconciliationService::new(pool.clone()),
             scanner: scanner::ScannerService::new(pool),
         }
     }
@@ -100,11 +104,37 @@ impl LibraryState {
         self.scanner.get(scan_id).await
     }
 
+    pub async fn prepare_library_scan(
+        &self,
+        scan_id: i64,
+        app: tauri::AppHandle,
+    ) -> Result<LibraryReconciliation, LibraryError> {
+        self.ensure_initialized().await?;
+        self.reconciliation.start(scan_id, app).await
+    }
+
+    pub async fn cancel_library_reconciliation(
+        &self,
+        scan_id: i64,
+    ) -> Result<LibraryReconciliation, LibraryError> {
+        self.ensure_initialized().await?;
+        self.reconciliation.cancel(scan_id).await
+    }
+
+    pub async fn get_library_reconciliation(
+        &self,
+        scan_id: i64,
+    ) -> Result<LibraryReconciliation, LibraryError> {
+        self.ensure_initialized().await?;
+        self.reconciliation.get(scan_id).await
+    }
+
     async fn ensure_initialized(&self) -> Result<(), LibraryError> {
         self.initialized
             .get_or_init(|| async {
                 self.repository.initialize_schema().await?;
-                self.scanner.recover_interrupted().await
+                self.scanner.recover_interrupted().await?;
+                self.reconciliation.recover_interrupted().await
             })
             .await
             .clone()
@@ -175,6 +205,31 @@ pub async fn get_library_scan(
     scan_id: i64,
 ) -> Result<LibraryScan, LibraryError> {
     library.get_library_scan(scan_id).await
+}
+
+#[tauri::command]
+pub async fn prepare_library_scan(
+    library: tauri::State<'_, LibraryState>,
+    app: tauri::AppHandle,
+    scan_id: i64,
+) -> Result<LibraryReconciliation, LibraryError> {
+    library.prepare_library_scan(scan_id, app).await
+}
+
+#[tauri::command]
+pub async fn cancel_library_reconciliation(
+    library: tauri::State<'_, LibraryState>,
+    scan_id: i64,
+) -> Result<LibraryReconciliation, LibraryError> {
+    library.cancel_library_reconciliation(scan_id).await
+}
+
+#[tauri::command]
+pub async fn get_library_reconciliation(
+    library: tauri::State<'_, LibraryState>,
+    scan_id: i64,
+) -> Result<LibraryReconciliation, LibraryError> {
+    library.get_library_reconciliation(scan_id).await
 }
 
 #[cfg(test)]
