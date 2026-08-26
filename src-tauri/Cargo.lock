@@ -81,6 +81,7 @@ dependencies = [
  "tauri-plugin-sql",
  "tokio",
  "tokio-util",
+ "tower",
 ]
 
 [[package]]
