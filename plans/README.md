@@ -1,6 +1,6 @@
 # Jukebox implementation plans
 
-Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-019 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
+Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-020 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
 
 The product direction remains local-first: a fast native catalog, dependable playback, durable collections, a compact accessible interface, and private iPhone listening through loopback-only Jukebox HTTP plus Tailscale Serve. Public sharing, mandatory accounts, visualizers, and large decorative animations remain out of scope.
 
@@ -21,6 +21,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [017](017-library-watchers.md)                     | Schedule recoverable full refreshes from bounded filesystem hints   | P1       | M      | 016        | DONE   |
 | [018](018-native-library-settings.md)              | Adopt native roots, refreshes, and watcher health in Settings       | P1       | L      | 017        | DONE   |
 | [019](019-library-performance-budgets.md)          | Establish deterministic large-library performance budgets           | P1       | M      | 018        | DONE   |
+| [020](020-native-album-artist-aggregates.md)       | Add bounded native album and artist aggregate contracts             | P1       | M      | 019        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 

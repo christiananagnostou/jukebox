@@ -1,5 +1,4 @@
-use super::query::{SortDirection, TrackSort};
-use super::{LibraryState, TrackQuery};
+use super::{AggregateQuery, LibraryState, TrackQuery};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use std::hint::black_box;
@@ -42,16 +41,16 @@ fn reference_100k_library_performance() {
             .expect("load reference first page");
         let continuation = TrackQuery {
             cursor: first.next_cursor,
-            direction: SortDirection::Asc,
             limit: 100,
-            q: String::new(),
-            sort: TrackSort::Default,
+            ..TrackQuery::default()
         };
 
         let query_budgets = [
             measure_query(&library, "browse_first_page", browse).await,
             measure_query(&library, "fts_search", search).await,
             measure_query(&library, "browse_continuation", continuation).await,
+            measure_artist_query(&library).await,
+            measure_album_query(&library).await,
         ];
         for budget in &query_budgets {
             assert!(
@@ -110,6 +109,52 @@ fn reference_100k_library_performance() {
             "reference_tracks={REFERENCE_TRACKS} {query_report} preparation={preparation:?} publish={publish:?}"
         );
     });
+}
+
+async fn measure_artist_query(library: &LibraryState) -> QueryBudget {
+    let query = AggregateQuery::default();
+    library
+        .query_artists(query.clone())
+        .await
+        .expect("warm reference artist query");
+    let mut samples = Vec::with_capacity(QUERY_SAMPLES);
+    for _ in 0..QUERY_SAMPLES {
+        let started = Instant::now();
+        let page = library
+            .query_artists(query.clone())
+            .await
+            .expect("run reference artist query");
+        samples.push(started.elapsed());
+        black_box(page.items.len());
+    }
+    samples.sort_unstable();
+    QueryBudget {
+        name: "artist_first_page",
+        p95: samples[(QUERY_SAMPLES * 95).div_ceil(100) - 1],
+    }
+}
+
+async fn measure_album_query(library: &LibraryState) -> QueryBudget {
+    let query = AggregateQuery::default();
+    library
+        .query_albums(query.clone())
+        .await
+        .expect("warm reference album query");
+    let mut samples = Vec::with_capacity(QUERY_SAMPLES);
+    for _ in 0..QUERY_SAMPLES {
+        let started = Instant::now();
+        let page = library
+            .query_albums(query.clone())
+            .await
+            .expect("run reference album query");
+        samples.push(started.elapsed());
+        black_box(page.items.len());
+    }
+    samples.sort_unstable();
+    QueryBudget {
+        name: "album_first_page",
+        p95: samples[(QUERY_SAMPLES * 95).div_ceil(100) - 1],
+    }
 }
 
 async fn measure_query(
