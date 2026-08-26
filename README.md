@@ -7,7 +7,7 @@ Jukebox is a music player desktop application capable of managing your precious 
 - [x] Cross-platform - Windows, MacOS, and Linux
 - [x] Bulk Music Import
 - [x] Music playback
-- [X] Dedicated pages for tracks, artists, and albums
+- [x] Dedicated pages for tracks, artists, and albums
 - [x] Advanced Search
 - [x] Keyboard Shortcuts
 - [ ] Playlists
@@ -19,6 +19,7 @@ Jukebox is a music player desktop application capable of managing your precious 
 To install and run Jukebox locally, follow these steps:
 
 1. Clone the repository:
+
 ```
 git clone https://github.com/ChristianAnagnostou/jukebox.git
 ```
@@ -30,14 +31,17 @@ cd jukebox
 ```
 
 3. Install the required node dependencies:
+
 ```
 npm install
 ```
 
 5. Start the Tauri application for development or production:
+
 ```
 npm run tauri dev
 ```
+
 ```
 npm run tauri build
 ```
