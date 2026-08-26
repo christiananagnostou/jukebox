@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Song } from '~/App'
-import { compareSongsByAlbumTrack, mergeSongs } from './Songs'
+import { compareSongsByAlbumTrack, filterAndSortSongs, mergeSongs } from './Songs'
 
 const song = (overrides: Partial<Song>): Song => ({
   id: 'song',
@@ -50,5 +50,26 @@ describe('mergeSongs', () => {
 
     expect(merged.map(({ id }) => id)).toEqual(['one', 'two'])
     expect(merged[1].title).toBe('New title')
+  })
+})
+
+describe('filterAndSortSongs', () => {
+  it('searches case-insensitively without mutating the library', () => {
+    const library = [
+      song({ id: 'two', artist: 'Björk', title: 'Jóga' }),
+      song({ id: 'one', artist: 'Air', title: 'La femme d’argent' }),
+    ]
+
+    const filtered = filterAndSortSongs(library, 'BJÖRK', 'default')
+
+    expect(filtered.map(({ id }) => id)).toEqual(['two'])
+    expect(library.map(({ id }) => id)).toEqual(['two', 'one'])
+  })
+
+  it('implements ascending and descending directions directly', () => {
+    const library = [song({ id: 'beta', title: 'Beta' }), song({ id: 'alpha', title: 'Alpha' })]
+
+    expect(filterAndSortSongs(library, '', 'title-asc').map(({ id }) => id)).toEqual(['alpha', 'beta'])
+    expect(filterAndSortSongs(library, '', 'title-desc').map(({ id }) => id)).toEqual(['beta', 'alpha'])
   })
 })

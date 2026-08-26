@@ -1,68 +1,75 @@
-import { type Component, $, component$, useSignal, useTask$, Slot, type JSXOutput } from '@builder.io/qwik'
+import {
+  type Component,
+  type JSXOutput,
+  $,
+  Slot,
+  component$,
+  useSignal,
+  useTask$,
+  useVisibleTask$,
+} from '@builder.io/qwik'
+
 import type { ListItemStyle } from '~/App'
 
 type Props = {
   listWrapClass?: string
   numItems: number
   itemHeight: number
-  windowHeight: number
   renderItem: Component<{ index: number; style: ListItemStyle }>
   overscan?: number
   scrollToRow?: number
 }
 
 export default component$((props: Props) => {
-  const { numItems, itemHeight, renderItem, windowHeight, overscan = 10, listWrapClass, scrollToRow } = props
-
+  const { numItems, itemHeight, renderItem, overscan = 10, listWrapClass, scrollToRow } = props
   const scrollTop = useSignal(0)
+  const viewportHeight = useSignal(0)
   const scrollRef = useSignal<HTMLDivElement>()
 
-  // Height calculated from size of input
   const innerHeight = numItems * itemHeight
-  // Calc index of first shown element
   const startIndex = Math.max(0, Math.floor(scrollTop.value / itemHeight) - overscan)
-  // Calc index of last shown element
-  const endIndex = Math.min(
-    numItems - 1, // don't render past the end of the list
-    Math.floor((scrollTop.value + windowHeight) / itemHeight) + overscan
-  )
-
-  // Elements to be rendered
+  const endIndex = Math.min(numItems - 1, Math.floor((scrollTop.value + viewportHeight.value) / itemHeight) + overscan)
   const items: JSXOutput[] = []
 
-  ;(async () => {
-    for (let i = startIndex; i <= endIndex; i++) {
-      const elem = renderItem(
-        {
-          index: i,
-          style: { position: 'absolute', top: `${i * itemHeight}px`, width: '100%' },
-        },
-        i.toString(),
-        0
-      )
-      if (elem) items.push(elem)
+  for (let index = startIndex; index <= endIndex; index++) {
+    const item = renderItem(
+      {
+        index,
+        style: { position: 'absolute', top: `${index * itemHeight}px`, width: '100%' },
+      },
+      index.toString(),
+      0
+    )
+    if (item) items.push(item)
+  }
+
+  useVisibleTask$(({ cleanup }) => {
+    const scrollElement = scrollRef.value
+    if (!scrollElement) return
+
+    const updateViewportHeight = () => {
+      viewportHeight.value = scrollElement.clientHeight
     }
-  })()
+    const resizeObserver = new ResizeObserver(updateViewportHeight)
+
+    updateViewportHeight()
+    resizeObserver.observe(scrollElement)
+    cleanup(() => resizeObserver.disconnect())
+  })
 
   useTask$(({ track }) => {
-    const toRow = track(() => scrollToRow)
+    const targetRow = track(() => scrollToRow)
+    const height = track(() => viewportHeight.value)
+    if (targetRow === undefined || targetRow < 0 || targetRow >= numItems || height === 0) return
 
-    // Calc index of first shown element
     const visibleStart = Math.max(0, Math.floor(scrollTop.value / itemHeight))
-    // Calc index of last shown element
-    const visibleEnd = Math.min(
-      numItems - 1, // don't render past the end of the list
-      Math.floor((scrollTop.value + windowHeight) / itemHeight)
-    )
+    const visibleEnd = Math.min(numItems - 1, Math.floor((scrollTop.value + height) / itemHeight))
 
-    // Scroll to a new element if scrollToRow is set and out of view
-    if (toRow != undefined && (toRow <= visibleStart || toRow >= visibleEnd)) {
-      const startDiff = Math.abs(visibleStart - toRow)
-      const endDiff = Math.abs(visibleEnd - toRow)
-      const isCloserToTop = startDiff < endDiff
-
+    if (targetRow < visibleStart) {
+      scrollRef.value?.scrollTo({ top: targetRow * itemHeight, behavior: 'auto' })
+    } else if (targetRow > visibleEnd) {
       scrollRef.value?.scrollTo({
-        top: isCloserToTop ? toRow * itemHeight : toRow * itemHeight - (windowHeight - itemHeight),
+        top: Math.max(0, targetRow * itemHeight - (height - itemHeight)),
         behavior: 'auto',
       })
     }
@@ -73,8 +80,8 @@ export default component$((props: Props) => {
   })
 
   return (
-    <div class="scroll overflow-y-scroll overflow-x-hidden w-full h-full" onScroll$={onScroll} ref={scrollRef}>
-      <div class={`inner relative ${listWrapClass}`} style={{ height: `${innerHeight}px` }}>
+    <div class="scroll min-h-0 h-full w-full overflow-y-auto overflow-x-hidden" onScroll$={onScroll} ref={scrollRef}>
+      <div class={['inner relative', listWrapClass]} style={{ height: `${innerHeight}px` }}>
         {items}
         <Slot />
       </div>

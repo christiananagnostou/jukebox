@@ -1,6 +1,5 @@
-import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
+import { component$, useComputed$, useContext, useTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { ListItemStyle } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { OpenFolder } from '~/components/svg/OpenFolder'
@@ -16,8 +15,6 @@ export default component$(() => {
   const storeActions = useContext(StoreActionsContext)
   const storageActions = useStoragePage(store, storeActions)
 
-  const state = useStore<{ virtualListHeight: number; windowHeight: number }>({ virtualListHeight: 0, windowHeight: 0 })
-
   const rootFile = useComputed$(() => organizeFiles(store.filteredSongs))
 
   useTask$(({ track }) => {
@@ -26,31 +23,17 @@ export default component$(() => {
     storageActions.countAndMapFiles(root)
   })
 
-  useVisibleTask$(async () => {
-    const appWindow = getCurrentWebviewWindow()
-    const sizeVirtualList = async () => {
-      const factor = await appWindow.scaleFactor()
-      const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
-      state.windowHeight = height
-    }
-    sizeVirtualList()
-    const unlistenResize = await appWindow.onResized(sizeVirtualList)
-    return () => unlistenResize()
-  })
-
   return (
-    <section class="w-full flex flex-col flex-1">
+    <section class="min-h-0 w-full flex flex-col flex-1">
       <div
         class="w-full text-sm text-left items-center border-b border-gray-700"
         style={{ height: RowHeight + 'px', paddingRight: 'var(--scrollbar-width)' }}
       ></div>
 
-      <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
+      <div class="min-h-0 flex-1">
         <VirtualList
           numItems={store.storageView.nodeCount}
           itemHeight={RowHeight}
-          windowHeight={state.virtualListHeight || 0}
           scrollToRow={store.storageView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
             const file = store.storageView.pathIndexMap[index]
@@ -61,8 +44,8 @@ export default component$(() => {
             return (
               <button
                 key={file.name}
-                onDblClick$={$(() => storageActions.playFile(file))}
-                onClick$={$(() => (store.storageView.cursorIdx = index))}
+                onDblClick$={() => storageActions.playFile(file)}
+                onClick$={() => (store.storageView.cursorIdx = index)}
                 style={{ ...style, height: RowHeight + 'px', paddingLeft: (file.level + 1) * 20 + 'px' }}
                 class={`flex items-center truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && '!bg-gray-800'}`}

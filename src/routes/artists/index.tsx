@@ -1,8 +1,7 @@
-import { $, component$, useComputed$, useContext, useStore, useTask$, useVisibleTask$ } from '@builder.io/qwik'
+import { component$, useComputed$, useContext, useTask$ } from '@builder.io/qwik'
 import { StoreActionsContext, StoreContext } from '../layout'
 import VirtualList from '~/components/Shared/VirtualList'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import type { Album, ListItemStyle, Song } from '~/App'
+import type { ListItemStyle, Song } from '~/App'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
 import { SoundBars } from '~/components/Shared/SoundBars'
@@ -13,33 +12,26 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
-  const state = useStore({
-    virtualListHeight: 0,
-    windowHeight: 0,
-  })
-
   const artists = useComputed$(() => {
-    const artistMap: { [artist: string]: { [album: string]: Song[] } } = {}
-
-    const setNestedKey = (obj: any, path: string[], song: Song) => {
-      const len = path.length
-      for (let i = 0; i < len - 1; i++) {
-        const elem = path[i]
-        if (!obj[elem]) obj[elem] = {}
-        obj = obj[elem]
-      }
-
-      if (obj[path[len - 1]]) obj[path[len - 1]].push(song)
-      else obj[path[len - 1]] = [song]
-    }
+    const artistMap = new Map<string, Map<string, Song[]>>()
 
     for (const song of store.filteredSongs) {
-      setNestedKey(artistMap, [song.artist || '-', song.album || '-'], song)
+      const artistName = song.artist || '-'
+      const albumName = song.album || '-'
+      let albums = artistMap.get(artistName)
+      if (!albums) {
+        albums = new Map()
+        artistMap.set(artistName, albums)
+      }
+
+      const tracks = albums.get(albumName)
+      if (tracks) tracks.push(song)
+      else albums.set(albumName, [song])
     }
 
-    return Object.entries(artistMap).map(([artist, album]) => ({
+    return Array.from(artistMap, ([artist, albums]) => ({
       name: artist,
-      albums: Object.entries(album).map(([album, songs]) => ({
+      albums: Array.from(albums, ([album, songs]) => ({
         title: album,
         tracks: songs,
       })),
@@ -62,28 +54,15 @@ export default component$(() => {
     store.artistView.tracks = albums[albumIdx]?.tracks || []
   })
 
-  useVisibleTask$(async () => {
-    const appWindow = getCurrentWebviewWindow()
-    const sizeVirtualList = async () => {
-      const factor = await appWindow.scaleFactor()
-      const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
-      state.windowHeight = height
-    }
-    sizeVirtualList()
-    const unlistenResize = await appWindow.onResized(sizeVirtualList)
-    return () => unlistenResize()
-  })
-
   return (
-    <section class="w-full flex flex-col flex-1">
+    <section class="min-h-0 w-full flex flex-col flex-1">
       <div
         class="w-full text-sm grid grid-cols-[1fr_1fr_1fr] text-left items-center border-b border-gray-700"
         style={{ height: RowHeight + 'px' }}
       >
         <button
           class="truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
+          onClick$={() => (store.sorting = store.sorting === 'artist-asc' ? 'artist-desc' : 'artist-asc')}
           style={{ paddingRight: 'var(--scrollbar-width)' }}
         >
           Artists
@@ -105,11 +84,10 @@ export default component$(() => {
       </div>
 
       {/* Artists */}
-      <div class="h-full grid grid-cols-[1fr_1fr_1fr]">
-        <div class="h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
+      <div class="min-h-0 flex-1 grid grid-cols-[1fr_1fr_1fr]">
+        <div class="min-h-0">
           <VirtualList
             itemHeight={RowHeight}
-            windowHeight={state.virtualListHeight || 0}
             numItems={store.artistView.artists.length}
             scrollToRow={store.artistView.artistIdx}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
@@ -121,17 +99,16 @@ export default component$(() => {
               return (
                 <button
                   key={artist.name}
-                  onDblClick$={$(() => {
-                    // Reset album index
+                  onDblClick$={() => {
                     store.artistView.albumIdx = 0
-                    // Get all songs from all playlists
-                    store.playlist = store.artistView.albums.reduce(
-                      (result: Song[], current: Album) => (result = [...result, ...current.tracks]),
-                      []
-                    )
-                    storeActions.playSong(store.playlist[0], 0)
-                  })}
-                  onClick$={() => (store.artistView.artistIdx = index) && (store.artistView.cursorCol = 0)}
+                    store.playlist = store.artistView.albums.flatMap((album) => album.tracks)
+                    const firstSong = store.playlist[0]
+                    if (firstSong) storeActions.playSong(firstSong, 0)
+                  }}
+                  onClick$={() => {
+                    store.artistView.artistIdx = index
+                    store.artistView.cursorCol = 0
+                  }}
                   style={{ ...style, height: RowHeight + 'px' }}
                   class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && 'bg-gray-800'}
@@ -145,10 +122,9 @@ export default component$(() => {
         </div>
 
         {/* Albums */}
-        <div class="h-full border-l border-gray-700" style={{ maxHeight: state.virtualListHeight + 'px' }}>
+        <div class="min-h-0 border-l border-gray-700">
           <VirtualList
             itemHeight={RowHeight}
-            windowHeight={state.virtualListHeight || 0}
             numItems={store.artistView.albums.length}
             scrollToRow={store.artistView.albumIdx}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
@@ -162,9 +138,13 @@ export default component$(() => {
                   key={album.title}
                   onDblClick$={() => {
                     store.playlist = album.tracks
-                    storeActions.playSong(album.tracks[0], 0)
+                    const firstSong = album.tracks[0]
+                    if (firstSong) storeActions.playSong(firstSong, 0)
                   }}
-                  onClick$={() => (store.artistView.albumIdx = index) && (store.artistView.cursorCol = 1)}
+                  onClick$={() => {
+                    store.artistView.albumIdx = index
+                    store.artistView.cursorCol = 1
+                  }}
                   style={{ ...style, height: RowHeight + 'px' }}
                   class={`flex items-center px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && 'bg-gray-800'}
@@ -178,10 +158,9 @@ export default component$(() => {
         </div>
 
         {/* Songs */}
-        <div class="h-full border-l border-gray-700" style={{ maxHeight: state.virtualListHeight + 'px' }}>
+        <div class="min-h-0 border-l border-gray-700">
           <VirtualList
             itemHeight={RowHeight}
-            windowHeight={state.virtualListHeight || 0}
             numItems={store.artistView.tracks?.length}
             scrollToRow={store.artistView.trackIdx}
             renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
@@ -198,7 +177,10 @@ export default component$(() => {
                     store.playlist = store.artistView.tracks
                     storeActions.playSong(song, index)
                   }}
-                  onClick$={() => (store.artistView.trackIdx = index) && (store.artistView.cursorCol = 2)}
+                  onClick$={() => {
+                    store.artistView.trackIdx = index
+                    store.artistView.cursorCol = 2
+                  }}
                   style={{ ...style, height: RowHeight + 'px' }}
                   class={`flex items-center justify-between px-2 truncate w-full text-sm hover:bg-[rgba(0,0,0,.15)]
                   ${highlighted && 'bg-gray-800'}

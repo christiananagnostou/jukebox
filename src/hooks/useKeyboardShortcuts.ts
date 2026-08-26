@@ -28,8 +28,6 @@ export const KeyboardCommands = [
       { key: '⇧ N', command: 'Prev Song' },
       { key: 'p', command: 'Pause/Play' },
       { key: 'q', command: 'Add Song to Queue' },
-      // { key: 's', command: 'Seek Forward' },
-      // { key: '⇧ S', command: 'Seek Back' },
     ],
   },
 
@@ -40,7 +38,6 @@ export const KeyboardCommands = [
       { key: '⇧ L', command: 'Library' },
       { key: '⇧ A', command: 'Artists' },
       { key: '⇧ O', command: 'Storage' },
-      // { key: '⇧ P', command: 'Playlists' },
       { key: '⇧ M', command: 'Albums' },
     ],
   },
@@ -67,86 +64,40 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
     'keydown',
     $((e: Event) => {
       if (store.isTyping) return
-      // @ts-ignore
-      const { key, code } = e as { key: string; code: string }
+      const { key, code } = e as KeyboardEvent
+      const pathname = location.url.pathname
 
-      /**
-       *
-       * Library View Specific
-       *
-       */
-      if (location.url.pathname == '/') {
-        // Move Hightlight Down
+      if (pathname === '/') {
         if (key === 'j') libraryActions.highlightDown()
-
-        // Move Hightlight Up
         if (key === 'k') libraryActions.highlightUp()
-
-        // Play Highlighted Song
         if (key === 'Enter') libraryActions.playHighlighted()
-
-        // Move Hightlight to Top
         if (key === 'g') store.libraryView.cursorIdx = 0
-
-        // Move Hightlight to Bottom
-        if (key === 'G') store.libraryView.cursorIdx = store.filteredSongs.length - 1
-
-        // Play Highlighted Song
-        if (key === 'q') store.queue.push(store.filteredSongs[store.libraryView.cursorIdx])
+        if (key === 'G') store.libraryView.cursorIdx = Math.max(0, store.filteredSongs.length - 1)
+        if (key === 'q') {
+          const song = store.filteredSongs[store.libraryView.cursorIdx]
+          if (song) store.queue.push(song)
+        }
       }
 
-      /**
-       *
-       * Artists View Specific
-       *
-       */
-      if (location.url.pathname == '/artists/') {
-        // Move Hightlight Down
+      if (pathname === '/artists/') {
         if (key === 'j') artistActions.moveCursorDown()
-
-        // Move Hightlight Up
         if (key === 'k') artistActions.moveCursorUp()
-
-        // Move Hightlight Right
         if (key === 'l') artistActions.moveCursorRight()
-
-        // Move Hightlight Left
         if (key === 'h') artistActions.moveCursorLeft()
-
-        // Play Highlighted Song
         if (key === 'Enter') artistActions.playHighlighted()
       }
 
-      /**
-       *
-       * Storage View Specific
-       *
-       */
-      if (location.url.pathname == '/storage/') {
-        // Move Hightlight Down
+      if (pathname === '/storage/') {
         if (key === 'j') storageActions.highlightDown()
-        // Move Hightlight Up
         if (key === 'k') storageActions.highlightUp()
-        // Play Highlighted Song
         if (key === 'Enter') {
           const file = store.storageView.pathIndexMap[store.storageView.cursorIdx]
           storageActions.playFile(file)
         }
       }
 
-      /**
-       *
-       * Audio Player
-       *
-       */
-
-      // Next Song
       if (key === 'n' || code === 'MediaTrackNext') storeActions.nextSong()
-
-      // Previous Song
       if (key === 'N' || code === 'MediaTrackPrevious') storeActions.prevSong()
-
-      // Pause/Play
       if (key === 'p') {
         if (store.player.isPaused) {
           storeActions.resumeSong()
@@ -155,34 +106,11 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         }
       }
 
-      /**
-       *
-       * Route Navigation
-       *
-       */
-
-      // Navigate to Home (Library) Page
       if (key === 'L') nav('/')
-
-      // Navigate to Artists Page
       if (key === 'A') nav('/artists')
-
-      // Navigate to Storage Page
       if (key === 'O') nav('/storage')
-
-      // Navigate to Albums Page
       if (key === 'M') nav('/albums')
-
-      /**
-       *
-       * Utility
-       *
-       */
-
-      // Toggle Keyboard Shortcuts Modal
       if (key === '?') store.showKeyShortcuts = !store.showKeyShortcuts
-
-      // Close Keyboard Shortcuts Modal
       if (key === 'Escape' && store.showKeyShortcuts) store.showKeyShortcuts = false
     })
   )
