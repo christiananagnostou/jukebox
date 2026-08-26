@@ -8,6 +8,8 @@ pub(crate) const LIBRARY_SCAN_SCHEMA: &str =
     include_str!("../migrations/0003_library_scan_state.sql");
 pub(crate) const LIBRARY_DISCOVERY_SCHEMA: &str =
     include_str!("../migrations/0004_library_scan_discovery.sql");
+pub(crate) const LIBRARY_METADATA_SCHEMA: &str =
+    include_str!("../migrations/0005_library_scan_metadata.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub fn migrations() -> Vec<Migration> {
@@ -34,6 +36,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 4,
             description: "add bounded scan discovery staging",
             sql: LIBRARY_DISCOVERY_SCHEMA,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "add bounded scan metadata staging",
+            sql: LIBRARY_METADATA_SCHEMA,
             kind: MigrationKind::Up,
         },
     ]
@@ -229,7 +237,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                4
+                5
             );
             let scan_columns: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name IN (
@@ -257,6 +265,17 @@ mod tests {
                 .await
                 .expect("inspect discovery staging table"),
                 1
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'table'
+                       AND name IN ('library_reconciliations', 'library_scan_metadata')",
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("inspect metadata staging tables"),
+                2
             );
         });
     }

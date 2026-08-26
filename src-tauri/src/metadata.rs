@@ -26,22 +26,49 @@ impl Metadata {
     pub fn new(app_handle: &tauri::AppHandle, file_path: String) -> Result<Self, String> {
         let path = PathBuf::from(&file_path);
         let id = hash_string(&file_path);
-        let mut format = open_format(&path)?;
-        let (codec, sample_rate, duration) = extract_track_info(&*format);
-        let meta_tags = extract_meta_tags(&mut *format);
-        let visual_info = extract_visual_info(&mut *format)
-            .map(|visual| cache_visual(app_handle, &id, &meta_tags, visual))
-            .transpose()?
-            .unwrap_or_default();
+        let extracted = extract_metadata(&path)?;
+        let visual_info = extracted.cache_visual(app_handle, &id)?;
 
         Ok(Self {
             id,
-            codec,
-            sample_rate,
-            duration,
-            meta_tags,
+            codec: extracted.codec,
+            sample_rate: extracted.sample_rate,
+            duration: extracted.duration,
+            meta_tags: extracted.meta_tags,
             visual_info,
         })
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ExtractedMetadata {
+    pub codec: String,
+    pub sample_rate: u32,
+    pub duration: String,
+    pub meta_tags: HashMap<String, String>,
+    visual: Option<ExtractedVisual>,
+}
+
+impl ExtractedMetadata {
+    fn cache_visual(
+        &self,
+        app_handle: &tauri::AppHandle,
+        song_id: &str,
+    ) -> Result<VisualInfo, String> {
+        self.visual
+            .as_ref()
+            .map(|visual| cache_visual(app_handle, song_id, &self.meta_tags, visual))
+            .transpose()
+            .map(|visual| visual.unwrap_or_default())
+    }
+
+    pub(crate) fn cache_visual_path(
+        &self,
+        app_handle: &tauri::AppHandle,
+        song_id: &str,
+    ) -> Result<String, String> {
+        self.cache_visual(app_handle, song_id)
+            .map(|visual| visual.image_path)
     }
 }
 
@@ -51,20 +78,36 @@ struct VisualInfo {
     image_path: String,
 }
 
+#[derive(Debug)]
 struct ExtractedVisual {
     media_type: String,
     media_data: Vec<u8>,
 }
 
-fn hash_string(value: &str) -> String {
+pub(crate) fn hash_string(value: &str) -> String {
     format!("{:x}", md5::compute(value.as_bytes()))
+}
+
+pub(crate) fn extract_metadata(path: &Path) -> Result<ExtractedMetadata, String> {
+    let mut format = open_format(path)?;
+    let (codec, sample_rate, duration) = extract_track_info(&*format);
+    let meta_tags = extract_meta_tags(&mut *format);
+    let visual = extract_visual_info(&mut *format);
+
+    Ok(ExtractedMetadata {
+        codec,
+        sample_rate,
+        duration,
+        meta_tags,
+        visual,
+    })
 }
 
 fn cache_visual(
     app_handle: &tauri::AppHandle,
     song_id: &str,
     meta_tags: &HashMap<String, String>,
-    visual: ExtractedVisual,
+    visual: &ExtractedVisual,
 ) -> Result<VisualInfo, String> {
     let artist = hash_string(
         meta_tags
@@ -103,11 +146,11 @@ fn cache_visual(
     let image_path = album_dir.join(format!("{song_id}.{extension}"));
 
     if !image_path.exists() {
-        fs::write(&image_path, visual.media_data).map_err(|error| error.to_string())?;
+        fs::write(&image_path, &visual.media_data).map_err(|error| error.to_string())?;
     }
 
     Ok(VisualInfo {
-        media_type: visual.media_type,
+        media_type: visual.media_type.clone(),
         image_path: image_path.to_string_lossy().into_owned(),
     })
 }

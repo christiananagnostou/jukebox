@@ -156,6 +156,27 @@ impl LibraryError {
         }
     }
 
+    pub(crate) fn scan_not_ready() -> Self {
+        Self {
+            code: "library_scan_not_ready".to_owned(),
+            message: "Only the latest completed library scan can be prepared.".to_owned(),
+        }
+    }
+
+    pub(crate) fn reconciliation_in_progress() -> Self {
+        Self {
+            code: "library_reconciliation_in_progress".to_owned(),
+            message: "That library snapshot is already being prepared.".to_owned(),
+        }
+    }
+
+    pub(crate) fn reconciliation_not_found() -> Self {
+        Self {
+            code: "library_reconciliation_not_found".to_owned(),
+            message: "That library preparation is no longer available.".to_owned(),
+        }
+    }
+
     pub(crate) fn stale_cursor() -> Self {
         Self {
             code: "stale_cursor".to_owned(),
