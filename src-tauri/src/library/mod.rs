@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod performance;
 mod query;
 mod reconciliation;
 mod refresh;

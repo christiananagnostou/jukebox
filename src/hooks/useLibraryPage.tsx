@@ -19,9 +19,7 @@ export function useLibraryPage(store: Store, storeActions: StoreActions) {
   const highlightUp = $(async () => {
     if (!store.libraryCatalog.total) return
     store.libraryView.cursorIdx =
-      store.libraryView.cursorIdx <= 0
-        ? lastLoadedLibraryIndex(store.libraryCatalog)
-        : store.libraryView.cursorIdx - 1
+      store.libraryView.cursorIdx <= 0 ? lastLoadedLibraryIndex(store.libraryCatalog) : store.libraryView.cursorIdx - 1
     await storeActions.requestLibraryRange(store.libraryView.cursorIdx, store.libraryView.cursorIdx)
   })
 

@@ -81,7 +81,9 @@ class FakeAudioTransport implements AudioTransport {
   }
 }
 
-function playbackStore(overrides: Partial<Pick<Store, 'playlist' | 'queue'>> = {}): Pick<Store, 'player' | 'playlist' | 'queue'> {
+function playbackStore(
+  overrides: Partial<Pick<Store, 'playlist' | 'queue'>> = {}
+): Pick<Store, 'player' | 'playlist' | 'queue'> {
   return {
     playlist: [],
     queue: [],
