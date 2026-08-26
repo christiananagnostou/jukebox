@@ -19,7 +19,7 @@ axum = "0.8.9"
 base64 = "0.22.1"
 serde_json = "1.0"
 serde = { version = "1.0.228", features = ["derive"] }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["macros", "migrate", "runtime-tokio", "sqlite"] }
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
 symphonia = { version = "0.5.5", features = ["all"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }

@@ -110,6 +110,18 @@ impl LibraryRepository {
         Self { pool }
     }
 
+    pub(crate) fn pool(&self) -> SqlitePool {
+        self.pool.clone()
+    }
+
+    pub(crate) async fn initialize_schema(&self) -> Result<(), LibraryError> {
+        crate::database::NATIVE_MIGRATOR
+            .run(&self.pool)
+            .await
+            .map_err(|_| LibraryError::database())?;
+        Ok(())
+    }
+
     pub async fn query_tracks(&self, query: TrackQuery) -> Result<TrackPage, LibraryError> {
         let query = query.normalize()?;
         let mut transaction = self

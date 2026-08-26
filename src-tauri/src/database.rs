@@ -4,6 +4,7 @@ pub const LIBRARY_DB_URL: &str = "sqlite:library.db";
 
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
 pub(crate) const CATALOG_QUERY_SCHEMA: &str = include_str!("../migrations/0002_catalog_query.sql");
+pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub fn migrations() -> Vec<Migration> {
     vec![
@@ -156,8 +157,8 @@ mod tests {
                 .await
                 .expect("load pre-0002 fixture");
 
-            sqlx::raw_sql(CATALOG_QUERY_SCHEMA)
-                .execute(&pool)
+            NATIVE_MIGRATOR
+                .run(&pool)
                 .await
                 .expect("upgrade fixture with bundled FTS5");
 
@@ -194,8 +195,8 @@ mod tests {
                 0
             );
 
-            sqlx::raw_sql(CATALOG_QUERY_SCHEMA)
-                .execute(&pool)
+            NATIVE_MIGRATOR
+                .run(&pool)
                 .await
                 .expect("reapply catalog schema");
             assert_eq!(
@@ -204,6 +205,15 @@ mod tests {
                     .await
                     .expect("count fts rows"),
                 5
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM _sqlx_migrations WHERE success = 1"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("count applied migrations"),
+                2
             );
         });
     }

@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
-use crate::library::query_tracks;
+use crate::library::{query_tracks, LibraryState};
 use crate::metadata::Metadata;
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
@@ -53,6 +53,8 @@ fn main() {
                 settings: RwLock::new(settings_snapshot.settings),
                 settings_warning: RwLock::new(settings_snapshot.warning),
             });
+            let library = LibraryState::new(app.handle()).map_err(std::io::Error::other)?;
+            app.manage(library);
 
             let remote_access = RemoteAccessState::default();
             app.manage(remote_access.clone());
