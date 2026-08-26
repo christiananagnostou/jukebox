@@ -1,5 +1,5 @@
 use crate::library::{
-    LibraryError, LibraryRepository, TrackQuery as LibraryTrackQuery,
+    LibraryError, LibraryState, TrackQuery as LibraryTrackQuery,
     TrackSummary as LibraryTrackSummary, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE,
 };
 use crate::settings::{save_settings, AppState};
@@ -13,7 +13,6 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path as FilePath, PathBuf};
@@ -56,7 +55,7 @@ struct RemoteServerHandle {
 #[derive(Clone)]
 struct HttpState {
     music_root: MusicRootSource,
-    library: LibraryRepository,
+    library: LibraryState,
     pool: SqlitePool,
 }
 
@@ -265,20 +264,11 @@ impl RemoteAccessState {
 
 impl HttpState {
     fn new(app: tauri::AppHandle) -> Result<Self, String> {
-        let database_path = app
-            .path()
-            .app_config_dir()
-            .map_err(|error| error.to_string())?
-            .join("library.db");
-        let options = SqliteConnectOptions::new()
-            .filename(database_path)
-            .read_only(true);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(4)
-            .connect_lazy_with(options);
+        let library = app.state::<LibraryState>().inner().clone();
+        let pool = library.pool();
         Ok(Self {
             music_root: MusicRootSource::App(app),
-            library: LibraryRepository::new(pool.clone()),
+            library,
             pool,
         })
     }
@@ -622,6 +612,7 @@ mod tests {
     use axum::body::to_bytes;
     use axum::http::Request;
     use serde_json::Value;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::time::{SystemTime, UNIX_EPOCH};
     use tower::ServiceExt;
 
@@ -728,7 +719,7 @@ mod tests {
 
             let app = router(HttpState {
                 music_root: MusicRootSource::Fixed(root.to_string_lossy().into_owned()),
-                library: LibraryRepository::new(pool.clone()),
+                library: LibraryState::from_pool(pool.clone()),
                 pool: pool.clone(),
             });
 
@@ -866,7 +857,7 @@ mod tests {
                 .connect_lazy_with(options);
             let app = router(HttpState {
                 music_root: MusicRootSource::Fixed(fixture.to_string_lossy().into_owned()),
-                library: LibraryRepository::new(pool.clone()),
+                library: LibraryState::from_pool(pool.clone()),
                 pool,
             });
 

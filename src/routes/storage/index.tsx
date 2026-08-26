@@ -7,6 +7,7 @@ import { ClosedFolder } from '~/components/svg/ClosedFolder'
 import { SoundBars } from '~/components/Shared/SoundBars'
 import { organizeFiles } from '~/utils/Files'
 import { useStoragePage } from '~/hooks/useStoragePage'
+import { useLegacyCatalog } from '~/services/library-client'
 
 const RowHeight = 30
 
@@ -14,6 +15,8 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const storageActions = useStoragePage(store, storeActions)
+
+  useLegacyCatalog(store)
 
   const rootFile = useComputed$(() => organizeFiles(store.filteredSongs))
 

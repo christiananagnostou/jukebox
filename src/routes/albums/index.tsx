@@ -4,6 +4,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import type { ListItemStyle, Song } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { MusicNote } from '~/components/svg/MusicNote'
+import { useLegacyCatalog } from '~/services/library-client'
 import { StoreActionsContext, StoreContext } from '../layout'
 
 const ALBUM_GAP = 16
@@ -35,6 +36,8 @@ export default component$(() => {
     rowHeight: 360,
     numCols: 5,
   })
+
+  useLegacyCatalog(store)
 
   const albumRows = useComputed$(() => {
     const albumsByKey = new Map<string, AlbumSummary>()

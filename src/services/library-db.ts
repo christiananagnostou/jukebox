@@ -5,16 +5,6 @@ import type { Song } from '~/App'
 
 export const LIBRARY_DB = 'sqlite:library.db'
 
-export async function loadLibrarySongs(): Promise<Song[]> {
-  const db = await Database.load(LIBRARY_DB)
-
-  try {
-    return await db.select<Song[]>('SELECT * FROM songs')
-  } finally {
-    await db.close()
-  }
-}
-
 export async function upsertSongs(songs: Song[]): Promise<void> {
   if (!songs.length) return
   await invoke('upsert_songs', { songs })

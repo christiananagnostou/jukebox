@@ -7,6 +7,7 @@
 
 ## Status
 
+- **Status**: DONE (2026-08-26)
 - **Priority**: P1
 - **Effort**: L
 - **Risk**: HIGH
@@ -134,13 +135,21 @@ Confirm no renderer caller executes `SELECT * FROM songs` and no remote handler 
 
 ## Done criteria
 
-- [ ] One Rust repository owns desktop and remote catalog reads.
-- [ ] Existing installed databases upgrade through migration 0002 without row/rating loss.
-- [ ] Search is FTS-backed and pagination has stable deterministic continuity.
-- [ ] Main library rendering no longer requires loading all songs or building a full filtered copy.
-- [ ] Frontend retained query data is bounded and playback references survive page eviction.
-- [ ] All frontend/Rust gates and a production Tauri bundle pass.
-- [ ] No native scanner, identity, playlist, or visual-redesign work leaked into the change.
+- [x] One Rust repository owns desktop and remote catalog reads.
+- [x] Existing installed databases upgrade through migration 0002 without row/rating loss.
+- [x] Search is FTS-backed and pagination has stable deterministic continuity.
+- [x] Main library rendering no longer requires loading all songs or building a full filtered copy.
+- [x] Frontend retained query data is bounded and playback references survive page eviction.
+- [x] All frontend/Rust gates and a production Tauri bundle pass.
+- [x] No native scanner, identity, playlist, or visual-redesign work leaked into the change.
+
+## Completion evidence
+
+- The desktop shell requests one 100-track page at startup, and the page cache retains at most five pages.
+- Albums, Artists, Storage, importing, and missing-file maintenance load the temporary full-catalog compatibility view only when invoked.
+- Rust: 54 tests pass with formatting and Clippy warnings denied.
+- Frontend: 50 tests pass with lint, typecheck, and production build.
+- `npm run tauri build -- --bundles app` produces the macOS application bundle.
 
 ## STOP conditions
 

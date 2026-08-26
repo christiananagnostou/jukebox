@@ -1,0 +1,346 @@
+import { invoke } from '@tauri-apps/api/core'
+import { $, noSerialize, useSignal, useTask$, useVisibleTask$, type NoSerialize } from '@builder.io/qwik'
+
+import type { LibraryCatalogState, Song, Store } from '~/App'
+
+export const LIBRARY_PAGE_SIZE = 100
+export const MAX_RETAINED_LIBRARY_PAGES = 5
+
+type NativeTrackSort =
+  | 'default'
+  | 'album'
+  | 'artist'
+  | 'date'
+  | 'date_added'
+  | 'favorite'
+  | 'sample_rate'
+  | 'title'
+  | 'track'
+
+export interface TrackQuery {
+  cursor?: string
+  direction: 'asc' | 'desc'
+  limit: number
+  q: string
+  sort: NativeTrackSort
+}
+
+interface NativeTrackSummary {
+  album: string
+  artist: string
+  codec: string
+  date: string
+  dateAdded: string
+  duration: string
+  favorRating: Song['favorRating']
+  file: string
+  id: string
+  path: string
+  sampleRate: string
+  side: number
+  startTime: number
+  title: string
+  trackNumber: number
+  visualsPath: string
+}
+
+interface NativeTrackPage {
+  items: NativeTrackSummary[]
+  nextCursor?: string
+  revision: number
+  total: number
+}
+
+export interface TrackPage {
+  items: Song[]
+  nextCursor?: string
+  revision: number
+  total: number
+}
+
+export type TrackPageFetcher = (query: TrackQuery) => Promise<TrackPage>
+
+function toSong(track: NativeTrackSummary): Song {
+  return {
+    ...track,
+    bpm: 0,
+    compilation: 0,
+    encoder: '',
+    genre: '',
+    trackTotal: 0,
+  }
+}
+
+export async function queryTracks(query: TrackQuery): Promise<TrackPage> {
+  const page = await invoke<NativeTrackPage>('query_tracks', { query })
+  return { ...page, items: page.items.map(toSong) }
+}
+
+export function catalogQuery(searchTerm: string, sorting: Store['sorting']): Omit<TrackQuery, 'cursor' | 'limit'> {
+  if (sorting === 'default') return { direction: 'asc', q: searchTerm, sort: 'default' }
+
+  const direction = sorting.endsWith('-desc') ? 'desc' : 'asc'
+  const field = sorting.replace(/-(asc|desc)$/, '')
+  const sorts: Record<string, NativeTrackSort> = {
+    album: 'album',
+    artist: 'artist',
+    date: 'date',
+    'date-added': 'date_added',
+    fave: 'favorite',
+    hertz: 'sample_rate',
+    title: 'title',
+    track: 'track',
+  }
+  return { direction, q: searchTerm, sort: sorts[field] || 'default' }
+}
+
+function libraryErrorCode(error: unknown): string {
+  if (typeof error === 'object' && error && 'code' in error && typeof error.code === 'string') return error.code
+  return ''
+}
+
+function libraryErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return 'Jukebox could not load this part of the library.'
+}
+
+export class LibraryPager {
+  private readonly cursors = new Map<number, string | null>([[0, null]])
+  private generation = 0
+  private query: Omit<TrackQuery, 'cursor' | 'limit'> = catalogQuery('', 'default')
+  private queryKey = ''
+  private queue = Promise.resolve()
+
+  constructor(
+    private readonly state: LibraryCatalogState,
+    private readonly fetchPage: TrackPageFetcher = queryTracks
+  ) {}
+
+  reset(searchTerm: string, sorting: Store['sorting']): Promise<void> {
+    const query = catalogQuery(searchTerm, sorting)
+    const queryKey = JSON.stringify(query)
+    if (queryKey === this.queryKey && this.state.status !== 'error') return this.queue
+
+    this.query = query
+    this.queryKey = queryKey
+    return this.enqueueRange(0, 0, this.beginQuery())
+  }
+
+  reload(): Promise<void> {
+    this.queryKey = ''
+    return this.reset(this.query.q, this.sortingName())
+  }
+
+  ensureRange(startIndex: number, endIndex: number): Promise<void> {
+    if (this.state.status === 'error' || endIndex < 0) return Promise.resolve()
+    const startPage = Math.max(0, Math.floor(startIndex / LIBRARY_PAGE_SIZE))
+    const endPage = Math.max(startPage, Math.floor(endIndex / LIBRARY_PAGE_SIZE))
+    return this.enqueueRange(startPage, endPage, this.generation)
+  }
+
+  dispose(): void {
+    this.generation += 1
+  }
+
+  private sortingName(): Store['sorting'] {
+    if (this.query.sort === 'default') return 'default'
+    const fields: Record<Exclude<NativeTrackSort, 'default'>, string> = {
+      album: 'album',
+      artist: 'artist',
+      date: 'date',
+      date_added: 'date-added',
+      favorite: 'fave',
+      sample_rate: 'hertz',
+      title: 'title',
+      track: 'track',
+    }
+    return `${fields[this.query.sort]}-${this.query.direction}` as Store['sorting']
+  }
+
+  private enqueueRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    this.queue = this.queue.then(() => this.loadRange(startPage, endPage, generation))
+    return this.queue
+  }
+
+  private async loadRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    try {
+      for (let pageIndex = 0; pageIndex <= endPage; pageIndex += 1) {
+        if (generation !== this.generation) return
+        if (this.state.pages[String(pageIndex)]) continue
+        if (pageIndex < startPage && this.cursors.has(pageIndex + 1)) continue
+
+        const cursor = this.cursors.get(pageIndex)
+        if (cursor === undefined) return
+        const page = await this.fetchPage({
+          ...this.query,
+          cursor: cursor || undefined,
+          limit: LIBRARY_PAGE_SIZE,
+        })
+        if (generation !== this.generation) return
+
+        this.state.pages[String(pageIndex)] = page.items
+        this.state.revision = page.revision
+        this.state.total = page.total
+        if (page.nextCursor) this.cursors.set(pageIndex + 1, page.nextCursor)
+        if (!page.nextCursor && page.items.length === LIBRARY_PAGE_SIZE) {
+          this.cursors.delete(pageIndex + 1)
+        }
+      }
+      if (generation !== this.generation) return
+      this.evictDistantPages(startPage, endPage)
+      this.state.loadedSongCount = Object.values(this.state.pages).reduce((total, page) => total + page.length, 0)
+      this.state.error = ''
+      this.state.status = 'ready'
+    } catch (error) {
+      if (generation !== this.generation) return
+      if (libraryErrorCode(error) === 'stale_cursor') {
+        await this.loadRange(0, 0, this.beginQuery())
+        return
+      }
+      this.state.error = libraryErrorMessage(error)
+      this.state.status = 'error'
+    }
+  }
+
+  private beginQuery(): number {
+    this.generation += 1
+    this.cursors.clear()
+    this.cursors.set(0, null)
+    this.state.error = ''
+    this.state.loadedSongCount = 0
+    this.state.pages = {}
+    this.state.revision = 0
+    this.state.status = 'loading'
+    this.state.total = 0
+    return this.generation
+  }
+
+  private evictDistantPages(startPage: number, endPage: number): void {
+    const center = (startPage + endPage) / 2
+    const retained = Object.keys(this.state.pages)
+      .map(Number)
+      .sort((left, right) => Math.abs(left - center) - Math.abs(right - center))
+      .slice(0, MAX_RETAINED_LIBRARY_PAGES)
+    const keep = new Set(retained.map(String))
+    for (const pageIndex of Object.keys(this.state.pages)) {
+      if (!keep.has(pageIndex)) delete this.state.pages[pageIndex]
+    }
+  }
+}
+
+export function librarySongAt(state: LibraryCatalogState, index: number): Song | undefined {
+  const pageIndex = Math.floor(index / LIBRARY_PAGE_SIZE)
+  return state.pages[String(pageIndex)]?.[index % LIBRARY_PAGE_SIZE]
+}
+
+export function libraryPlaybackAt(
+  state: LibraryCatalogState,
+  index: number
+): { playlist: Song[]; playlistIndex: number; song: Song } | undefined {
+  const playlist = state.pages[String(Math.floor(index / LIBRARY_PAGE_SIZE))]
+  const playlistIndex = index % LIBRARY_PAGE_SIZE
+  const song = playlist?.[playlistIndex]
+  return song ? { playlist, playlistIndex, song } : undefined
+}
+
+export function lastLoadedLibraryIndex(state: LibraryCatalogState): number {
+  return Object.entries(state.pages).reduce((lastIndex, [pageIndex, items]) => {
+    if (!items.length) return lastIndex
+    return Math.max(lastIndex, Number(pageIndex) * LIBRARY_PAGE_SIZE + items.length - 1)
+  }, 0)
+}
+
+export async function loadLegacyCatalog(fetchPage: TrackPageFetcher = queryTracks): Promise<Song[]> {
+  const songs: Song[] = []
+  let cursor: string | undefined
+
+  do {
+    const page = await fetchPage({
+      cursor,
+      direction: 'asc',
+      limit: LIBRARY_PAGE_SIZE,
+      q: '',
+      sort: 'default',
+    })
+    songs.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+
+  return songs
+}
+
+let legacyCatalogRequest: Promise<Song[]> | undefined
+
+export async function ensureLegacyCatalog(store: Store): Promise<Song[]> {
+  if (store.legacyCatalogLoaded) return store.legacyCatalog
+  legacyCatalogRequest ||= loadLegacyCatalog()
+  try {
+    const songs = await legacyCatalogRequest
+    store.legacyCatalog = songs
+    store.legacyCatalogLoaded = true
+    return songs
+  } catch {
+    store.bootstrap.libraryStatus = 'error'
+    store.bootstrap.libraryError = 'Jukebox could not load the complete library for this view.'
+    throw new Error(store.bootstrap.libraryError)
+  } finally {
+    legacyCatalogRequest = undefined
+  }
+}
+
+export function useLegacyCatalog(store: Store): void {
+  useVisibleTask$(async () => {
+    await ensureLegacyCatalog(store).catch(() => undefined)
+  })
+}
+
+export function useLibraryCatalog(store: Store) {
+  const pager = useSignal<NoSerialize<LibraryPager>>()
+  const observedRefreshKey = useSignal(store.libraryCatalog.refreshKey)
+
+  useTask$(({ track }) => {
+    const status = track(() => store.libraryCatalog.status)
+    const error = track(() => store.libraryCatalog.error)
+    store.bootstrap.libraryStatus = status
+    store.bootstrap.libraryError = error
+  })
+
+  useVisibleTask$(({ cleanup }) => {
+    const controller = new LibraryPager(store.libraryCatalog)
+    pager.value = noSerialize(controller)
+    void controller.reset(store.searchTerm, store.sorting)
+
+    cleanup(() => {
+      controller.dispose()
+      pager.value = undefined
+    })
+  })
+
+  useTask$(({ cleanup, track }) => {
+    const searchTerm = track(() => store.searchTerm)
+    const sorting = track(() => store.sorting)
+
+    const timeout = setTimeout(() => {
+      void pager.value?.reset(searchTerm, sorting)
+    }, 120)
+    cleanup(() => clearTimeout(timeout))
+  })
+
+  useTask$(({ track }) => {
+    const refreshKey = track(() => store.libraryCatalog.refreshKey)
+    if (refreshKey === observedRefreshKey.value) return
+    observedRefreshKey.value = refreshKey
+    void pager.value?.reload()
+  })
+
+  return {
+    reloadLibrary: $(async () => {
+      await pager.value?.reload()
+    }),
+    requestLibraryRange: $(async (startIndex: number, endIndex: number) => {
+      await pager.value?.ensureRange(startIndex, endIndex)
+    }),
+  }
+}

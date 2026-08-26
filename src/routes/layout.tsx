@@ -11,12 +11,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { audioDir } from '@tauri-apps/api/path'
 
 import type { SettingsSnapshot, Store, StoreActions } from '~/App'
-import { loadLibrarySongs } from '~/services/library-db'
 import {
-  applyLibraryBootstrap,
   applySettingsBootstrap,
+  DEFAULT_SETTINGS,
+  SETTINGS_BOOTSTRAP_ERROR_MESSAGE,
   SETTINGS_SAVE_ERROR_MESSAGE,
-  settleBootstrap,
 } from '~/services/bootstrap'
 import { filterAndSortSongs } from '~/utils/Songs'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
@@ -27,6 +26,7 @@ import { StorageStore } from '~/hooks/useStoragePage'
 import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
 import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
+import { useLibraryCatalog } from '~/services/library-client'
 
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
@@ -34,8 +34,18 @@ export const StoreActionsContext = createContextId<StoreActions>('store-actions-
 export default component$(() => {
   const store = useStore<Store>(
     {
-      allSongs: [],
+      legacyCatalog: [],
+      legacyCatalogLoaded: false,
       filteredSongs: [],
+      libraryCatalog: {
+        error: '',
+        loadedSongCount: 0,
+        pages: {},
+        refreshKey: 0,
+        revision: 0,
+        status: 'loading',
+        total: 0,
+      },
       playlist: [],
       queue: [],
       sorting: 'default',
@@ -69,20 +79,26 @@ export default component$(() => {
   useContextProvider(StoreContext, store)
 
   const audioActions = useAudioPlayer(store)
-  const storeActions: StoreActions = audioActions
+  const libraryActions = useLibraryCatalog(store)
+  const storeActions: StoreActions = { ...audioActions, ...libraryActions }
   useContextProvider(StoreActionsContext, storeActions)
 
   useKeyboardShortcuts(store, storeActions)
 
   useVisibleTask$(async () => {
-    const result = await settleBootstrap(loadLibrarySongs, () => invoke<SettingsSnapshot>('get_settings'))
+    try {
+      const snapshot = await invoke<SettingsSnapshot>('get_settings')
+      store.settings = snapshot.settings
+      applySettingsBootstrap(store.bootstrap, {
+        settings: snapshot.settings,
+        warning: snapshot.warning?.message || '',
+      })
+    } catch {
+      store.settings = { ...DEFAULT_SETTINGS }
+      store.bootstrap.settingsWarning = SETTINGS_BOOTSTRAP_ERROR_MESSAGE
+    }
 
-    store.allSongs = result.library.songs
-    applyLibraryBootstrap(store.bootstrap, result.library)
-    store.settings = result.settings.settings
-    applySettingsBootstrap(store.bootstrap, result.settings)
-
-    if (!result.settings.warning && !store.settings.musicFolder) {
+    if (!store.bootstrap.settingsWarning && !store.settings.musicFolder) {
       const musicFolder = await audioDir().catch(() => '')
       if (musicFolder) {
         try {
@@ -99,11 +115,11 @@ export default component$(() => {
   })
 
   useTask$(({ track }) => {
-    const allSongs = track(() => store.allSongs)
+    const legacyCatalog = track(() => store.legacyCatalog)
     const sorting = track(() => store.sorting)
     const searchTerm = track(() => store.searchTerm)
 
-    store.filteredSongs = filterAndSortSongs(allSongs, searchTerm, sorting)
+    store.filteredSongs = filterAndSortSongs(legacyCatalog, searchTerm, sorting)
   })
 
   return (

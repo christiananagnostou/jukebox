@@ -1,6 +1,8 @@
 export interface Store {
-  allSongs: Song[]
+  legacyCatalog: Song[]
+  legacyCatalogLoaded: boolean
   filteredSongs: Song[]
+  libraryCatalog: LibraryCatalogState
   playlist: Song[]
   searchTerm: string
   settings: Settings
@@ -114,6 +116,16 @@ export interface SyncState {
   message: string
 }
 
+export interface LibraryCatalogState {
+  error: string
+  loadedSongCount: number
+  pages: Record<string, Song[]>
+  refreshKey: number
+  revision: number
+  status: 'loading' | 'ready' | 'error'
+  total: number
+}
+
 export interface Album {
   title: string
   tracks: Song[]
@@ -178,6 +190,8 @@ export interface StoreActions {
   resumeSong: QRL<() => void>
   nextSong: QRL<() => void>
   prevSong: QRL<() => void>
+  reloadLibrary: QRL<() => Promise<void>>
+  requestLibraryRange: QRL<(startIndex: number, endIndex: number) => Promise<void>>
 }
 
 export interface FileNode {
