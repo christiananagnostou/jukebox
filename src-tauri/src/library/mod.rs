@@ -1,11 +1,13 @@
 mod query;
 mod reconciliation;
+mod refresh;
 mod repository;
 mod roots;
 mod scanner;
 
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
+pub use refresh::{cancel_library_refresh, get_library_refresh, start_library_refresh};
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 pub use roots::LibraryRoot;
 pub use scanner::LibraryScan;
@@ -20,6 +22,7 @@ use tokio::sync::OnceCell;
 #[derive(Clone)]
 pub struct LibraryState {
     initialized: Arc<OnceCell<Result<(), LibraryError>>>,
+    active_refreshes: refresh::ActiveRefreshes,
     repository: LibraryRepository,
     reconciliation: reconciliation::ReconciliationService,
     scanner: scanner::ScannerService,
@@ -45,6 +48,7 @@ impl LibraryState {
     pub(crate) fn from_pool(pool: SqlitePool) -> Self {
         Self {
             initialized: Arc::new(OnceCell::new()),
+            active_refreshes: refresh::ActiveRefreshes::default(),
             repository: LibraryRepository::new(pool.clone()),
             reconciliation: reconciliation::ReconciliationService::new(pool.clone()),
             scanner: scanner::ScannerService::new(pool),

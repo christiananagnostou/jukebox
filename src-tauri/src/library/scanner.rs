@@ -48,6 +48,12 @@ pub struct ScannerService {
     pool: SqlitePool,
 }
 
+pub(crate) struct ScanTask {
+    pub scan: LibraryScan,
+    root: PathBuf,
+    cancelled: Arc<AtomicBool>,
+}
+
 impl ScannerService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
@@ -74,6 +80,22 @@ impl ScannerService {
         root_id: i64,
         app: tauri::AppHandle,
     ) -> Result<LibraryScan, LibraryError> {
+        let task = self
+            .begin(root_id, Arc::new(AtomicBool::new(false)))
+            .await?;
+        let scan = task.scan.clone();
+        let service = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = service.complete(task, Some(app)).await;
+        });
+        Ok(scan)
+    }
+
+    pub(crate) async fn begin(
+        &self,
+        root_id: i64,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<ScanTask, LibraryError> {
         let root_path: String = sqlx::query_scalar(
             "SELECT canonical_path FROM library_roots WHERE id = ? AND enabled = 1",
         )
@@ -83,23 +105,29 @@ impl ScannerService {
         .map_err(|_| LibraryError::database())?
         .ok_or_else(LibraryError::root_not_found)?;
         let scan = self.create_scan(root_id).await?;
-        let cancelled = Arc::new(AtomicBool::new(false));
         self.active
             .lock()
             .map_err(|_| LibraryError::database())?
             .insert(scan.id, cancelled.clone());
 
-        let service = self.clone();
-        let scan_id = scan.id;
-        tauri::async_runtime::spawn(async move {
-            service
-                .run(scan_id, PathBuf::from(root_path), cancelled, Some(app))
-                .await;
-            if let Ok(mut active) = service.active.lock() {
-                active.remove(&scan_id);
-            }
-        });
-        Ok(scan)
+        Ok(ScanTask {
+            scan,
+            root: PathBuf::from(root_path),
+            cancelled,
+        })
+    }
+
+    pub(crate) async fn complete(
+        &self,
+        task: ScanTask,
+        app: Option<tauri::AppHandle>,
+    ) -> Result<LibraryScan, LibraryError> {
+        let scan_id = task.scan.id;
+        self.run(scan_id, task.root, task.cancelled, app).await;
+        if let Ok(mut active) = self.active.lock() {
+            active.remove(&scan_id);
+        }
+        self.get(scan_id).await
     }
 
     pub async fn cancel(&self, scan_id: i64) -> Result<LibraryScan, LibraryError> {

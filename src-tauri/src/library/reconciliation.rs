@@ -79,6 +79,12 @@ pub struct ReconciliationService {
     pool: SqlitePool,
 }
 
+pub(crate) struct PreparationTask {
+    pub reconciliation: LibraryReconciliation,
+    context: ScanContext,
+    cancelled: Arc<AtomicBool>,
+}
+
 impl ReconciliationService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
@@ -124,24 +130,47 @@ impl ReconciliationService {
         scan_id: i64,
         app: tauri::AppHandle,
     ) -> Result<LibraryReconciliation, LibraryError> {
+        let task = self
+            .begin(scan_id, Arc::new(AtomicBool::new(false)))
+            .await?;
+        let reconciliation = task.reconciliation.clone();
+        let service = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = service.complete(task, Some(app)).await;
+        });
+        Ok(reconciliation)
+    }
+
+    pub(crate) async fn begin(
+        &self,
+        scan_id: i64,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<PreparationTask, LibraryError> {
         let context = self.load_scan_context(scan_id).await?;
         let reconciliation = self.create(scan_id, context.root_id, context.total).await?;
-        let cancelled = Arc::new(AtomicBool::new(false));
         self.active
             .lock()
             .map_err(|_| LibraryError::database())?
             .insert(scan_id, cancelled.clone());
+        Ok(PreparationTask {
+            reconciliation,
+            context,
+            cancelled,
+        })
+    }
 
-        let service = self.clone();
-        tauri::async_runtime::spawn(async move {
-            service
-                .run_prepare(scan_id, context.root_path, cancelled, Some(app))
-                .await;
-            if let Ok(mut active) = service.active.lock() {
-                active.remove(&scan_id);
-            }
-        });
-        Ok(reconciliation)
+    pub(crate) async fn complete(
+        &self,
+        task: PreparationTask,
+        app: Option<tauri::AppHandle>,
+    ) -> Result<LibraryReconciliation, LibraryError> {
+        let scan_id = task.reconciliation.scan_id;
+        self.run_prepare(scan_id, task.context.root_path, task.cancelled, app)
+            .await;
+        if let Ok(mut active) = self.active.lock() {
+            active.remove(&scan_id);
+        }
+        self.get(scan_id).await
     }
 
     async fn load_scan_context(&self, scan_id: i64) -> Result<ScanContext, LibraryError> {
@@ -189,6 +218,15 @@ impl ReconciliationService {
     }
 
     pub async fn get(&self, scan_id: i64) -> Result<LibraryReconciliation, LibraryError> {
+        self.get_optional(scan_id)
+            .await?
+            .ok_or_else(LibraryError::reconciliation_not_found)
+    }
+
+    pub(crate) async fn get_optional(
+        &self,
+        scan_id: i64,
+    ) -> Result<Option<LibraryReconciliation>, LibraryError> {
         let row = sqlx::query(
             "SELECT scan_id, root_id, status, started_at, completed_at, total,
                     processed, changed, unchanged, renamed, unavailable, failed, error_summary
@@ -197,9 +235,12 @@ impl ReconciliationService {
         .bind(scan_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|_| LibraryError::database())?
-        .ok_or_else(LibraryError::reconciliation_not_found)?;
-        reconciliation_from_row(&row)
+        .map_err(|_| LibraryError::database())?;
+        row.map(|row| reconciliation_from_row(&row)).transpose()
+    }
+
+    pub(crate) async fn settle_cancelled(&self, scan_id: i64) -> Result<(), LibraryError> {
+        self.finish_unsuccessful(scan_id, "cancelled").await
     }
 
     pub async fn apply(&self, scan_id: i64) -> Result<LibraryReconciliation, LibraryError> {
@@ -901,7 +942,7 @@ impl ReconciliationService {
              SET status = ?, completed_at = CURRENT_TIMESTAMP,
                  failed = CASE WHEN ? = 'failed' THEN 1 ELSE failed END,
                  error_summary = ?
-             WHERE scan_id = ? AND status IN ('pending', 'preparing')",
+             WHERE scan_id = ? AND status IN ('pending', 'preparing', 'ready')",
         )
         .bind(status)
         .bind(status)

@@ -192,6 +192,13 @@ impl LibraryError {
         }
     }
 
+    pub(crate) fn refresh_in_progress() -> Self {
+        Self {
+            code: "library_refresh_in_progress".to_owned(),
+            message: "That library folder is already being refreshed.".to_owned(),
+        }
+    }
+
     pub(crate) fn stale_cursor() -> Self {
         Self {
             code: "stale_cursor".to_owned(),
