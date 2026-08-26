@@ -50,23 +50,34 @@ export function getContentFileType(filename: string): ContentFileType {
 
 export function organizeFiles(songs: Song[]): FileNode {
   const root: FileNode = { name: '/', children: [], level: 0, isClosed: false, hidden: false }
+  const childIndexes = new WeakMap<FileNode, Map<string, FileNode>>()
 
   for (const song of songs) {
-    const pathParts = song.path.split('/')
+    const pathParts = song.path.split(/[\\/]+/).filter(Boolean)
     let currentNode = root
-    let level = 0
 
-    for (const part of pathParts) {
-      if (!part) continue
-      let childNode = currentNode.children.find((node) => node.name === part)
-      level++
-
-      if (!childNode) {
-        childNode = { name: part, children: [], level, isClosed: false, hidden: false }
-        if (song.file === part) childNode.song = song
-        currentNode.children.push(childNode)
+    for (const [index, part] of pathParts.entries()) {
+      let childIndex = childIndexes.get(currentNode)
+      if (!childIndex) {
+        childIndex = new Map()
+        childIndexes.set(currentNode, childIndex)
       }
 
+      let childNode = childIndex.get(part)
+
+      if (!childNode) {
+        childNode = {
+          name: part,
+          children: [],
+          level: currentNode.level + 1,
+          isClosed: false,
+          hidden: false,
+        }
+        currentNode.children.push(childNode)
+        childIndex.set(part, childNode)
+      }
+
+      if (index === pathParts.length - 1) childNode.song = song
       currentNode = childNode
     }
   }

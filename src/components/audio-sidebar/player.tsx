@@ -1,269 +1,122 @@
-import { $, useComputed$, component$, useContext, useStore } from '@builder.io/qwik'
-import { StoreContext, StoreActionsContext } from '~/routes/layout'
+import { component$, useComputed$, useContext } from '@builder.io/qwik'
+import { convertFileSrc } from '@tauri-apps/api/core'
+
+import { StoreActionsContext, StoreContext } from '~/routes/layout'
+import { MusicNote } from '../svg/MusicNote'
 import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
 import { Play } from '../svg/Play'
 import { PrevTrack } from '../svg/PrevTrack'
-import { convertFileSrc } from '@tauri-apps/api/core'
-import { MusicNote } from '../svg/MusicNote'
+
+function formatSeconds(time: number): string {
+  if (!Number.isFinite(time) || time < 0) return '0:00'
+
+  const minutes = Math.floor(time / 60)
+  const seconds = Math.floor(time % 60)
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
 
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
-  const progressBarWidth = (store.player.currentTime / store.player.duration) * 250 + 'px'
-
-  const state = useStore({
-    isEditing: false,
-    isHovered: false,
-    cursorXPos: 0,
-  })
-
-  const formatSeconds = $((time: number) => {
-    const minutes = Math.floor(time / 60)
-    const seconds = Math.floor(time % 60)
-    const secondsWithZero = String(seconds).padStart(2, '0')
-    return `${minutes}:${secondsWithZero}`
-  })
-
   const albumArt = useComputed$(() => {
-    if (!store.player.currSong?.visualsPath) return ''
-    return convertFileSrc(store.player.currSong.visualsPath)
+    const visualsPath = store.player.currSong?.visualsPath
+    return visualsPath ? convertFileSrc(visualsPath) : ''
   })
 
   return (
-    <div class="text-center text-sm group/nav-player">
+    <div class="text-sm">
       <div class="max-w-[250px] m-auto">
-        {/* Album Art */}
-        <div class="w-full">
-          {albumArt.value ? (
-            <img src={albumArt.value} alt={store.player.currSong?.title} width={250} height={250} />
-          ) : (
-            <div class="h-auto w-full aspect-square grid place-items-center bg-gray-800 text-gray-700">
-              <MusicNote height="20%" width="20%" />
-            </div>
-          )}
-        </div>
+        {albumArt.value ? (
+          <img
+            src={albumArt.value}
+            alt=""
+            width={250}
+            height={250}
+            decoding="async"
+            class="aspect-square object-contain"
+          />
+        ) : (
+          <div class="aspect-square w-full grid place-items-center bg-gray-800 text-gray-700">
+            <MusicNote height="20%" width="20%" />
+          </div>
+        )}
 
-        {/* Range Slider */}
-        <div
-          class="w-full relative overflow-hidden h-8 -mb-4 song-control__range cursor-pointer"
-          onMouseMove$={(e) => {
-            // @ts-ignore
-            state.cursorXPos = e.offsetX
-            state.isHovered = true
+        <input
+          type="range"
+          min={0}
+          max={Math.max(store.player.duration, 0)}
+          step={0.1}
+          value={Math.min(store.player.currentTime, store.player.duration || 0)}
+          aria-label="Playback position"
+          class="mt-3 w-full accent-yellow-500"
+          onInput$={(_, element) => {
+            if (store.player.audioElem) {
+              store.player.audioElem.currentTime = Number(element.value)
+            }
           }}
-          onMouseLeave$={() => (state.isHovered = false)}
-          onClick$={() => {
-            if (store.player.audioElem?.currentTime)
-              store.player.audioElem.currentTime = (state.cursorXPos / 250) * store.player.duration
-          }}
-        >
-          {store.player.audioElem && (
-            <>
-              {/* Time Elapsed */}
-              <div class="bg-slate-500 w-full h-2 absolute left-0 top-0 pointer-events-none" />
+        />
 
-              {/* Time Remaining */}
-              <div
-                class="bg-slate-700 w-full h-2 absolute left-0 top-0 pointer-events-none"
-                style={{
-                  transform: `translateX(${progressBarWidth})`,
-                }}
-              />
-
-              {/* Cursor */}
-              <span
-                class="absolute left-0 top-0 w-[2px] h-2 bg-slate-400 pointer-events-none"
-                style={{
-                  transform: `translateX(${state.isHovered ? state.cursorXPos + 'px' : progressBarWidth})`,
-                }}
-              />
-            </>
-          )}
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>{formatSeconds(store.player.currentTime)}</span>
+          <span>{formatSeconds(store.player.duration)}</span>
         </div>
       </div>
 
-      {/* Time */}
-      <div class="flex justify-between w-full opacity-0 text-xs text-slate-400 group-hover/nav-player:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <p class="px-1">{formatSeconds(store.player.currentTime)}</p>
-        <p class={`px-1 transition-opacity duration-300 ${state.isHovered ? 'opacity-1' : 'opacity-0'}`}>
-          {formatSeconds((state.cursorXPos / 250) * store.player.duration)}
-        </p>
-        <p class="px-1">{formatSeconds(store.player.duration)}</p>
-      </div>
-
-      {/* Controls */}
-      <div class="flex justify-evenly text-slate-500 mt-1">
-        <button onClick$={storeActions.prevSong}>
+      <div class="mt-2 flex justify-evenly text-slate-500">
+        <button onClick$={storeActions.prevSong} aria-label="Previous track" title="Previous track">
           <PrevTrack />
         </button>
         {store.player.isPaused ? (
-          <button onClick$={storeActions.resumeSong}>
+          <button onClick$={storeActions.resumeSong} aria-label="Play" title="Play">
             <Play />
           </button>
         ) : (
-          <button onClick$={storeActions.pauseSong}>
+          <button onClick$={storeActions.pauseSong} aria-label="Pause" title="Pause">
             <Pause />
           </button>
         )}
-        <button onClick$={storeActions.nextSong}>
+        <button onClick$={storeActions.nextSong} aria-label="Next track" title="Next track">
           <NextTrack />
         </button>
       </div>
 
-      <div class="text-left flex flex-col gap-3 p-2 mt-4 border-b border-slate-700 relative">
-        {/* Edit Btn */}
-        <button
-          onClick$={() => (state.isEditing = !state.isEditing)}
-          class="absolute text-xs -top-2 right-2 opacity-0 text-slate-500 group-hover/nav-player:opacity-100 transition-opacity duration-300"
-        >
-          {state.isEditing ? 'Save' : 'Edit'}
-        </button>
-
-        {/* Title */}
-
-        {state.isEditing ? (
-          <input
-            type="text"
-            onChange$={(e: any) => {
-              if (store.player.currSong) store.player.currSong.title = e.target.value
-            }}
-            value={store.player.currSong?.title}
-            class="bg-transparent text-lg px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-          />
-        ) : (
-          <p class="truncate text-lg">{store.player.currSong?.title || '-'}</p>
-        )}
-
-        {/* Album */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Album</span>
-
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.album = e.target.value
-              }}
-              value={store.player.currSong?.album}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            store.player.currSong?.album || '-'
-          )}
-        </p>
-
-        {/* Artist */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Artist</span>
-
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.artist = e.target.value
-              }}
-              value={store.player.currSong?.artist}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            store.player.currSong?.artist || '-'
-          )}
-        </p>
-
-        {/* Genre */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Genre</span>
-
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.genre = e.target.value
-              }}
-              value={store.player.currSong?.genre}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            store.player.currSong?.genre || '-'
-          )}
-        </p>
-
-        {/* Date */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Date</span>
-
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.date = e.target.value
-              }}
-              value={store.player.currSong?.date}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            store.player.currSong?.date || '-'
-          )}
-        </p>
-
-        {/* Track */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Track</span>
-
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.trackNumber = parseInt(e.target.value)
-              }}
-              value={store.player.currSong?.trackNumber}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            <span>
+      <dl class="mt-4 grid gap-3 border-b border-slate-700 p-2">
+        <div>
+          <dt class="text-xs text-gray-400">Title</dt>
+          <dd class="truncate text-lg">{store.player.currSong?.title || '-'}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-gray-400">Artist</dt>
+          <dd class="truncate">{store.player.currSong?.artist || '-'}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-gray-400">Album</dt>
+          <dd class="truncate">{store.player.currSong?.album || '-'}</dd>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <dt class="text-xs text-gray-400">Track</dt>
+            <dd class="truncate">
               {store.player.currSong?.trackNumber || '-'}
-              {store.player.currSong?.trackTotal ? ' of ' + store.player.currSong.trackTotal : ''}
-            </span>
-          )}
-        </p>
-
-        {/* Codec */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Codec</span>
-
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.codec = e.target.value
-              }}
-              value={store.player.currSong?.codec}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            store.player.currSong?.codec || '-'
-          )}
-        </p>
-
-        {/* Sample Rate */}
-        <p class="truncate">
-          <span class="text-xs block text-gray-400">Sample Rate</span>
-          {state.isEditing ? (
-            <input
-              type="text"
-              onChange$={(e: any) => {
-                if (store.player.currSong) store.player.currSong.sampleRate = e.target.value
-              }}
-              value={store.player.currSong?.sampleRate}
-              class="bg-transparent px-1 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)] focus:outline-none w-full"
-            />
-          ) : (
-            store.player.currSong?.sampleRate || '-'
-          )}
-        </p>
-      </div>
+              {store.player.currSong?.trackTotal ? ` of ${store.player.currSong.trackTotal}` : ''}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-gray-400">Year</dt>
+            <dd class="truncate">{store.player.currSong?.date || '-'}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-gray-400">Codec</dt>
+            <dd class="truncate">{store.player.currSong?.codec || '-'}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-gray-400">Sample rate</dt>
+            <dd class="truncate">{store.player.currSong?.sampleRate || '-'}</dd>
+          </div>
+        </div>
+      </dl>
     </div>
   )
 })

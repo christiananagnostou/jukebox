@@ -9,8 +9,7 @@ export default component$(() => {
     'keydown',
     $((e: Event) => {
       if (!searchInput.value) return
-      // @ts-ignore
-      const { key } = e as { key: string }
+      const { key } = e as KeyboardEvent
 
       if (key === '/') {
         e.preventDefault()
@@ -29,9 +28,8 @@ export default component$(() => {
     })
   )
 
-  const handleSearchInput = $((e: InputEvent) => {
-    // @ts-ignore
-    store.searchTerm = e?.target?.value || ''
+  const handleSearchInput = $((_event: InputEvent, input: HTMLInputElement) => {
+    store.searchTerm = input.value
     store.libraryView.cursorIdx = 0
     store.artistView.artistIdx = 0
     store.artistView.albumIdx = 0

@@ -1,12 +1,13 @@
 import { $, component$, useContext } from '@builder.io/qwik'
+import dayjs from 'dayjs'
+
 import type { Song } from '~/App'
+import { updateFavoriteRating } from '~/services/library-db'
+import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { SoundBars } from '../Shared/SoundBars'
 import { Star0 } from '../svg/Star0'
 import { Star1 } from '../svg/Star1'
 import { Star2 } from '../svg/Star2'
-import { StoreActionsContext, StoreContext } from '~/routes/layout'
-import { updateFavoriteRating } from '~/services/library-db'
-import dayjs from 'dayjs'
 
 export interface LibraryRowProps {
   index: number
@@ -30,20 +31,16 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
     storeActions.playSong(song, index)
   })
 
-  // Update favor rating
   const handleFavorClick = $(async (rating: Song['favorRating']) => {
     await updateFavoriteRating(song.id, rating)
     song.favorRating = rating
+    store.allSongs = [...store.allSongs]
   })
 
-  const ratingsWithStars: { rating: Song['favorRating']; star: any }[] = [
-    { rating: 0, star: <Star0 /> },
-    { rating: 1, star: <Star1 /> },
-    { rating: 2, star: <Star2 /> },
-  ]
+  const nextRating = ((song.favorRating + 1) % 3) as Song['favorRating']
 
   return (
-    <button
+    <div
       key={song.title}
       onDblClick$={onDblClick}
       onClick$={onClick}
@@ -71,16 +68,20 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
       <span class="truncate pl-2">{dayjs(song.dateAdded).format('M-D-YY')}</span>
 
       <span class="truncate pl-2 flex align-center">
-        {ratingsWithStars.map(({ rating, star }, i) => (
-          <button
-            key={rating}
-            onClick$={() => handleFavorClick(ratingsWithStars[(i + 1) % 3].rating)}
-            onDoubleClick$={(e: MouseEvent) => e.stopPropagation()}
-          >
-            {song.favorRating === rating && star}
-          </button>
-        ))}
+        <button
+          aria-label={`Set favorite rating to ${nextRating}`}
+          title={`Favorite rating: ${song.favorRating}`}
+          onClick$={(event) => {
+            event.stopPropagation()
+            handleFavorClick(nextRating)
+          }}
+          onDblClick$={(event) => event.stopPropagation()}
+        >
+          {song.favorRating === 0 && <Star0 />}
+          {song.favorRating === 1 && <Star1 />}
+          {song.favorRating === 2 && <Star2 />}
+        </button>
       </span>
-    </button>
+    </div>
   )
 })

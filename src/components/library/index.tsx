@@ -1,6 +1,5 @@
-import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import type { ListItemStyle } from '~/App'
+import { $, component$, useContext } from '@builder.io/qwik'
+import type { ListItemStyle, Store } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { LibraryRow } from '~/components/library/LibraryRow'
 import { ArrowDown } from '~/components/svg/ArrowDown'
@@ -10,7 +9,9 @@ import { StoreContext } from '../../routes/layout'
 const RowHeight = 30
 const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
 
-const ButtonConfigs = [
+type SortField = 'title' | 'artist' | 'album' | 'track' | 'hertz' | 'date' | 'date-added' | 'fave'
+
+const ButtonConfigs: { label: string; type: SortField }[] = [
   { label: 'Title', type: 'title' },
   { label: 'Artist', type: 'artist' },
   { label: 'Album', type: 'album' },
@@ -21,9 +22,11 @@ const ButtonConfigs = [
   { label: 'Fave', type: 'fave' },
 ]
 
-const SortButton = component$(({ label, type, store }: { label: string; type: string; store: any }) => {
+const SortButton = component$(({ label, type, store }: { label: string; type: SortField; store: Store }) => {
   const handleClick = $(() => {
-    store.sorting = store.sorting === `${type}-desc` ? `${type}-asc` : `${type}-desc`
+    const ascending = `${type}-asc` as Store['sorting']
+    const descending = `${type}-desc` as Store['sorting']
+    store.sorting = store.sorting === ascending ? descending : ascending
   })
 
   const isSorting = store.sorting === `${type}-desc` || store.sorting === `${type}-asc`
@@ -45,26 +48,8 @@ const SortButton = component$(({ label, type, store }: { label: string; type: st
 export default component$(() => {
   const store = useContext(StoreContext)
 
-  const state = useStore({
-    virtualListHeight: 0,
-    windowHeight: 0,
-  })
-
-  useVisibleTask$(async () => {
-    const appWindow = getCurrentWebviewWindow()
-    const sizeVirtualList = async () => {
-      const factor = await appWindow.scaleFactor()
-      const { height } = (await appWindow.innerSize()).toLogical(factor)
-      state.virtualListHeight = height - RowHeight * 2 - 28 // 2 rows (col titles + footer)
-      state.windowHeight = height
-    }
-    sizeVirtualList()
-    const unlistenResize = await appWindow.onResized(sizeVirtualList)
-    return () => unlistenResize()
-  })
-
   return (
-    <section class="w-full flex flex-col flex-1">
+    <section class="min-h-0 w-full flex flex-col flex-1">
       <div
         class={`${RowStyle} border-b border-gray-700`}
         style={{ height: RowHeight + 'px', paddingRight: 'var(--scrollbar-width)' }}
@@ -76,11 +61,10 @@ export default component$(() => {
         ))}
       </div>
 
-      <div class="flex-1 h-full" style={{ maxHeight: state.virtualListHeight + 'px' }}>
+      <div class="min-h-0 flex-1">
         <VirtualList
           numItems={store.filteredSongs.length}
           itemHeight={RowHeight}
-          windowHeight={state.virtualListHeight || 0}
           scrollToRow={store.libraryView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
             return (
