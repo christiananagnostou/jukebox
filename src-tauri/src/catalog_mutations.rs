@@ -1,0 +1,448 @@
+use serde::Deserialize;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::{QueryBuilder, Sqlite, SqlitePool};
+use std::path::PathBuf;
+use std::time::Duration;
+use tauri::Manager;
+
+const UPSERT_CHUNK_SIZE: usize = 100;
+const DELETE_CHUNK_SIZE: usize = 200;
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogSongInput {
+    id: String,
+    path: String,
+    file: String,
+    title: String,
+    album: String,
+    artist: String,
+    genre: String,
+    bpm: i64,
+    compilation: i64,
+    date: String,
+    encoder: String,
+    track_total: i64,
+    track_number: i64,
+    codec: String,
+    duration: String,
+    sample_rate: String,
+    side: i64,
+    start_time: i64,
+    favor_rating: i64,
+    date_added: String,
+    visuals_path: String,
+}
+
+#[tauri::command]
+pub async fn upsert_songs(
+    app_handle: tauri::AppHandle,
+    songs: Vec<CatalogSongInput>,
+) -> Result<(), String> {
+    if songs.is_empty() {
+        return Ok(());
+    }
+
+    let pool = production_pool(&app_handle).await?;
+    let result = upsert_songs_in_pool(&pool, &songs, |_| Ok(())).await;
+    pool.close().await;
+    result
+}
+
+#[tauri::command]
+pub async fn delete_songs(app_handle: tauri::AppHandle, ids: Vec<String>) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let pool = production_pool(&app_handle).await?;
+    let result = delete_songs_in_pool(&pool, &ids, |_| Ok(())).await;
+    pool.close().await;
+    result
+}
+
+#[tauri::command]
+pub async fn clear_library_songs(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let pool = production_pool(&app_handle).await?;
+    let result = clear_songs_in_pool(&pool).await;
+    pool.close().await;
+    result
+}
+
+fn production_database_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app_handle
+        .path()
+        .app_config_dir()
+        .map(|directory| directory.join("library.db"))
+        .map_err(|error| format!("Library database path is unavailable: {error}"))
+}
+
+async fn production_pool(app_handle: &tauri::AppHandle) -> Result<SqlitePool, String> {
+    open_pool(production_database_path(app_handle)?, false)
+        .await
+        .map_err(|error| format!("Library database is unavailable: {error}"))
+}
+
+async fn open_pool(path: PathBuf, create_if_missing: bool) -> Result<SqlitePool, sqlx::Error> {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(create_if_missing)
+        .busy_timeout(Duration::from_secs(5));
+
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+}
+
+async fn upsert_songs_in_pool<F>(
+    pool: &SqlitePool,
+    songs: &[CatalogSongInput],
+    mut after_chunk: F,
+) -> Result<(), String>
+where
+    F: FnMut(usize) -> Result<(), String>,
+{
+    if songs.is_empty() {
+        return Ok(());
+    }
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| format!("Could not start library update: {error}"))?;
+
+    for (chunk_index, chunk) in songs.chunks(UPSERT_CHUNK_SIZE).enumerate() {
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO songs (
+                id, path, file, title, album, artist, genre, bpm, compilation, date, encoder,
+                trackTotal, trackNumber, codec, duration, sampleRate, side, startTime,
+                favorRating, dateAdded, visualsPath
+            ) ",
+        );
+        query.push_values(chunk, |mut row, song| {
+            row.push_bind(&song.id)
+                .push_bind(&song.path)
+                .push_bind(&song.file)
+                .push_bind(&song.title)
+                .push_bind(&song.album)
+                .push_bind(&song.artist)
+                .push_bind(&song.genre)
+                .push_bind(song.bpm)
+                .push_bind(song.compilation)
+                .push_bind(&song.date)
+                .push_bind(&song.encoder)
+                .push_bind(song.track_total)
+                .push_bind(song.track_number)
+                .push_bind(&song.codec)
+                .push_bind(&song.duration)
+                .push_bind(&song.sample_rate)
+                .push_bind(song.side)
+                .push_bind(song.start_time)
+                .push_bind(song.favor_rating)
+                .push_bind(&song.date_added)
+                .push_bind(&song.visuals_path);
+        });
+        query.push(
+            " ON CONFLICT(id) DO UPDATE SET
+                path = excluded.path,
+                file = excluded.file,
+                title = excluded.title,
+                album = excluded.album,
+                artist = excluded.artist,
+                genre = excluded.genre,
+                bpm = excluded.bpm,
+                compilation = excluded.compilation,
+                date = excluded.date,
+                encoder = excluded.encoder,
+                trackTotal = excluded.trackTotal,
+                trackNumber = excluded.trackNumber,
+                codec = excluded.codec,
+                duration = excluded.duration,
+                sampleRate = excluded.sampleRate,
+                side = excluded.side,
+                startTime = excluded.startTime,
+                visualsPath = excluded.visualsPath",
+        );
+        query
+            .build()
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| format!("Could not update library: {error}"))?;
+        after_chunk(chunk_index + 1)?;
+    }
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| format!("Could not commit library update: {error}"))
+}
+
+async fn delete_songs_in_pool<F>(
+    pool: &SqlitePool,
+    ids: &[String],
+    mut after_chunk: F,
+) -> Result<(), String>
+where
+    F: FnMut(usize) -> Result<(), String>,
+{
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| format!("Could not start library deletion: {error}"))?;
+
+    for (chunk_index, chunk) in ids.chunks(DELETE_CHUNK_SIZE).enumerate() {
+        let mut query = QueryBuilder::<Sqlite>::new("DELETE FROM songs WHERE id IN (");
+        let mut separated = query.separated(", ");
+        for id in chunk {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+        query
+            .build()
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| format!("Could not delete library songs: {error}"))?;
+        after_chunk(chunk_index + 1)?;
+    }
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| format!("Could not commit library deletion: {error}"))
+}
+
+async fn clear_songs_in_pool(pool: &SqlitePool) -> Result<(), String> {
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| format!("Could not start library clear: {error}"))?;
+    sqlx::query("DELETE FROM songs")
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| format!("Could not clear library: {error}"))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|error| format!("Could not commit library clear: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn run_async<T>(future: impl std::future::Future<Output = T>) -> T {
+        tauri::async_runtime::block_on(future)
+    }
+
+    async fn test_pool(label: &str) -> (SqlitePool, PathBuf) {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "jukebox-catalog-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create isolated database directory");
+        let pool = open_pool(root.join("library.db"), true)
+            .await
+            .expect("open isolated library database");
+        sqlx::raw_sql(crate::database::INITIAL_SCHEMA)
+            .execute(&pool)
+            .await
+            .expect("migrate isolated library database");
+        (pool, root)
+    }
+
+    async fn close_test_pool(pool: SqlitePool, root: PathBuf) {
+        pool.close().await;
+        std::fs::remove_dir_all(root).expect("remove isolated database directory");
+    }
+
+    fn song(index: usize) -> CatalogSongInput {
+        CatalogSongInput {
+            id: format!("song-{index}"),
+            path: format!("/music/song-{index}.flac"),
+            file: format!("song-{index}.flac"),
+            title: format!("Song {index}"),
+            album: "Album".to_string(),
+            artist: "Artist".to_string(),
+            genre: "Genre".to_string(),
+            bpm: 120,
+            compilation: 0,
+            date: "2026".to_string(),
+            encoder: "encoder".to_string(),
+            track_total: 300,
+            track_number: index as i64,
+            codec: "flac".to_string(),
+            duration: "0:03:00.000".to_string(),
+            sample_rate: "44100".to_string(),
+            side: 1,
+            start_time: 0,
+            favor_rating: 0,
+            date_added: "2026-08-26T00:00:00.000Z".to_string(),
+            visuals_path: String::new(),
+        }
+    }
+
+    async fn song_count(pool: &SqlitePool) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM songs")
+            .fetch_one(pool)
+            .await
+            .expect("count songs")
+    }
+
+    #[test]
+    fn upserts_across_the_chunk_boundary_and_preserves_user_fields() {
+        run_async(async {
+            let (pool, root) = test_pool("upsert-boundary").await;
+            let mut songs = (0..=UPSERT_CHUNK_SIZE).map(song).collect::<Vec<_>>();
+            upsert_songs_in_pool(&pool, &songs, |_| Ok(()))
+                .await
+                .expect("insert songs");
+            assert_eq!(song_count(&pool).await, 101);
+
+            sqlx::query(
+                "UPDATE songs SET favorRating = 2, dateAdded = 'original' WHERE id = 'song-0'",
+            )
+            .execute(&pool)
+            .await
+            .expect("set user fields");
+            songs[0].title = "Updated".to_string();
+            songs[0].favor_rating = 0;
+            songs[0].date_added = "replacement".to_string();
+            upsert_songs_in_pool(&pool, &songs[..1], |_| Ok(()))
+                .await
+                .expect("update song");
+
+            let row: (String, i64, String) = sqlx::query_as(
+                "SELECT title, favorRating, dateAdded FROM songs WHERE id = 'song-0'",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("read updated song");
+            assert_eq!(row, ("Updated".to_string(), 2, "original".to_string()));
+            close_test_pool(pool, root).await;
+        });
+    }
+
+    #[test]
+    fn failed_middle_upsert_rolls_back_every_chunk() {
+        run_async(async {
+            let (pool, root) = test_pool("upsert-rollback").await;
+            upsert_songs_in_pool(&pool, &[song(999)], |_| Ok(()))
+                .await
+                .expect("insert pre-operation song");
+            let songs = (0..=UPSERT_CHUNK_SIZE).map(song).collect::<Vec<_>>();
+            let error = upsert_songs_in_pool(&pool, &songs, |completed| {
+                if completed == 1 {
+                    Err("injected upsert failure".to_string())
+                } else {
+                    Ok(())
+                }
+            })
+            .await
+            .expect_err("injected failure should abort the transaction");
+
+            assert_eq!(error, "injected upsert failure");
+            assert_eq!(song_count(&pool).await, 1);
+            let remaining: String = sqlx::query_scalar("SELECT id FROM songs")
+                .fetch_one(&pool)
+                .await
+                .expect("read pre-operation song");
+            assert_eq!(remaining, "song-999");
+            close_test_pool(pool, root).await;
+        });
+    }
+
+    #[test]
+    fn deserializes_the_existing_typescript_song_shape() {
+        let value = serde_json::json!({
+            "id": "song",
+            "path": "/music/song.flac",
+            "file": "song.flac",
+            "title": "Song",
+            "album": "Album",
+            "artist": "Artist",
+            "genre": "Genre",
+            "bpm": 120,
+            "compilation": 0,
+            "date": "2026",
+            "encoder": "encoder",
+            "trackTotal": 1,
+            "trackNumber": 1,
+            "codec": "flac",
+            "duration": "0:03:00.000",
+            "sampleRate": "44100",
+            "side": 1,
+            "startTime": 0,
+            "favorRating": 2,
+            "dateAdded": "2026-08-26T00:00:00.000Z",
+            "visualsPath": ""
+        });
+
+        let input: CatalogSongInput = serde_json::from_value(value).expect("deserialize Song");
+
+        assert_eq!(input.id, "song");
+        assert_eq!(input.track_total, 1);
+        assert_eq!(input.sample_rate, "44100");
+        assert_eq!(input.favor_rating, 2);
+    }
+
+    #[test]
+    fn deletes_across_the_chunk_boundary_and_rolls_back_a_middle_failure() {
+        run_async(async {
+            let (pool, root) = test_pool("delete-boundary").await;
+            let songs = (0..=DELETE_CHUNK_SIZE).map(song).collect::<Vec<_>>();
+            upsert_songs_in_pool(&pool, &songs, |_| Ok(()))
+                .await
+                .expect("insert songs");
+            let ids = songs.iter().map(|song| song.id.clone()).collect::<Vec<_>>();
+
+            let error = delete_songs_in_pool(&pool, &ids, |completed| {
+                if completed == 1 {
+                    Err("injected delete failure".to_string())
+                } else {
+                    Ok(())
+                }
+            })
+            .await
+            .expect_err("injected failure should abort the transaction");
+            assert_eq!(error, "injected delete failure");
+            assert_eq!(song_count(&pool).await, 201);
+
+            delete_songs_in_pool(&pool, &ids, |_| Ok(()))
+                .await
+                .expect("delete songs");
+            assert_eq!(song_count(&pool).await, 0);
+            close_test_pool(pool, root).await;
+        });
+    }
+
+    #[test]
+    fn empty_mutations_are_noops_and_clear_is_atomic() {
+        run_async(async {
+            let (pool, root) = test_pool("empty-and-clear").await;
+            upsert_songs_in_pool(&pool, &[song(1)], |_| Ok(()))
+                .await
+                .expect("insert song");
+            upsert_songs_in_pool(&pool, &[], |_| Ok(()))
+                .await
+                .expect("empty upsert");
+            delete_songs_in_pool(&pool, &[], |_| Ok(()))
+                .await
+                .expect("empty delete");
+            assert_eq!(song_count(&pool).await, 1);
+
+            clear_songs_in_pool(&pool).await.expect("clear songs");
+            assert_eq!(song_count(&pool).await, 0);
+            close_test_pool(pool, root).await;
+        });
+    }
+}
