@@ -8,7 +8,9 @@ mod watcher;
 
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
-pub use refresh::{cancel_library_refresh, get_library_refresh, start_library_refresh};
+pub use refresh::{
+    cancel_library_refresh, get_library_refresh, list_library_refreshes, start_library_refresh,
+};
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 pub use roots::LibraryRoot;
 pub use scanner::LibraryScan;

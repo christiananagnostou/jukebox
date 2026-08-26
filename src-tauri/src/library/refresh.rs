@@ -25,6 +25,24 @@ struct ActiveRefresh {
 pub(super) struct ActiveRefreshes(Arc<Mutex<HashMap<i64, ActiveRefresh>>>);
 
 impl LibraryState {
+    pub async fn list_library_refreshes(&self) -> Result<Vec<LibraryRefresh>, LibraryError> {
+        self.ensure_initialized().await?;
+        let scan_ids = sqlx::query_scalar::<_, i64>(
+            "SELECT MAX(scans.id)
+             FROM library_scans AS scans
+             JOIN library_refresh_runs AS refreshes ON refreshes.scan_id = scans.id
+             GROUP BY scans.root_id ORDER BY scans.root_id",
+        )
+        .fetch_all(&self.repository.pool())
+        .await
+        .map_err(|_| LibraryError::database())?;
+        let mut refreshes = Vec::with_capacity(scan_ids.len());
+        for scan_id in scan_ids {
+            refreshes.push(self.get_library_refresh(scan_id).await?);
+        }
+        Ok(refreshes)
+    }
+
     pub async fn start_library_refresh(
         &self,
         root_id: i64,
@@ -45,6 +63,7 @@ impl LibraryState {
         let cancelled = Arc::new(AtomicBool::new(false));
         let task = self.scanner.begin(root_id, cancelled.clone()).await?;
         let scan_id = task.scan.id;
+        self.mark_library_refresh(scan_id).await?;
         let refresh = LibraryRefresh::new(task.scan.clone(), None, true);
         self.active_refreshes
             .0
@@ -71,6 +90,15 @@ impl LibraryState {
             }
         });
         Ok(refresh)
+    }
+
+    async fn mark_library_refresh(&self, scan_id: i64) -> Result<(), LibraryError> {
+        sqlx::query("INSERT INTO library_refresh_runs (scan_id) VALUES (?)")
+            .bind(scan_id)
+            .execute(&self.repository.pool())
+            .await
+            .map_err(|_| LibraryError::database())?;
+        Ok(())
     }
 
     pub async fn cancel_library_refresh(
@@ -190,6 +218,13 @@ pub async fn get_library_refresh(
     library.get_library_refresh(scan_id).await
 }
 
+#[tauri::command]
+pub async fn list_library_refreshes(
+    library: tauri::State<'_, LibraryState>,
+) -> Result<Vec<LibraryRefresh>, LibraryError> {
+    library.list_library_refreshes().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +296,10 @@ mod tests {
             .begin(root_id, cancelled.clone())
             .await
             .expect("begin refresh scan");
+        state
+            .mark_library_refresh(task.scan.id)
+            .await
+            .expect("mark refresh scan");
         state
             .complete_refresh(task, cancelled, None)
             .await
@@ -383,5 +422,52 @@ mod tests {
         assert_eq!(value["status"], "running");
         assert_eq!(value["scan"]["rootId"], 3);
         assert!(value["reconciliation"].is_null());
+    }
+
+    #[test]
+    fn latest_refresh_listing_returns_persisted_root_state() {
+        tauri::async_runtime::block_on(async {
+            let (_pool, state, directory, root_id) = refresh_fixture().await;
+            assert!(state
+                .list_library_refreshes()
+                .await
+                .expect("list empty refresh state")
+                .is_empty());
+            write_wav(&directory.path().join("track.wav"), 1, 64);
+            let standalone = state
+                .scanner
+                .begin(root_id, Arc::new(AtomicBool::new(false)))
+                .await
+                .expect("begin standalone scan");
+            state
+                .scanner
+                .complete(standalone, None)
+                .await
+                .expect("complete standalone scan");
+            assert!(state
+                .list_library_refreshes()
+                .await
+                .expect("ignore standalone scan")
+                .is_empty());
+            let completed = run_refresh(&state, root_id, Arc::new(AtomicBool::new(false))).await;
+            let newer_standalone = state
+                .scanner
+                .begin(root_id, Arc::new(AtomicBool::new(false)))
+                .await
+                .expect("begin newer standalone scan");
+            state
+                .scanner
+                .complete(newer_standalone, None)
+                .await
+                .expect("complete newer standalone scan");
+
+            assert_eq!(
+                state
+                    .list_library_refreshes()
+                    .await
+                    .expect("list latest refresh"),
+                vec![completed]
+            );
+        });
     }
 }

@@ -13,10 +13,10 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
 
   const importAndReport = $(async (paths: string[]) => {
     try {
-      const result = await importPaths(paths, 'import')
+      const result = await importPaths(paths)
       if (result.errors.length) {
         await message(
-          `Imported ${result.imported} file(s); ${result.errors.length} failed.\n\n${result.errors.slice(0, 5).join('\n')}`,
+          `Added ${result.folders} folder(s) and imported ${result.imported} file(s); ${result.errors.length} failed.\n\n${result.errors.slice(0, 5).join('\n')}`,
           { kind: 'warning', title: 'Jukebox import' }
         )
       }

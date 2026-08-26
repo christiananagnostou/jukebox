@@ -1,8 +1,7 @@
 import { $ } from '@builder.io/qwik'
 import { invoke } from '@tauri-apps/api/core'
-import { basename, join } from '@tauri-apps/api/path'
-import type { DirEntry } from '@tauri-apps/plugin-fs'
-import { readDir, stat } from '@tauri-apps/plugin-fs'
+import { basename } from '@tauri-apps/api/path'
+import { stat } from '@tauri-apps/plugin-fs'
 
 import type { Metadata, Song, Store } from '~/App'
 import { upsertSongs } from '~/services/library-db'
@@ -10,6 +9,7 @@ import { getErrorMessage } from '~/utils/Errors'
 import { isAudioFile } from '~/utils/Files'
 import { mergeSongs } from '~/utils/Songs'
 import { ensureLegacyCatalog } from '~/services/library-client'
+import { addLibraryRoot } from '~/services/library-refresh'
 
 const IMPORT_CONCURRENCY = 4
 
@@ -25,42 +25,37 @@ interface ImportResult {
 
 export interface ImportSummary {
   errors: string[]
+  folders: number
   imported: number
 }
-
-export type ImportMode = 'scan' | 'import'
 
 const parseInteger = (value?: string): number => {
   const parsed = Number.parseInt(value || '', 10)
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-async function collectDirectoryFiles(directoryPath: string, entries: DirEntry[], files: ImportFile[]): Promise<void> {
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue
-
-    const entryPath = await join(directoryPath, entry.name)
-    if (entry.isDirectory) {
-      await collectDirectoryFiles(entryPath, await readDir(entryPath), files)
-    } else if (entry.isFile && isAudioFile(entryPath)) {
-      files.push({ name: entry.name, path: entryPath })
-    }
-  }
-}
-
 async function collectImportFiles(paths: string[]): Promise<ImportFile[]> {
   const files: ImportFile[] = []
 
   for (const path of paths) {
-    const pathInfo = await stat(path)
-    if (pathInfo.isDirectory) {
-      await collectDirectoryFiles(path, await readDir(path), files)
-    } else if (pathInfo.isFile && isAudioFile(path)) {
-      files.push({ name: await basename(path), path })
-    }
+    if (isAudioFile(path)) files.push({ name: await basename(path), path })
   }
 
   return files
+}
+
+export async function partitionImportPaths(
+  paths: string[],
+  inspect: (path: string) => Promise<{ isDirectory: boolean; isFile: boolean }> = stat
+): Promise<{ directories: string[]; files: string[] }> {
+  const directories: string[] = []
+  const files: string[] = []
+  for (const path of paths) {
+    const info = await inspect(path)
+    if (info.isDirectory) directories.push(path)
+    else if (info.isFile) files.push(path)
+  }
+  return { directories, files }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -115,19 +110,40 @@ async function readSong(file: ImportFile): Promise<Song> {
 }
 
 export function useLibraryImporter(store: Store) {
-  const importPaths = $(async (paths: string[], mode: ImportMode = 'import'): Promise<ImportSummary> => {
-    if (!paths.length) return { errors: [], imported: 0 }
+  const importPaths = $(async (paths: string[]): Promise<ImportSummary> => {
+    if (!paths.length) return { errors: [], folders: 0, imported: 0 }
 
     store.sync = {
       ...store.sync,
-      status: mode === 'scan' ? 'scanning' : 'importing',
+      status: 'importing',
       processed: 0,
       total: 0,
       message: 'Finding audio files',
     }
 
     try {
-      const files = await collectImportFiles(paths)
+      const { directories, files: filePaths } = await partitionImportPaths(paths)
+      const rootResults = await Promise.all(
+        directories.map(async (path) => {
+          try {
+            await addLibraryRoot(path)
+            return ''
+          } catch (error) {
+            return `${path}: ${getErrorMessage(error)}`
+          }
+        })
+      )
+      const rootErrors = rootResults.filter(Boolean)
+      const files = await collectImportFiles(filePaths)
+      if (!files.length) {
+        store.sync.status = rootErrors.length ? 'error' : directories.length ? 'scanning' : 'idle'
+        store.sync.message = rootErrors.length
+          ? `${rootErrors.length} folder(s) could not be added`
+          : directories.length
+            ? 'Native library refresh started'
+            : 'No audio files found'
+        return { errors: rootErrors, folders: directories.length - rootErrors.length, imported: 0 }
+      }
       const legacyCatalog = await ensureLegacyCatalog(store)
       const existingById = new Map(legacyCatalog.map((song) => [song.id, song]))
       store.sync.total = files.length
@@ -164,11 +180,11 @@ export function useLibraryImporter(store: Store) {
       store.legacyCatalog = mergeSongs(store.legacyCatalog, songs)
       store.libraryCatalog.refreshKey += 1
 
-      const errors = results.flatMap((result) => (result.error ? [result.error] : []))
+      const errors = [...rootErrors, ...results.flatMap((result) => (result.error ? [result.error] : []))]
       store.sync.status = errors.length ? 'error' : 'idle'
       store.sync.message = errors.length ? `${errors.length} file(s) could not be imported` : ''
       store.sync.lastRunAt = new Date().toISOString()
-      return { errors, imported: songs.length }
+      return { errors, folders: directories.length - rootErrors.length, imported: songs.length }
     } catch (error) {
       store.sync.status = 'error'
       store.sync.message = getErrorMessage(error)

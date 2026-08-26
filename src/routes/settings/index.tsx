@@ -1,26 +1,38 @@
 import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { audioDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
-import { exists } from '@tauri-apps/plugin-fs'
 
 import type { RemoteAccessStatus, Settings, SettingsSnapshot, TailscaleStatus } from '~/App'
-import { useLibraryImporter } from '~/hooks/useLibraryImporter'
-import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
-import { classifyLibraryPaths, commitLibraryRemoval } from '~/services/library-maintenance'
+import { clearLibrarySongs } from '~/services/library-db'
+import {
+  addLibraryRoot,
+  cancelLibraryRefresh,
+  isLibraryRefreshActive,
+  LIBRARY_REFRESH_EVENT,
+  libraryRefreshProgress,
+  listLibraryRefreshes,
+  listLibraryRoots,
+  setLibraryRootEnabled,
+  startLibraryRefresh,
+  watcherStatusLabel,
+  type LibraryRefresh,
+  type LibraryRoot,
+} from '~/services/library-refresh'
 import { getErrorMessage } from '~/utils/Errors'
 import { organizeFiles } from '~/utils/Files'
-import { ensureLegacyCatalog } from '~/services/library-client'
 import { StoreContext } from '../layout'
 
 const SECTION_CLASS = 'border-b border-gray-700 pb-6 flex flex-col gap-3'
 const BUTTON_CLASS = 'w-fit border border-gray-600 px-3 py-2 text-sm hover:border-gray-400 disabled:opacity-50'
 export default component$(() => {
   const store = useContext(StoreContext)
-  const { importPaths } = useLibraryImporter(store)
   const state = useStore({
-    confirmAction: '' as '' | 'missing' | 'clear',
-    removed: 0,
+    confirmAction: '' as '' | 'clear',
+    libraryError: '',
+    refreshes: {} as Record<string, LibraryRefresh>,
+    roots: [] as LibraryRoot[],
     remoteAccessBusy: false,
     tailscaleAction: '' as '' | 'refresh' | 'start' | 'stop',
     tailscaleActionError: '',
@@ -39,35 +51,74 @@ export default component$(() => {
   })
   const isBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
 
-  useVisibleTask$(async () => {
-    const [remoteAccess, tailscale] = await Promise.all([
-      invoke<RemoteAccessStatus>('get_remote_access_status').catch(() => ({
-        enabled: store.settings.remoteAccessEnabled,
-        error: 'Remote access status is unavailable',
-        port: 45321,
-        running: false,
-        url: 'http://127.0.0.1:45321',
-      })),
-      invoke<TailscaleStatus>('get_tailscale_status').catch(() => ({
-        connected: false,
-        error: 'Tailscale status is unavailable',
-        installed: false,
-        serveConfigured: false,
-        serveManaged: false,
-      })),
-    ])
-    state.remoteAccess = remoteAccess
-    state.tailscale = tailscale
+  useVisibleTask$(({ cleanup }) => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    const loadState = async () => {
+      try {
+        const [remoteAccess, tailscale, roots, refreshes] = await Promise.all([
+          invoke<RemoteAccessStatus>('get_remote_access_status').catch(() => ({
+            enabled: store.settings.remoteAccessEnabled,
+            error: 'Remote access status is unavailable',
+            port: 45321,
+            running: false,
+            url: 'http://127.0.0.1:45321',
+          })),
+          invoke<TailscaleStatus>('get_tailscale_status').catch(() => ({
+            connected: false,
+            error: 'Tailscale status is unavailable',
+            installed: false,
+            serveConfigured: false,
+            serveManaged: false,
+          })),
+          listLibraryRoots(),
+          listLibraryRefreshes(),
+        ])
+        if (disposed) return
+        state.remoteAccess = remoteAccess
+        state.tailscale = tailscale
+        state.roots = roots
+        state.refreshes = {
+          ...Object.fromEntries(refreshes.map((refresh) => [String(refresh.scan.rootId), refresh])),
+          ...state.refreshes,
+        }
+      } catch (error) {
+        if (!disposed) state.libraryError = getErrorMessage(error)
+      }
+    }
+
+    void listen<LibraryRefresh>(LIBRARY_REFRESH_EVENT, ({ payload }) => {
+      if (disposed) return
+      state.refreshes[String(payload.scan.rootId)] = payload
+      if (!isLibraryRefreshActive(payload)) void listLibraryRoots().then((roots) => (state.roots = roots))
+    })
+      .then((stop) => {
+        if (disposed) {
+          stop()
+          return
+        }
+        unlisten = stop
+        void loadState()
+      })
+      .catch(() => {
+        void loadState()
+      })
+    cleanup(() => {
+      disposed = true
+      unlisten?.()
+    })
   })
 
-  const saveSettings = $(async (settings: Settings) => {
+  const saveSettings = $(async (settings: Settings): Promise<boolean> => {
     try {
       const snapshot = await invoke<SettingsSnapshot>('set_settings', { settings })
       store.settings = snapshot.settings
       store.bootstrap.settingsWarning = snapshot.warning?.message || ''
+      return true
     } catch (error) {
       store.sync.status = 'error'
       store.sync.message = getErrorMessage(error)
+      return false
     }
   })
 
@@ -79,22 +130,58 @@ export default component$(() => {
     })
 
     if (selected && !Array.isArray(selected)) {
-      await saveSettings({ ...store.settings, musicFolder: selected })
+      try {
+        if (!(await saveSettings({ ...store.settings, musicFolder: selected }))) return
+        const root = await addLibraryRoot(selected)
+        state.roots = [...state.roots.filter((item) => item.id !== root.id), root]
+        state.libraryError = ''
+      } catch (error) {
+        state.libraryError = getErrorMessage(error)
+      }
     }
   })
 
   const restoreDefaultFolder = $(async () => {
     try {
       const musicFolder = await audioDir()
-      await saveSettings({ ...store.settings, musicFolder })
+      if (!(await saveSettings({ ...store.settings, musicFolder }))) return
+      const root = await addLibraryRoot(musicFolder)
+      state.roots = [...state.roots.filter((item) => item.id !== root.id), root]
+      state.libraryError = ''
     } catch (error) {
       store.sync.status = 'error'
       store.sync.message = getErrorMessage(error)
     }
   })
 
-  const scanMusicFolder = $(async () => {
-    if (store.settings.musicFolder) await importPaths([store.settings.musicFolder], 'scan')
+  const refreshRoot = $(async (rootId: number) => {
+    try {
+      const refresh = await startLibraryRefresh(rootId)
+      state.refreshes[String(rootId)] = refresh
+      state.libraryError = ''
+    } catch (error) {
+      state.libraryError = getErrorMessage(error)
+    }
+  })
+
+  const cancelRefresh = $(async (scanId: number) => {
+    try {
+      const refresh = await cancelLibraryRefresh(scanId)
+      state.refreshes[String(refresh.scan.rootId)] = refresh
+      state.libraryError = ''
+    } catch (error) {
+      state.libraryError = getErrorMessage(error)
+    }
+  })
+
+  const toggleRoot = $(async (root: LibraryRoot) => {
+    try {
+      const updated = await setLibraryRootEnabled(root.id, !root.enabled)
+      state.roots = state.roots.map((item) => (item.id === updated.id ? updated : item))
+      state.libraryError = ''
+    } catch (error) {
+      state.libraryError = getErrorMessage(error)
+    }
   })
 
   const toggleRemoteAccess = $(async () => {
@@ -177,6 +264,11 @@ export default component$(() => {
     store.sync.message = 'Clearing library'
 
     try {
+      const disabled = await Promise.all(
+        state.roots.filter((root) => root.enabled).map((root) => setLibraryRootEnabled(root.id, false))
+      )
+      const disabledById = new Map(disabled.map((root) => [root.id, root]))
+      state.roots = state.roots.map((root) => disabledById.get(root.id) || root)
       await clearLibrarySongs()
       await resetPlayback()
       store.legacyCatalog = []
@@ -193,51 +285,6 @@ export default component$(() => {
       store.sync.status = 'idle'
       store.sync.message = ''
       state.confirmAction = ''
-      state.removed = 0
-    } catch (error) {
-      store.sync.status = 'error'
-      store.sync.message = getErrorMessage(error)
-    }
-  })
-
-  const removeMissingFiles = $(async () => {
-    store.sync.status = 'scanning'
-    store.sync.processed = 0
-    store.sync.message = 'Checking library paths'
-    state.removed = 0
-
-    try {
-      const legacyCatalog = await ensureLegacyCatalog(store)
-      store.sync.total = legacyCatalog.length
-      const { inaccessible, missingIds } = await classifyLibraryPaths(legacyCatalog, exists)
-      store.sync.processed = legacyCatalog.length
-      const updated = await commitLibraryRemoval(
-        {
-          allSongs: legacyCatalog,
-          playlist: store.playlist,
-          queue: store.queue,
-        },
-        missingIds,
-        deleteSongs
-      )
-      if (missingIds.length) {
-        const missing = new Set(missingIds)
-        store.legacyCatalog = updated.allSongs
-        store.playlist = updated.playlist
-        store.queue = updated.queue
-        store.libraryView.cursorIdx = Math.min(
-          store.libraryView.cursorIdx,
-          Math.max(0, store.libraryCatalog.total - missingIds.length - 1)
-        )
-        store.libraryCatalog.refreshKey += 1
-        if (store.player.currSong && missing.has(store.player.currSong.id)) await resetPlayback()
-      }
-
-      state.removed = missingIds.length
-      state.confirmAction = ''
-      store.sync.status = inaccessible.length ? 'error' : 'idle'
-      store.sync.message = inaccessible.length ? `${inaccessible.length} files could not be checked and were kept` : ''
-      store.sync.lastRunAt = new Date().toISOString()
     } catch (error) {
       store.sync.status = 'error'
       store.sync.message = getErrorMessage(error)
@@ -257,7 +304,7 @@ export default component$(() => {
             <div>
               <h2 class="text-sm font-medium">Listen from another device</h2>
               <p class="mt-1 text-xs text-gray-400">
-                Runs a private player on this Mac. It only accepts local connections until you securely proxy it.
+                Runs a private player on this computer. It only accepts local connections until you securely proxy it.
               </p>
             </div>
             <button
@@ -284,7 +331,7 @@ export default component$(() => {
                     class={`h-2 w-2 rounded-full ${state.remoteAccess.running ? 'bg-emerald-400' : 'bg-gray-600'}`}
                     aria-hidden="true"
                   />
-                  <span>Mac</span>
+                  <span>Computer</span>
                   <span aria-hidden="true">→</span>
                   <span
                     class={`h-2 w-2 rounded-full ${state.tailscale.serveConfigured ? 'bg-emerald-400' : 'bg-gray-600'}`}
@@ -292,11 +339,11 @@ export default component$(() => {
                   />
                   <span>Private HTTPS</span>
                   <span aria-hidden="true">→</span>
-                  <span>iPhone</span>
+                  <span>Phone</span>
                 </div>
                 {!state.tailscale.installed ? (
                   <p class="mt-3">
-                    Install Tailscale on this Mac and your iPhone, then sign both into the same tailnet.
+                    Install Tailscale on this computer and your phone, then sign both into the same tailnet.
                   </p>
                 ) : state.tailscale.serveConfigured ? (
                   <div class="mt-3 flex flex-col gap-2">
@@ -384,55 +431,112 @@ export default component$(() => {
 
         <div class={SECTION_CLASS}>
           <div>
-            <h2 class="text-sm font-medium">Music folder</h2>
-            <p class="mt-1 truncate text-xs text-gray-400">{store.settings.musicFolder || 'No folder selected'}</p>
+            <h2 class="text-sm font-medium">Music folders</h2>
+            <p class="mt-1 text-xs text-gray-400">
+              Jukebox indexes enabled folders natively and watches them for changes.
+            </p>
           </div>
           <div class="flex flex-wrap gap-2">
             <button class={BUTTON_CLASS} onClick$={chooseMusicFolder} disabled={isBusy}>
-              Choose folder
+              Add folder
             </button>
             <button class={BUTTON_CLASS} onClick$={restoreDefaultFolder} disabled={isBusy}>
-              Use system default
-            </button>
-            <button class={BUTTON_CLASS} onClick$={scanMusicFolder} disabled={isBusy || !store.settings.musicFolder}>
-              Scan now
+              Add system music folder
             </button>
           </div>
+          {state.libraryError && <p class="text-xs text-red-300">{state.libraryError}</p>}
+          {state.roots.length ? (
+            <ul class="flex flex-col gap-2" aria-label="Music folders">
+              {state.roots.map((root) => {
+                const refresh = state.refreshes[String(root.id)]
+                const active = isLibraryRefreshActive(refresh)
+                const progress = refresh && libraryRefreshProgress(refresh)
+                return (
+                  <li key={root.id} class="border border-gray-700 bg-gray-900 p-3">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm text-gray-200" title={root.path}>
+                          {root.path}
+                        </p>
+                        <p class="mt-1 text-xs text-gray-400">
+                          {root.enabled ? watcherStatusLabel(root.watchStatus) : 'Disabled'}
+                          {refresh ? ` · ${refresh.status.replaceAll('_', ' ')}` : ''}
+                        </p>
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        {active && refresh ? (
+                          <button
+                            class={BUTTON_CLASS}
+                            aria-label={`Cancel refresh for ${root.path}`}
+                            onClick$={() => cancelRefresh(refresh.scan.id)}
+                          >
+                            Cancel refresh
+                          </button>
+                        ) : (
+                          <button
+                            class={BUTTON_CLASS}
+                            aria-label={`Refresh ${root.path}`}
+                            disabled={!root.enabled || isBusy}
+                            onClick$={() => refreshRoot(root.id)}
+                          >
+                            Refresh
+                          </button>
+                        )}
+                        <button
+                          class={BUTTON_CLASS}
+                          aria-label={`${root.enabled ? 'Disable' : 'Enable'} ${root.path}`}
+                          disabled={active}
+                          onClick$={() => toggleRoot(root)}
+                        >
+                          {root.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                      </div>
+                    </div>
+                    {active &&
+                      progress &&
+                      (progress.total ? (
+                        <progress class="mt-3 h-2 w-full" value={progress.processed} max={progress.total}>
+                          {progress.processed}/{progress.total}
+                        </progress>
+                      ) : (
+                        <progress class="mt-3 h-2 w-full">Scanning</progress>
+                      ))}
+                    {refresh?.reconciliation?.errorSummary && (
+                      <p class="mt-2 text-xs text-red-300">{refresh.reconciliation.errorSummary}</p>
+                    )}
+                    {!refresh?.reconciliation && refresh?.scan.errorSummary && (
+                      <p class="mt-2 text-xs text-red-300">{refresh.scan.errorSummary}</p>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p class="text-xs text-gray-500">No music folders registered.</p>
+          )}
         </div>
 
         <div class={SECTION_CLASS}>
           <div>
             <h2 class="text-sm font-medium">Library cleanup</h2>
-            <p class="mt-1 text-xs text-gray-400">Remove unavailable tracks or reset the local catalog.</p>
+            <p class="mt-1 text-xs text-gray-400">
+              Missing tracks become unavailable after a successful refresh and return automatically when found again.
+            </p>
           </div>
 
-          {isBusy && (
-            <progress class="h-2 w-full" value={store.sync.processed} max={store.sync.total || 1}>
-              {store.sync.processed}/{store.sync.total}
-            </progress>
-          )}
-          {state.removed > 0 && <p class="text-xs text-gray-400">Removed {state.removed} unavailable tracks.</p>}
-
-          <div class="flex flex-wrap gap-2">
-            {state.confirmAction === 'missing' ? (
-              <>
-                <button class={BUTTON_CLASS} onClick$={removeMissingFiles} disabled={isBusy}>
-                  Confirm missing-file cleanup
-                </button>
-                <button class={BUTTON_CLASS} onClick$={() => (state.confirmAction = '')}>
-                  Cancel
-                </button>
-              </>
+          {isBusy &&
+            (store.sync.total ? (
+              <progress class="h-2 w-full" value={store.sync.processed} max={store.sync.total}>
+                {store.sync.processed}/{store.sync.total}
+              </progress>
             ) : (
-              <button class={BUTTON_CLASS} onClick$={() => (state.confirmAction = 'missing')} disabled={isBusy}>
-                Remove missing files
-              </button>
-            )}
-
+              <progress class="h-2 w-full">Working</progress>
+            ))}
+          <div class="flex flex-wrap gap-2">
             {state.confirmAction === 'clear' ? (
               <>
-                <button class={`${BUTTON_CLASS} border-red-700 text-red-300`} onClick$={clearLibrary}>
-                  Confirm clear library
+                <button class={`${BUTTON_CLASS} border-red-700 text-red-300`} onClick$={clearLibrary} disabled={isBusy}>
+                  Disable folders and clear library
                 </button>
                 <button class={BUTTON_CLASS} onClick$={() => (state.confirmAction = '')}>
                   Cancel

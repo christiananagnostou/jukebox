@@ -27,6 +27,7 @@ import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
 import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
 import { useLibraryCatalog } from '~/services/library-client'
+import { addLibraryRoot, listLibraryRoots, useLibraryRefreshEvents } from '~/services/library-refresh'
 
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
@@ -84,6 +85,7 @@ export default component$(() => {
   useContextProvider(StoreActionsContext, storeActions)
 
   useKeyboardShortcuts(store, storeActions)
+  useLibraryRefreshEvents(store)
 
   useVisibleTask$(async () => {
     try {
@@ -110,6 +112,16 @@ export default component$(() => {
         } catch {
           store.bootstrap.settingsWarning = SETTINGS_SAVE_ERROR_MESSAGE
         }
+      }
+    }
+
+    if (!store.bootstrap.settingsWarning && store.settings.musicFolder) {
+      try {
+        const roots = await listLibraryRoots()
+        if (!roots.length) await addLibraryRoot(store.settings.musicFolder)
+      } catch {
+        store.sync.status = 'error'
+        store.sync.message = 'The saved music folder could not be registered.'
       }
     }
   })
