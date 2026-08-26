@@ -11,7 +11,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [007](007-private-listening-contract-tests.md)     | Harden Tailscale discovery and private-listening boundaries         | P1       | M      | —          | DONE   |
 | [008](008-library-mutation-safety.md)              | Make library cleanup and chunked mutations failure-safe             | P1       | M      | —          | DONE   |
 | [009](009-playback-transition-characterization.md) | Characterize playback transitions and preserve failed queue entries | P1       | M      | —          | DONE   |
-| [010](010-settings-and-bootstrap-durability.md)    | Make settings persistence atomic and bootstrap failures visible     | P1       | M      | —          | TODO   |
+| [010](010-settings-and-bootstrap-durability.md)    | Make settings persistence atomic and bootstrap failures visible     | P1       | M      | —          | DONE   |
 | [011](011-native-catalog-query-foundation.md)      | Establish a paged native catalog query service                      | P1       | L      | 007, 008   | TODO   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. After 011 lands, resume the larger native scan/index work in plan 002 and use the same query service for desktop and iPhone browsing.

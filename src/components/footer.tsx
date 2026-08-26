@@ -44,6 +44,8 @@ export default component$(() => {
       : store.sync.status === 'error'
         ? store.sync.message || 'Library operation failed'
         : `${store.sync.message || (store.sync.status === 'scanning' ? 'Scanning' : 'Importing')}${progress}`
+  const footerStatus =
+    syncStatus || store.bootstrap.libraryError || store.bootstrap.settingsWarning || `${store.allSongs.length} songs`
 
   return (
     <footer
@@ -65,8 +67,8 @@ export default component$(() => {
         onFocus$={() => (store.isTyping = true)}
         class="bg-inherit h-full flex-1 px-2 text-sm placeholder:text-slate-600 focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)] focus:outline-none"
       />
-      <span class="max-w-72 truncate px-2 text-xs text-slate-500" aria-live="polite">
-        {syncStatus || `${store.allSongs.length} songs`}
+      <span class="max-w-md px-2 text-right text-xs leading-tight text-slate-500" aria-live="polite">
+        {footerStatus}
       </span>
     </footer>
   )

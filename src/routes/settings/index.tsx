@@ -4,7 +4,7 @@ import { audioDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
 import { exists } from '@tauri-apps/plugin-fs'
 
-import type { RemoteAccessStatus, Settings, TailscaleStatus } from '~/App'
+import type { RemoteAccessStatus, Settings, SettingsSnapshot, TailscaleStatus } from '~/App'
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
 import { classifyLibraryPaths, commitLibraryRemoval } from '~/services/library-maintenance'
@@ -61,7 +61,9 @@ export default component$(() => {
 
   const saveSettings = $(async (settings: Settings) => {
     try {
-      store.settings = await invoke<Settings>('set_settings', { settings })
+      const snapshot = await invoke<SettingsSnapshot>('set_settings', { settings })
+      store.settings = snapshot.settings
+      store.bootstrap.settingsWarning = snapshot.warning?.message || ''
     } catch (error) {
       store.sync.status = 'error'
       store.sync.message = getErrorMessage(error)
