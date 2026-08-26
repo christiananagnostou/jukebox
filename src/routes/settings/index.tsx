@@ -7,14 +7,13 @@ import { exists } from '@tauri-apps/plugin-fs'
 import type { RemoteAccessStatus, Settings, TailscaleStatus } from '~/App'
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
+import { classifyLibraryPaths, commitLibraryRemoval } from '~/services/library-maintenance'
 import { getErrorMessage } from '~/utils/Errors'
 import { organizeFiles } from '~/utils/Files'
 import { StoreContext } from '../layout'
 
 const SECTION_CLASS = 'border-b border-gray-700 pb-6 flex flex-col gap-3'
 const BUTTON_CLASS = 'w-fit border border-gray-600 px-3 py-2 text-sm hover:border-gray-400 disabled:opacity-50'
-const FILE_CHECK_CONCURRENCY = 32
-
 export default component$(() => {
   const store = useContext(StoreContext)
   const { importPaths } = useLibraryImporter(store)
@@ -201,36 +200,30 @@ export default component$(() => {
     state.removed = 0
 
     try {
-      const missingIds: string[] = []
-      for (let start = 0; start < store.allSongs.length; start += FILE_CHECK_CONCURRENCY) {
-        const chunk = store.allSongs.slice(start, start + FILE_CHECK_CONCURRENCY)
-        const checks = await Promise.all(
-          chunk.map(async (song) => {
-            try {
-              return (await exists(song.path)) ? undefined : song.id
-            } catch {
-              return song.id
-            }
-          })
-        )
-        missingIds.push(...checks.filter((id): id is string => Boolean(id)))
-        store.sync.processed += chunk.length
-      }
-
-      await deleteSongs(missingIds)
+      const { inaccessible, missingIds } = await classifyLibraryPaths(store.allSongs, exists)
+      store.sync.processed = store.allSongs.length
+      const updated = await commitLibraryRemoval(
+        {
+          allSongs: store.allSongs,
+          playlist: store.playlist,
+          queue: store.queue,
+        },
+        missingIds,
+        deleteSongs
+      )
       if (missingIds.length) {
         const missing = new Set(missingIds)
-        store.allSongs = store.allSongs.filter((song) => !missing.has(song.id))
-        store.playlist = store.playlist.filter((song) => !missing.has(song.id))
-        store.queue = store.queue.filter((song) => !missing.has(song.id))
+        store.allSongs = updated.allSongs
+        store.playlist = updated.playlist
+        store.queue = updated.queue
         store.libraryView.cursorIdx = Math.min(store.libraryView.cursorIdx, Math.max(0, store.allSongs.length - 1))
         if (store.player.currSong && missing.has(store.player.currSong.id)) await resetPlayback()
       }
 
       state.removed = missingIds.length
       state.confirmAction = ''
-      store.sync.status = 'idle'
-      store.sync.message = ''
+      store.sync.status = inaccessible.length ? 'error' : 'idle'
+      store.sync.message = inaccessible.length ? `${inaccessible.length} files could not be checked and were kept` : ''
       store.sync.lastRunAt = new Date().toISOString()
     } catch (error) {
       store.sync.status = 'error'
