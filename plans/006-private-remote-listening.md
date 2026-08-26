@@ -10,6 +10,13 @@ The default remote path is a loopback-only HTTP service proxied through Tailscal
 
 Original files are served with single HTTP byte ranges when Safari supports their codecs. This keeps CPU use and latency low while allowing seek and resume. On-demand HLS transcoding is a later compatibility path for unsupported formats or constrained networks; it is not required for already compatible AAC, ALAC, FLAC, MP3, or WAV libraries.
 
+## Implementation progress
+
+- The loopback server, mobile shell, bounded catalog search, direct byte-range streaming, path containment, and opt-in lifecycle are implemented.
+- Tailscale installation, connection state, DNS name, and the Jukebox Serve target are detected with bounded CLI calls.
+- Settings provides the exact private Serve command and refreshable readiness feedback without changing network configuration automatically.
+- Executing or removing the persistent Serve rule remains an explicit owner action; public Funnel is never offered.
+
 ## Security boundaries
 
 - Bind only to `127.0.0.1` unless a future authenticated LAN mode is explicitly enabled.
