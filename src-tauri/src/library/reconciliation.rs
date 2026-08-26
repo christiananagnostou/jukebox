@@ -12,7 +12,7 @@ use std::time::UNIX_EPOCH;
 use tokio::task::JoinSet;
 
 const METADATA_VERSION: i64 = 1;
-const QUERY_BATCH_SIZE: i64 = 100;
+const QUERY_BATCH_SIZE: i64 = 1_000;
 const WRITE_BATCH_SIZE: usize = 100;
 const FINGERPRINT_SAMPLE_SIZE: usize = 64 * 1024;
 const MAX_METADATA_WORKERS: usize = 4;
@@ -1141,6 +1141,14 @@ fn reconciliation_from_row(
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[test]
+    fn reconciliation_windows_bound_database_and_metadata_work() {
+        assert_eq!(QUERY_BATCH_SIZE, 1_000);
+        assert_eq!(WRITE_BATCH_SIZE, 100);
+        assert_eq!(MAX_METADATA_WORKERS, 4);
+        assert!(WRITE_BATCH_SIZE as i64 <= QUERY_BATCH_SIZE);
+    }
 
     async fn fixture() -> (SqlitePool, ReconciliationService, tempfile::TempDir, i64) {
         let pool = SqlitePoolOptions::new()

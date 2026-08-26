@@ -564,4 +564,56 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[test]
+    fn representative_query_plans_keep_browse_and_search_indexed() {
+        run_async(async {
+            let repository = repository().await;
+            let browse_plan = sqlx::query(
+                "EXPLAIN QUERY PLAN
+                 SELECT id, path, file, title, album, artist, date, trackNumber, codec,
+                        duration, sampleRate, side, startTime, favorRating, dateAdded, visualsPath
+                 FROM songs
+                 ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, side,
+                          trackNumber, title COLLATE NOCASE, id COLLATE BINARY
+                 LIMIT 101",
+            )
+            .fetch_all(&repository.pool)
+            .await
+            .expect("explain indexed browse")
+            .into_iter()
+            .map(|row| {
+                row.try_get::<String, _>("detail")
+                    .expect("read plan detail")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+            assert!(browse_plan.contains("idx_songs_default_browse"));
+            assert!(!browse_plan.contains("USE TEMP B-TREE"));
+
+            let search_plan = sqlx::query(
+                r#"EXPLAIN QUERY PLAN
+                   SELECT id, path, file, title, album, artist, date, trackNumber, codec,
+                          duration, sampleRate, side, startTime, favorRating, dateAdded, visualsPath
+                   FROM songs
+                   WHERE id IN (
+                     SELECT song_id FROM songs_fts WHERE songs_fts MATCH '"Björk"'
+                   )
+                   ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, side,
+                            trackNumber, title COLLATE NOCASE, id COLLATE BINARY
+                   LIMIT 101"#,
+            )
+            .fetch_all(&repository.pool)
+            .await
+            .expect("explain FTS search")
+            .into_iter()
+            .map(|row| {
+                row.try_get::<String, _>("detail")
+                    .expect("read plan detail")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+            assert!(search_plan.contains("VIRTUAL TABLE INDEX"));
+        });
+    }
 }

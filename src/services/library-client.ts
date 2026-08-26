@@ -7,15 +7,7 @@ export const LIBRARY_PAGE_SIZE = 100
 export const MAX_RETAINED_LIBRARY_PAGES = 5
 
 type NativeTrackSort =
-  | 'default'
-  | 'album'
-  | 'artist'
-  | 'date'
-  | 'date_added'
-  | 'favorite'
-  | 'sample_rate'
-  | 'title'
-  | 'track'
+  'default' | 'album' | 'artist' | 'date' | 'date_added' | 'favorite' | 'sample_rate' | 'title' | 'track'
 
 export interface TrackQuery {
   cursor?: string

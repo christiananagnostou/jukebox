@@ -13,7 +13,11 @@ export type PlaybackCandidate =
 
 export type PreviousPlaybackDecision = PlaybackCandidate | { kind: 'restart' }
 
-export function decideNextPlayback(queue: readonly Song[], playlist: readonly Song[], currentIndex: number): PlaybackCandidate {
+export function decideNextPlayback(
+  queue: readonly Song[],
+  playlist: readonly Song[],
+  currentIndex: number
+): PlaybackCandidate {
   const queuedSong = queue[0]
   if (queuedSong) {
     return {

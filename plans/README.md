@@ -1,6 +1,6 @@
 # Jukebox implementation plans
 
-Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-018 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
+Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-019 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
 
 The product direction remains local-first: a fast native catalog, dependable playback, durable collections, a compact accessible interface, and private iPhone listening through loopback-only Jukebox HTTP plus Tailscale Serve. Public sharing, mandatory accounts, visualizers, and large decorative animations remain out of scope.
 
@@ -20,15 +20,16 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [016](016-native-library-refresh.md)               | Compose scan, preparation, and apply into one cancellable operation | P1       | M      | 015        | DONE   |
 | [017](017-library-watchers.md)                     | Schedule recoverable full refreshes from bounded filesystem hints   | P1       | M      | 016        | DONE   |
 | [018](018-native-library-settings.md)              | Adopt native roots, refreshes, and watcher health in Settings       | P1       | L      | 017        | DONE   |
+| [019](019-library-performance-budgets.md)          | Establish deterministic large-library performance budgets           | P1       | M      | 018        | DONE   |
 
-Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh.
+Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
 ## Strategic roadmap status
 
 | Plan                                              | Outcome                                                         | Status on 2026-08-26                                                                                                                                                                                              |
 | ------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [001](001-quality-security-release-foundation.md) | Migrations, diagnostics, permissions, identity, release quality | IN PROGRESS — migrations plus Rust fmt/test/Clippy CI landed in PR #48; diagnostics, permission narrowing, identity migration, Windows, signing, and updater remain                                               |
-| [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-017 delivered bounded queries/memory plus a persisted, cancellable, atomic, watcher-driven native refresh pipeline; benchmarks and frontend adoption remain                               |
+| [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-019 delivered bounded queries/memory, a watcher-driven native refresh pipeline, native Settings adoption, and executable 100k-track performance budgets; aggregate views remain           |
 | [003](003-playback-engine-and-os-integration.md)  | Reliable restart-safe playback and OS integration               | TODO — plan 009 establishes the characterization gate                                                                                                                                                             |
 | [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | TODO — depends on stable catalog and playback contracts                                                                                                                                                           |
 | [005](005-fast-accessible-interface.md)           | Compact, keyboard-complete, motion-light UI                     | TODO — small accessibility fixes may land continuously; structural work follows stable APIs                                                                                                                       |
