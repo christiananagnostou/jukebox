@@ -6,10 +6,16 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
 import type { LibraryCatalogState, Song } from '~/App'
 import {
+  aggregateItemAt,
+  AggregatePager,
+  type AggregateCatalogState,
+  AGGREGATE_PAGE_SIZE,
   catalogQuery,
   LIBRARY_PAGE_SIZE,
   LibraryPager,
   loadLegacyCatalog,
+  loadTrackSelection,
+  MAX_RETAINED_AGGREGATE_PAGES,
   MAX_RETAINED_LIBRARY_PAGES,
   queryAlbums,
   queryArtists,
@@ -166,12 +172,95 @@ describe('LibraryPager', () => {
     expect(Object.keys(catalog.pages).length).toBeLessThanOrEqual(MAX_RETAINED_LIBRARY_PAGES)
     expect(catalog.loadedSongCount).toBeLessThanOrEqual(MAX_RETAINED_LIBRARY_PAGES * LIBRARY_PAGE_SIZE)
   })
+
+  it('preserves exact drill-down filters when a catalog refresh reloads the pager', async () => {
+    const filters: string[] = []
+    const catalog = state()
+    const pager = new LibraryPager(catalog, async (query) => {
+      filters.push(`${query.artist}:${query.album}`)
+      return { items: [], revision: 1, total: 0 }
+    })
+
+    await pager.resetQuery({
+      album: 'Album',
+      artist: 'Artist',
+      direction: 'asc',
+      q: '',
+      sort: 'track',
+    })
+    await pager.reload()
+
+    expect(filters).toEqual(['Artist:Album', 'Artist:Album'])
+  })
+})
+
+describe('AggregatePager', () => {
+  const aggregateState = (): AggregateCatalogState<number> => ({
+    error: '',
+    pages: {},
+    revision: 0,
+    status: 'loading',
+    total: 0,
+  })
+
+  it('loads direct bounded pages and caps retained memory', async () => {
+    const requests: number[] = []
+    const catalog = aggregateState()
+    const pager = new AggregatePager(catalog, async (query) => {
+      requests.push(query.offset)
+      const items = Array.from({ length: query.limit }, (_, index) => query.offset + index)
+      return { items, revision: 4, total: 1_000 }
+    })
+
+    await pager.reset({ direction: 'asc', q: '' })
+    await pager.ensureRange(700, 799)
+
+    expect(requests).toEqual([0, 700])
+    expect(aggregateItemAt(catalog, 750)).toBe(750)
+    expect(Object.keys(catalog.pages)).toHaveLength(2)
+
+    for (let page = 1; page <= MAX_RETAINED_AGGREGATE_PAGES + 1; page += 1) {
+      await pager.ensureRange(page * AGGREGATE_PAGE_SIZE, page * AGGREGATE_PAGE_SIZE)
+    }
+    expect(Object.keys(catalog.pages).length).toBeLessThanOrEqual(MAX_RETAINED_AGGREGATE_PAGES)
+  })
+
+  it('restarts at the first page when revisions change', async () => {
+    const requests: number[] = []
+    const catalog = aggregateState()
+    let revision = 1
+    const pager = new AggregatePager(catalog, async (query) => {
+      requests.push(query.offset)
+      return { items: [query.offset], revision, total: 200 }
+    })
+
+    await pager.reset({ direction: 'asc', q: '' })
+    revision = 2
+    await pager.ensureRange(100, 100)
+
+    expect(requests).toEqual([0, 100, 0])
+    expect(catalog.revision).toBe(2)
+    expect(catalog.pages['1']).toBeUndefined()
+  })
 })
 
 describe('loadLegacyCatalog', () => {
   it('uses repeated bounded pages only when explicitly requested', async () => {
     const requests: string[] = []
     const songs = await loadLegacyCatalog(fixtureFetcher(205, requests))
+
+    expect(songs).toHaveLength(205)
+    expect(requests).toHaveLength(3)
+  })
+})
+
+describe('loadTrackSelection', () => {
+  it('loads repeated bounded pages only after an explicit selection action', async () => {
+    const requests: string[] = []
+    const songs = await loadTrackSelection(
+      { album: 'Album', artist: 'Artist', direction: 'asc', q: '', sort: 'track' },
+      fixtureFetcher(205, requests)
+    )
 
     expect(songs).toHaveLength(205)
     expect(requests).toHaveLength(3)

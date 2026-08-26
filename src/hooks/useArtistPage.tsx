@@ -1,48 +1,81 @@
 import type { Store, StoreActions } from '~/App'
 import { $ } from '@builder.io/qwik'
+import { aggregateItemAt, librarySongAt, loadTrackSelection } from '~/services/library-client'
 
-export const ArtistPageState = {
+export const ArtistPageState: Pick<Store, 'artistView'> = {
   artistView: {
     artistIdx: 0,
     albumIdx: 0,
     trackIdx: 0,
     cursorCol: 0,
-    artists: [],
-    albums: [],
-    tracks: [],
+    artists: { error: '', pages: {}, revision: 0, status: 'loading', total: 0 },
+    albums: { error: '', pages: {}, revision: 0, status: 'loading', total: 0 },
+    tracks: {
+      error: '',
+      loadedSongCount: 0,
+      pages: {},
+      refreshKey: 0,
+      revision: 0,
+      status: 'loading',
+      total: 0,
+    },
+    selectedArtistKey: '',
+    selectedAlbumKey: '',
   },
 }
 
 export function useArtistPage(store: Store, storeActions: StoreActions) {
-  const _playAllAlbumsShown = $(() => {
+  const _playAllAlbumsShown = $(async () => {
+    const artist = aggregateItemAt(store.artistView.artists, store.artistView.artistIdx)
+    if (!artist) return
     store.artistView.albumIdx = 0
-    store.playlist = store.artistView.albums.flatMap((album) => album.tracks)
+    store.playlist = await loadTrackSelection({
+      artist: artist.value,
+      direction: 'asc',
+      q: store.searchTerm,
+      sort: 'default',
+    })
     const firstSong = store.playlist[0]
     if (firstSong) storeActions.playSong(firstSong, 0)
   })
 
-  const _playShownAlbum = $(() => {
-    store.playlist = store.artistView.tracks
-    const firstSong = store.artistView.tracks[0]
-    if (firstSong) storeActions.playSong(firstSong, 0)
+  const _playShownAlbum = $(async () => {
+    const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
+    if (!album) return
+    store.playlist = await loadTrackSelection({
+      album: album.value,
+      artist: album.artistValue,
+      direction: 'asc',
+      q: store.searchTerm,
+      sort: 'track',
+    })
+    if (store.playlist[0]) storeActions.playSong(store.playlist[0], 0)
   })
 
-  const _playTrack = $(() => {
-    const song = store.artistView.tracks[store.artistView.trackIdx]
+  const _playTrack = $(async () => {
+    const song = librarySongAt(store.artistView.tracks, store.artistView.trackIdx)
     if (!song) return
-    store.playlist = store.artistView.tracks
-    storeActions.playSong(song, store.artistView.trackIdx)
+    const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
+    if (!album) return
+    store.playlist = await loadTrackSelection({
+      album: album.value,
+      artist: album.artistValue,
+      direction: 'asc',
+      q: store.searchTerm,
+      sort: 'track',
+    })
+    const playlistIndex = store.playlist.findIndex((track) => track.id === song.id)
+    if (playlistIndex >= 0) storeActions.playSong(store.playlist[playlistIndex], playlistIndex)
   })
 
   const playHighlighted = $(async () => {
-    if (store.artistView.cursorCol === 0) {
-      await _playAllAlbumsShown()
-    }
-    if (store.artistView.cursorCol === 1) {
-      await _playShownAlbum()
-    }
-    if (store.artistView.cursorCol === 2) {
-      await _playTrack()
+    try {
+      if (store.artistView.cursorCol === 0) await _playAllAlbumsShown()
+      if (store.artistView.cursorCol === 1) await _playShownAlbum()
+      if (store.artistView.cursorCol === 2) await _playTrack()
+      store.bootstrap.libraryError = ''
+    } catch {
+      store.bootstrap.libraryError = 'Jukebox could not prepare that selection for playback.'
     }
   })
 
@@ -69,20 +102,20 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
 
   const moveCursorDown = $(() => {
     if (store.artistView.cursorCol === 0) {
-      if (store.artistView.artistIdx < store.artistView.artists.length - 1) {
+      if (store.artistView.artistIdx < store.artistView.artists.total - 1) {
         store.artistView.artistIdx += 1
       }
       store.artistView.albumIdx = 0
       store.artistView.trackIdx = 0
     }
     if (store.artistView.cursorCol === 1) {
-      if (store.artistView.albumIdx < store.artistView.albums.length - 1) {
+      if (store.artistView.albumIdx < store.artistView.albums.total - 1) {
         store.artistView.albumIdx += 1
       }
       store.artistView.trackIdx = 0
     }
     if (store.artistView.cursorCol === 2) {
-      if (store.artistView.trackIdx < store.artistView.tracks.length - 1) {
+      if (store.artistView.trackIdx < store.artistView.tracks.total - 1) {
         store.artistView.trackIdx += 1
       }
     }
