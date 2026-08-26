@@ -142,6 +142,20 @@ impl LibraryError {
         }
     }
 
+    pub(crate) fn scan_in_progress() -> Self {
+        Self {
+            code: "library_scan_in_progress".to_owned(),
+            message: "That library folder is already being scanned.".to_owned(),
+        }
+    }
+
+    pub(crate) fn scan_not_found() -> Self {
+        Self {
+            code: "library_scan_not_found".to_owned(),
+            message: "That library scan is no longer available.".to_owned(),
+        }
+    }
+
     pub(crate) fn stale_cursor() -> Self {
         Self {
             code: "stale_cursor".to_owned(),
