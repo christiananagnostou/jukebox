@@ -1,10 +1,12 @@
 mod query;
 mod repository;
 mod roots;
+mod scanner;
 
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 pub use roots::LibraryRoot;
+pub use scanner::LibraryScan;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -17,6 +19,7 @@ use tokio::sync::OnceCell;
 pub struct LibraryState {
     initialized: Arc<OnceCell<Result<(), LibraryError>>>,
     repository: LibraryRepository,
+    scanner: scanner::ScannerService,
 }
 
 impl LibraryState {
@@ -39,7 +42,8 @@ impl LibraryState {
     pub(crate) fn from_pool(pool: SqlitePool) -> Self {
         Self {
             initialized: Arc::new(OnceCell::new()),
-            repository: LibraryRepository::new(pool),
+            repository: LibraryRepository::new(pool.clone()),
+            scanner: scanner::ScannerService::new(pool),
         }
     }
 
@@ -77,9 +81,31 @@ impl LibraryState {
         roots::set_library_root_enabled(&self.repository.pool(), id, enabled).await
     }
 
+    pub async fn start_library_scan(
+        &self,
+        root_id: i64,
+        app: tauri::AppHandle,
+    ) -> Result<LibraryScan, LibraryError> {
+        self.ensure_initialized().await?;
+        self.scanner.start(root_id, app).await
+    }
+
+    pub async fn cancel_library_scan(&self, scan_id: i64) -> Result<LibraryScan, LibraryError> {
+        self.ensure_initialized().await?;
+        self.scanner.cancel(scan_id).await
+    }
+
+    pub async fn get_library_scan(&self, scan_id: i64) -> Result<LibraryScan, LibraryError> {
+        self.ensure_initialized().await?;
+        self.scanner.get(scan_id).await
+    }
+
     async fn ensure_initialized(&self) -> Result<(), LibraryError> {
         self.initialized
-            .get_or_init(|| self.repository.initialize_schema())
+            .get_or_init(|| async {
+                self.repository.initialize_schema().await?;
+                self.scanner.recover_interrupted().await
+            })
             .await
             .clone()
     }
@@ -124,6 +150,31 @@ pub async fn set_library_root_enabled(
     enabled: bool,
 ) -> Result<LibraryRoot, LibraryError> {
     library.set_library_root_enabled(id, enabled).await
+}
+
+#[tauri::command]
+pub async fn start_library_scan(
+    library: tauri::State<'_, LibraryState>,
+    app: tauri::AppHandle,
+    root_id: i64,
+) -> Result<LibraryScan, LibraryError> {
+    library.start_library_scan(root_id, app).await
+}
+
+#[tauri::command]
+pub async fn cancel_library_scan(
+    library: tauri::State<'_, LibraryState>,
+    scan_id: i64,
+) -> Result<LibraryScan, LibraryError> {
+    library.cancel_library_scan(scan_id).await
+}
+
+#[tauri::command]
+pub async fn get_library_scan(
+    library: tauri::State<'_, LibraryState>,
+    scan_id: i64,
+) -> Result<LibraryScan, LibraryError> {
+    library.get_library_scan(scan_id).await
 }
 
 #[cfg(test)]
