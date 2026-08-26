@@ -5,12 +5,15 @@ import type { ListItemStyle, Song } from '~/App'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
 import { SoundBars } from '~/components/Shared/SoundBars'
+import { useLegacyCatalog } from '~/services/library-client'
 
 const RowHeight = 30
 
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
+
+  useLegacyCatalog(store)
 
   const artists = useComputed$(() => {
     const artistMap = new Map<string, Map<string, Song[]>>()

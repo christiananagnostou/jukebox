@@ -4,6 +4,7 @@ import type { Store, StoreActions } from '~/App'
 import { useStoragePage } from './useStoragePage'
 import { useArtistPage } from './useArtistPage'
 import { useLibraryPage } from './useLibraryPage'
+import { lastLoadedLibraryIndex, librarySongAt } from '~/services/library-client'
 
 export const KeyboardCommands = [
   {
@@ -73,9 +74,12 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         if (key === 'k') libraryActions.highlightUp()
         if (key === 'Enter') libraryActions.playHighlighted()
         if (key === 'g') store.libraryView.cursorIdx = 0
-        if (key === 'G') store.libraryView.cursorIdx = Math.max(0, store.filteredSongs.length - 1)
+        if (key === 'G') {
+          store.libraryView.cursorIdx = lastLoadedLibraryIndex(store.libraryCatalog)
+          void storeActions.requestLibraryRange(store.libraryView.cursorIdx, store.libraryView.cursorIdx)
+        }
         if (key === 'q') {
-          const song = store.filteredSongs[store.libraryView.cursorIdx]
+          const song = librarySongAt(store.libraryCatalog, store.libraryView.cursorIdx)
           if (song) store.queue.push(song)
         }
       }

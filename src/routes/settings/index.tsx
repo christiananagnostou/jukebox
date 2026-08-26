@@ -10,6 +10,7 @@ import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
 import { classifyLibraryPaths, commitLibraryRemoval } from '~/services/library-maintenance'
 import { getErrorMessage } from '~/utils/Errors'
 import { organizeFiles } from '~/utils/Files'
+import { ensureLegacyCatalog } from '~/services/library-client'
 import { StoreContext } from '../layout'
 
 const SECTION_CLASS = 'border-b border-gray-700 pb-6 flex flex-col gap-3'
@@ -178,8 +179,13 @@ export default component$(() => {
     try {
       await clearLibrarySongs()
       await resetPlayback()
-      store.allSongs = []
+      store.legacyCatalog = []
+      store.legacyCatalogLoaded = true
       store.filteredSongs = []
+      store.libraryCatalog.pages = {}
+      store.libraryCatalog.total = 0
+      store.libraryCatalog.loadedSongCount = 0
+      store.libraryCatalog.refreshKey += 1
       store.libraryView.cursorIdx = 0
       store.storageView.rootFile = organizeFiles([])
       store.storageView.pathIndexMap = {}
@@ -197,16 +203,17 @@ export default component$(() => {
   const removeMissingFiles = $(async () => {
     store.sync.status = 'scanning'
     store.sync.processed = 0
-    store.sync.total = store.allSongs.length
     store.sync.message = 'Checking library paths'
     state.removed = 0
 
     try {
-      const { inaccessible, missingIds } = await classifyLibraryPaths(store.allSongs, exists)
-      store.sync.processed = store.allSongs.length
+      const legacyCatalog = await ensureLegacyCatalog(store)
+      store.sync.total = legacyCatalog.length
+      const { inaccessible, missingIds } = await classifyLibraryPaths(legacyCatalog, exists)
+      store.sync.processed = legacyCatalog.length
       const updated = await commitLibraryRemoval(
         {
-          allSongs: store.allSongs,
+          allSongs: legacyCatalog,
           playlist: store.playlist,
           queue: store.queue,
         },
@@ -215,10 +222,14 @@ export default component$(() => {
       )
       if (missingIds.length) {
         const missing = new Set(missingIds)
-        store.allSongs = updated.allSongs
+        store.legacyCatalog = updated.allSongs
         store.playlist = updated.playlist
         store.queue = updated.queue
-        store.libraryView.cursorIdx = Math.min(store.libraryView.cursorIdx, Math.max(0, store.allSongs.length - 1))
+        store.libraryView.cursorIdx = Math.min(
+          store.libraryView.cursorIdx,
+          Math.max(0, store.libraryCatalog.total - missingIds.length - 1)
+        )
+        store.libraryCatalog.refreshKey += 1
         if (store.player.currSong && missing.has(store.player.currSong.id)) await resetPlayback()
       }
 

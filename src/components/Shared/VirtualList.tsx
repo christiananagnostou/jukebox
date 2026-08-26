@@ -1,6 +1,7 @@
 import {
   type Component,
   type JSXOutput,
+  type QRL,
   $,
   Slot,
   component$,
@@ -17,7 +18,21 @@ type Props = {
   itemHeight: number
   renderItem: Component<{ index: number; style: ListItemStyle }>
   overscan?: number
+  onRangeChange?: QRL<(startIndex: number, endIndex: number) => void>
   scrollToRow?: number
+}
+
+export function computeVirtualRange(
+  scrollTop: number,
+  viewportHeight: number,
+  itemHeight: number,
+  numItems: number,
+  overscan: number
+): { endIndex: number; startIndex: number } {
+  return {
+    startIndex: Math.max(0, Math.floor(scrollTop / itemHeight) - overscan),
+    endIndex: Math.min(numItems - 1, Math.floor((scrollTop + viewportHeight) / itemHeight) + overscan),
+  }
 }
 
 export default component$((props: Props) => {
@@ -27,8 +42,13 @@ export default component$((props: Props) => {
   const scrollRef = useSignal<HTMLDivElement>()
 
   const innerHeight = numItems * itemHeight
-  const startIndex = Math.max(0, Math.floor(scrollTop.value / itemHeight) - overscan)
-  const endIndex = Math.min(numItems - 1, Math.floor((scrollTop.value + viewportHeight.value) / itemHeight) + overscan)
+  const { startIndex, endIndex } = computeVirtualRange(
+    scrollTop.value,
+    viewportHeight.value,
+    itemHeight,
+    numItems,
+    overscan
+  )
   const items: JSXOutput[] = []
 
   for (let index = startIndex; index <= endIndex; index++) {
@@ -73,6 +93,16 @@ export default component$((props: Props) => {
         behavior: 'auto',
       })
     }
+  })
+
+  useTask$(({ track }) => {
+    const top = track(() => scrollTop.value)
+    const height = track(() => viewportHeight.value)
+    const count = track(() => props.numItems)
+    if (!props.onRangeChange || !count || !height) return
+
+    const range = computeVirtualRange(top, height, itemHeight, count, overscan)
+    void props.onRangeChange(range.startIndex, range.endIndex)
   })
 
   const onScroll = $((_: UIEvent, element: HTMLDivElement) => {

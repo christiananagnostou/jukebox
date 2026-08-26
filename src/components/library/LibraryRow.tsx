@@ -1,6 +1,7 @@
 import { $, component$, useContext } from '@builder.io/qwik'
 
 import type { Song } from '~/App'
+import { libraryPlaybackAt } from '~/services/library-client'
 import { updateFavoriteRating } from '~/services/library-db'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { SoundBars } from '../Shared/SoundBars'
@@ -17,15 +18,15 @@ function formatDateAdded(value: string): string {
 
 export interface LibraryRowProps {
   index: number
+  song: Song
   style: Record<string, string | number | undefined>
   classes: string
 }
 
-export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }) => {
+export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, classes }) => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
 
-  const song = store.filteredSongs[index]
   const isPlaying = store.player.currSong?.id === song.id
 
   const onClick = $(() => {
@@ -33,14 +34,20 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
   })
 
   const onDblClick = $(() => {
-    store.playlist = store.filteredSongs
-    storeActions.playSong(song, index)
+    const playback = libraryPlaybackAt(store.libraryCatalog, index)
+    if (!playback) return
+    store.playlist = playback.playlist
+    storeActions.playSong(playback.song, playback.playlistIndex)
   })
 
   const handleFavorClick = $(async (rating: Song['favorRating']) => {
     await updateFavoriteRating(song.id, rating)
     song.favorRating = rating
-    store.allSongs = [...store.allSongs]
+    if (store.legacyCatalogLoaded) {
+      const legacySong = store.legacyCatalog.find((item) => item.id === song.id)
+      if (legacySong) legacySong.favorRating = rating
+    }
+    store.libraryCatalog.refreshKey += 1
   })
 
   const nextRating = ((song.favorRating + 1) % 3) as Song['favorRating']

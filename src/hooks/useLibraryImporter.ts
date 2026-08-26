@@ -9,6 +9,7 @@ import { upsertSongs } from '~/services/library-db'
 import { getErrorMessage } from '~/utils/Errors'
 import { isAudioFile } from '~/utils/Files'
 import { mergeSongs } from '~/utils/Songs'
+import { ensureLegacyCatalog } from '~/services/library-client'
 
 const IMPORT_CONCURRENCY = 4
 
@@ -127,7 +128,8 @@ export function useLibraryImporter(store: Store) {
 
     try {
       const files = await collectImportFiles(paths)
-      const existingById = new Map(store.allSongs.map((song) => [song.id, song]))
+      const legacyCatalog = await ensureLegacyCatalog(store)
+      const existingById = new Map(legacyCatalog.map((song) => [song.id, song]))
       store.sync.total = files.length
       store.sync.message = files.length ? 'Reading metadata' : 'No audio files found'
 
@@ -159,7 +161,8 @@ export function useLibraryImporter(store: Store) {
 
       const songs = results.flatMap((result) => (result.song ? [result.song] : []))
       await upsertSongs(songs)
-      store.allSongs = mergeSongs(store.allSongs, songs)
+      store.legacyCatalog = mergeSongs(store.legacyCatalog, songs)
+      store.libraryCatalog.refreshKey += 1
 
       const errors = results.flatMap((result) => (result.error ? [result.error] : []))
       store.sync.status = errors.length ? 'error' : 'idle'

@@ -1,5 +1,6 @@
 import type { Store, StoreActions } from '~/App'
 import { $ } from '@builder.io/qwik'
+import { lastLoadedLibraryIndex, libraryPlaybackAt } from '~/services/library-client'
 
 export const LibraryStore = {
   libraryView: {
@@ -9,22 +10,26 @@ export const LibraryStore = {
 
 export function useLibraryPage(store: Store, storeActions: StoreActions) {
   const playHighlighted = $(() => {
-    const song = store.filteredSongs[store.libraryView.cursorIdx]
-    if (!song) return
-    store.playlist = store.filteredSongs
-    storeActions.playSong(song, store.libraryView.cursorIdx)
+    const playback = libraryPlaybackAt(store.libraryCatalog, store.libraryView.cursorIdx)
+    if (!playback) return
+    store.playlist = playback.playlist
+    storeActions.playSong(playback.song, playback.playlistIndex)
   })
 
-  const highlightUp = $(() => {
-    if (!store.filteredSongs.length) return
+  const highlightUp = $(async () => {
+    if (!store.libraryCatalog.total) return
     store.libraryView.cursorIdx =
-      store.libraryView.cursorIdx <= 0 ? store.filteredSongs.length - 1 : store.libraryView.cursorIdx - 1
+      store.libraryView.cursorIdx <= 0
+        ? lastLoadedLibraryIndex(store.libraryCatalog)
+        : store.libraryView.cursorIdx - 1
+    await storeActions.requestLibraryRange(store.libraryView.cursorIdx, store.libraryView.cursorIdx)
   })
 
-  const highlightDown = $(() => {
-    if (!store.filteredSongs.length) return
+  const highlightDown = $(async () => {
+    if (!store.libraryCatalog.total) return
     store.libraryView.cursorIdx =
-      store.libraryView.cursorIdx >= store.filteredSongs.length - 1 ? 0 : store.libraryView.cursorIdx + 1
+      store.libraryView.cursorIdx >= store.libraryCatalog.total - 1 ? 0 : store.libraryView.cursorIdx + 1
+    await storeActions.requestLibraryRange(store.libraryView.cursorIdx, store.libraryView.cursorIdx)
   })
 
   return {

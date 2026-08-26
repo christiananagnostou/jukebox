@@ -45,7 +45,10 @@ export default component$(() => {
         ? store.sync.message || 'Library operation failed'
         : `${store.sync.message || (store.sync.status === 'scanning' ? 'Scanning' : 'Importing')}${progress}`
   const footerStatus =
-    syncStatus || store.bootstrap.libraryError || store.bootstrap.settingsWarning || `${store.allSongs.length} songs`
+    syncStatus ||
+    store.bootstrap.libraryError ||
+    store.bootstrap.settingsWarning ||
+    `${store.libraryCatalog.total} songs`
 
   return (
     <footer

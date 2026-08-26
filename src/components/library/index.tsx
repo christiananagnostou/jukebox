@@ -5,6 +5,8 @@ import { LibraryRow } from '~/components/library/LibraryRow'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
 import { StoreContext } from '../../routes/layout'
+import { StoreActionsContext } from '../../routes/layout'
+import { librarySongAt } from '~/services/library-client'
 
 const RowHeight = 30
 const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
@@ -47,6 +49,7 @@ const SortButton = component$(({ label, type, store }: { label: string; type: So
 
 export default component$(() => {
   const store = useContext(StoreContext)
+  const storeActions = useContext(StoreActionsContext)
 
   return (
     <section class="min-h-0 w-full flex flex-col flex-1">
@@ -63,14 +66,20 @@ export default component$(() => {
 
       <div class="min-h-0 flex-1">
         <VirtualList
-          numItems={store.filteredSongs.length}
+          numItems={store.libraryCatalog.total}
           itemHeight={RowHeight}
+          onRangeChange={storeActions.requestLibraryRange}
           scrollToRow={store.libraryView.cursorIdx}
           renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
+            const song = librarySongAt(store.libraryCatalog, index)
+            if (!song) {
+              return <div class={`${RowStyle} text-slate-700`} style={{ ...style, height: RowHeight + 'px' }} />
+            }
             return (
               <LibraryRow
-                key={store.filteredSongs[index].id}
+                key={song.id}
                 index={index}
+                song={song}
                 style={{ ...style, height: RowHeight + 'px' }}
                 classes={RowStyle}
               />
