@@ -3,8 +3,9 @@
 use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
 use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
-    cancel_library_scan, get_library_reconciliation, get_library_scan, list_library_roots,
-    prepare_library_scan, query_tracks, set_library_root_enabled, start_library_scan, LibraryState,
+    cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
+    get_library_scan, list_library_roots, prepare_library_scan, query_tracks,
+    set_library_root_enabled, start_library_refresh, start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
 use crate::remote_access::{
@@ -144,6 +145,9 @@ fn main() {
             cancel_library_reconciliation,
             get_library_reconciliation,
             apply_library_reconciliation,
+            start_library_refresh,
+            cancel_library_refresh,
+            get_library_refresh,
             get_metadata,
             get_settings,
             set_settings,
