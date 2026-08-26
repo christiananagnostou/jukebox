@@ -1,23 +1,17 @@
 import { component$, useContext } from '@builder.io/qwik'
-import type { Song } from '~/App'
 import { StoreContext } from '~/routes/layout'
+import { getUpcomingSongs } from '~/utils/Songs'
 
 export default component$(() => {
   const store = useContext(StoreContext)
-
-  const getCircularWindow = (arr: Song[], start: number) => {
-    const end = (start + 5) % arr.length
-    return start <= end ? arr.slice(start, end) : [...arr.slice(start), ...arr.slice(0, end)]
-  }
-
-  const next5Displayed = getCircularWindow(store.playlist, store.player.currSongIndex + 1)
+  const upcomingSongs = getUpcomingSongs(store.playlist, store.player.currSongIndex)
 
   return (
     <div class="p-2">
       <span class="text-gray-400 text-xs pb-1 block">Queue</span>
 
       <ol>
-        {(store.queue.length ? store.queue : next5Displayed).map((song) => (
+        {(store.queue.length ? store.queue : upcomingSongs).map((song) => (
           <li class="pt-1 pb-2" key={'queued-song-' + song.id}>
             <span class="block truncate">{song.title}</span>
             <span class="text-xs truncate text-gray-400">{song.artist}</span>

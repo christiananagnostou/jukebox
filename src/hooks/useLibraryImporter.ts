@@ -6,6 +6,7 @@ import { readDir, stat } from '@tauri-apps/plugin-fs'
 
 import type { Metadata, Song, Store } from '~/App'
 import { upsertSongs } from '~/services/library-db'
+import { getErrorMessage } from '~/utils/Errors'
 import { isAudioFile } from '~/utils/Files'
 import { mergeSongs } from '~/utils/Songs'
 
@@ -32,8 +33,6 @@ const parseInteger = (value?: string): number => {
   const parsed = Number.parseInt(value || '', 10)
   return Number.isFinite(parsed) ? parsed : 0
 }
-
-const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 async function collectDirectoryFiles(directoryPath: string, entries: DirEntry[], files: ImportFile[]): Promise<void> {
   for (const entry of entries) {
@@ -67,16 +66,17 @@ async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
   mapper: (item: T) => Promise<R>,
-  onProcessed: () => void
+  onProcessed: (processed: number) => void
 ): Promise<R[]> {
   const results = new Array<R>(items.length)
   let nextIndex = 0
+  let processed = 0
 
   const worker = async () => {
     while (nextIndex < items.length) {
       const index = nextIndex++
       results[index] = await mapper(items[index])
-      onProcessed()
+      onProcessed(++processed)
     }
   }
 
@@ -149,11 +149,11 @@ export function useLibraryImporter(store: Store) {
                 : song,
             }
           } catch (error) {
-            return { error: `${file.path}: ${errorMessage(error)}` }
+            return { error: `${file.path}: ${getErrorMessage(error)}` }
           }
         },
-        () => {
-          store.sync.processed += 1
+        (processed) => {
+          if (processed === files.length || processed % 10 === 0) store.sync.processed = processed
         }
       )
 
@@ -168,7 +168,7 @@ export function useLibraryImporter(store: Store) {
       return { errors, imported: songs.length }
     } catch (error) {
       store.sync.status = 'error'
-      store.sync.message = errorMessage(error)
+      store.sync.message = getErrorMessage(error)
       throw error
     }
   })

@@ -7,6 +7,7 @@ import { exists } from '@tauri-apps/plugin-fs'
 import type { Settings } from '~/App'
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { clearLibrarySongs, deleteSongs } from '~/services/library-db'
+import { getErrorMessage } from '~/utils/Errors'
 import { organizeFiles } from '~/utils/Files'
 import { StoreContext } from '../layout'
 
@@ -25,7 +26,7 @@ export default component$(() => {
       store.settings = await invoke<Settings>('set_settings', { settings })
     } catch (error) {
       store.sync.status = 'error'
-      store.sync.message = error instanceof Error ? error.message : String(error)
+      store.sync.message = getErrorMessage(error)
     }
   })
 
@@ -42,8 +43,13 @@ export default component$(() => {
   })
 
   const restoreDefaultFolder = $(async () => {
-    const musicFolder = await audioDir().catch(() => '')
-    await saveSettings({ ...store.settings, musicFolder })
+    try {
+      const musicFolder = await audioDir()
+      await saveSettings({ ...store.settings, musicFolder })
+    } catch (error) {
+      store.sync.status = 'error'
+      store.sync.message = getErrorMessage(error)
+    }
   })
 
   const scanMusicFolder = $(async () => {
@@ -55,6 +61,7 @@ export default component$(() => {
     if (audioElement) {
       audioElement.pause()
       audioElement.removeAttribute('src')
+      delete audioElement.dataset.loadedSongId
       audioElement.load()
     }
 
@@ -68,16 +75,28 @@ export default component$(() => {
   })
 
   const clearLibrary = $(async () => {
-    await clearLibrarySongs()
-    await resetPlayback()
-    store.allSongs = []
-    store.filteredSongs = []
-    store.libraryView.cursorIdx = 0
-    store.storageView.rootFile = organizeFiles([])
-    store.storageView.pathIndexMap = {}
-    store.storageView.nodeCount = 0
-    state.confirmAction = ''
-    state.removed = 0
+    store.sync.status = 'scanning'
+    store.sync.processed = 0
+    store.sync.total = 0
+    store.sync.message = 'Clearing library'
+
+    try {
+      await clearLibrarySongs()
+      await resetPlayback()
+      store.allSongs = []
+      store.filteredSongs = []
+      store.libraryView.cursorIdx = 0
+      store.storageView.rootFile = organizeFiles([])
+      store.storageView.pathIndexMap = {}
+      store.storageView.nodeCount = 0
+      store.sync.status = 'idle'
+      store.sync.message = ''
+      state.confirmAction = ''
+      state.removed = 0
+    } catch (error) {
+      store.sync.status = 'error'
+      store.sync.message = getErrorMessage(error)
+    }
   })
 
   const removeMissingFiles = $(async () => {
@@ -121,7 +140,7 @@ export default component$(() => {
       store.sync.lastRunAt = new Date().toISOString()
     } catch (error) {
       store.sync.status = 'error'
-      store.sync.message = error instanceof Error ? error.message : String(error)
+      store.sync.message = getErrorMessage(error)
     }
   })
 

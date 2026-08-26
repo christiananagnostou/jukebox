@@ -43,7 +43,7 @@ export default component$(() => {
       ? ''
       : store.sync.status === 'error'
         ? store.sync.message || 'Library operation failed'
-        : `${store.sync.status === 'scanning' ? 'Scanning' : 'Importing'}${progress}`
+        : `${store.sync.message || (store.sync.status === 'scanning' ? 'Scanning' : 'Importing')}${progress}`
 
   return (
     <footer

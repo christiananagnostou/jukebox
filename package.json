@@ -1,6 +1,6 @@
 {
   "name": "jukebox",
-  "description": "Dank Music Player",
+  "description": "A fast, local-first desktop music player",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -42,7 +42,6 @@
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-fs": "^2.5.1",
-    "@tauri-apps/plugin-sql": "^2.4.0",
-    "dayjs": "^1.11.23"
+    "@tauri-apps/plugin-sql": "^2.4.0"
   }
 }

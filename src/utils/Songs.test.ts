@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Song } from '~/App'
-import { compareSongsByAlbumTrack, filterAndSortSongs, mergeSongs } from './Songs'
+import { compareSongsByAlbumTrack, filterAndSortSongs, getUpcomingSongs, mergeSongs } from './Songs'
 
 const song = (overrides: Partial<Song>): Song => ({
   id: 'song',
@@ -50,6 +50,22 @@ describe('mergeSongs', () => {
 
     expect(merged.map(({ id }) => id)).toEqual(['one', 'two'])
     expect(merged[1].title).toBe('New title')
+  })
+})
+
+describe('getUpcomingSongs', () => {
+  it('wraps once without repeating the current song', () => {
+    const playlist = ['one', 'two', 'three'].map((id) => song({ id }))
+
+    expect(getUpcomingSongs(playlist, 2).map(({ id }) => id)).toEqual(['one', 'two'])
+  })
+
+  it('handles empty, single-song, and stale indices', () => {
+    const playlist = [song({ id: 'one' }), song({ id: 'two' })]
+
+    expect(getUpcomingSongs([], 0)).toEqual([])
+    expect(getUpcomingSongs(playlist.slice(0, 1), 0)).toEqual([])
+    expect(getUpcomingSongs(playlist, 5).map(({ id }) => id)).toEqual(['one'])
   })
 })
 

@@ -1,5 +1,4 @@
 import { $, component$, useContext } from '@builder.io/qwik'
-import dayjs from 'dayjs'
 
 import type { Song } from '~/App'
 import { updateFavoriteRating } from '~/services/library-db'
@@ -8,6 +7,13 @@ import { SoundBars } from '../Shared/SoundBars'
 import { Star0 } from '../svg/Star0'
 import { Star1 } from '../svg/Star1'
 import { Star2 } from '../svg/Star2'
+
+function formatDateAdded(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+
+  return `${date.getMonth() + 1}-${date.getDate()}-${String(date.getFullYear()).slice(-2)}`
+}
 
 export interface LibraryRowProps {
   index: number
@@ -65,7 +71,7 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, style, classes }
 
       <span class="truncate pl-2">{song.date}</span>
 
-      <span class="truncate pl-2">{dayjs(song.dateAdded).format('M-D-YY')}</span>
+      <span class="truncate pl-2">{formatDateAdded(song.dateAdded)}</span>
 
       <span class="truncate pl-2 flex align-center">
         <button
