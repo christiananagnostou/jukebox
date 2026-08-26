@@ -100,6 +100,7 @@ const FAVORITE_SORT: &[SortTerm] = &[SortTerm {
     expression: "favorRating",
 }];
 
+#[derive(Clone)]
 pub struct LibraryRepository {
     pool: SqlitePool,
 }

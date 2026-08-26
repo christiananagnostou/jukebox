@@ -1,3 +1,7 @@
+use crate::library::{
+    LibraryError, LibraryRepository, TrackQuery as LibraryTrackQuery,
+    TrackSummary as LibraryTrackSummary, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE,
+};
 use crate::settings::{save_settings, AppState};
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -10,7 +14,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path as FilePath, PathBuf};
 use std::str::FromStr;
@@ -30,9 +34,8 @@ const SERVICE_WORKER: &str = include_str!("remote_access/sw.js");
 const ICON_192: &[u8] = include_bytes!("remote_access/icon-192.png");
 const ICON_512: &[u8] = include_bytes!("../icons/icon.png");
 const REMOTE_ACCESS_PORT: u16 = 45_321;
-const MAX_QUERY_LIMIT: u32 = 100;
-const MAX_QUERY_LENGTH: usize = 200;
-const MAX_QUERY_OFFSET: u32 = 100_000;
+const NEXT_CURSOR_HEADER: &str = "x-jukebox-next-cursor";
+const CATALOG_REVISION_HEADER: &str = "x-jukebox-catalog-revision";
 
 #[derive(Clone, Default)]
 pub struct RemoteAccessState {
@@ -53,6 +56,7 @@ struct RemoteServerHandle {
 #[derive(Clone)]
 struct HttpState {
     music_root: MusicRootSource,
+    library: LibraryRepository,
     pool: SqlitePool,
 }
 
@@ -75,15 +79,15 @@ pub struct RemoteAccessStatus {
 }
 
 #[derive(Deserialize)]
-struct TrackQuery {
+struct RemoteTrackQuery {
     q: Option<String>,
     limit: Option<u32>,
-    offset: Option<u32>,
+    cursor: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TrackSummary {
+struct RemoteTrackSummary {
     id: String,
     file: String,
     title: String,
@@ -93,9 +97,24 @@ struct TrackSummary {
     codec: String,
 }
 
+impl From<LibraryTrackSummary> for RemoteTrackSummary {
+    fn from(track: LibraryTrackSummary) -> Self {
+        Self {
+            id: track.id,
+            file: track.file,
+            title: track.title,
+            album: track.album,
+            artist: track.artist,
+            duration: track.duration,
+            codec: track.codec,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ApiError {
     status: StatusCode,
+    code: &'static str,
     message: &'static str,
     content_range: Option<String>,
 }
@@ -104,6 +123,7 @@ impl ApiError {
     fn internal() -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: "database_unavailable",
             message: "The library could not be read",
             content_range: None,
         }
@@ -112,7 +132,39 @@ impl ApiError {
     fn not_found() -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
+            code: "track_not_found",
             message: "Track not found",
+            content_range: None,
+        }
+    }
+
+    fn library(error: LibraryError) -> Self {
+        let (status, code, message) = match error.code.as_str() {
+            "invalid_cursor" => (
+                StatusCode::BAD_REQUEST,
+                "invalid_cursor",
+                "The catalog cursor is invalid",
+            ),
+            "invalid_query" => (
+                StatusCode::BAD_REQUEST,
+                "invalid_query",
+                "The catalog query is invalid",
+            ),
+            "stale_cursor" => (
+                StatusCode::CONFLICT,
+                "stale_cursor",
+                "The music library changed; restart from the first page",
+            ),
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "database_unavailable",
+                "The library could not be read",
+            ),
+        };
+        Self {
+            status,
+            code,
+            message,
             content_range: None,
         }
     }
@@ -122,7 +174,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut response = (
             self.status,
-            Json(serde_json::json!({ "error": self.message })),
+            Json(serde_json::json!({ "code": self.code, "error": self.message })),
         )
             .into_response();
         response
@@ -226,6 +278,7 @@ impl HttpState {
             .connect_lazy_with(options);
         Ok(Self {
             music_root: MusicRootSource::App(app),
+            library: LibraryRepository::new(pool.clone()),
             pool,
         })
     }
@@ -331,49 +384,41 @@ fn binary_asset(content: &'static [u8], content_type: &'static str) -> Response 
 
 async fn list_tracks(
     State(state): State<HttpState>,
-    Query(query): Query<TrackQuery>,
-) -> Result<impl IntoResponse, ApiError> {
-    let limit = query.limit.unwrap_or(50).clamp(1, MAX_QUERY_LIMIT) as i64;
-    let offset = query.offset.unwrap_or(0).min(MAX_QUERY_OFFSET) as i64;
-    let query_text = query
-        .q
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .chars()
-        .take(MAX_QUERY_LENGTH)
-        .collect::<String>();
-    let escaped = escape_like(&query_text);
-    let pattern = format!("%{escaped}%");
-    let rows = sqlx::query(
-        "SELECT id, file, title, album, artist, duration, codec FROM songs
-         WHERE title LIKE ? ESCAPE '\\' OR artist LIKE ? ESCAPE '\\' OR album LIKE ? ESCAPE '\\'
-         ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, side, trackNumber, title COLLATE NOCASE
-         LIMIT ? OFFSET ?",
-    )
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(&pattern)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|_| ApiError::internal())?;
-
-    let tracks = rows
-        .into_iter()
-        .map(|row| TrackSummary {
-            id: row.get("id"),
-            file: row.get("file"),
-            title: row.get("title"),
-            album: row.get("album"),
-            artist: row.get("artist"),
-            duration: row.get("duration"),
-            codec: row.get("codec"),
+    Query(query): Query<RemoteTrackQuery>,
+) -> Result<Response, ApiError> {
+    let page = state
+        .library
+        .query_tracks(LibraryTrackQuery {
+            cursor: query.cursor,
+            limit: query
+                .limit
+                .unwrap_or(DEFAULT_PAGE_SIZE)
+                .clamp(1, MAX_PAGE_SIZE),
+            q: query.q.unwrap_or_default(),
+            ..LibraryTrackQuery::default()
         })
+        .await
+        .map_err(ApiError::library)?;
+    let tracks = page
+        .items
+        .into_iter()
+        .map(RemoteTrackSummary::from)
         .collect::<Vec<_>>();
-
-    Ok(([(CACHE_CONTROL, "no-store")], Json(tracks)))
+    let mut response = Json(tracks).into_response();
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        HeaderName::from_static(CATALOG_REVISION_HEADER),
+        HeaderValue::from_str(&page.revision.to_string()).map_err(|_| ApiError::internal())?,
+    );
+    if let Some(cursor) = page.next_cursor {
+        response.headers_mut().insert(
+            HeaderName::from_static(NEXT_CURSOR_HEADER),
+            HeaderValue::from_str(&cursor).map_err(|_| ApiError::internal())?,
+        );
+    }
+    Ok(response)
 }
 
 async fn stream_track(
@@ -498,16 +543,10 @@ fn parse_range(value: &str, total: u64) -> Result<ByteRange, ApiError> {
 fn range_not_satisfiable(total: u64) -> ApiError {
     ApiError {
         status: StatusCode::RANGE_NOT_SATISFIABLE,
+        code: "range_not_satisfiable",
         message: "Requested byte range is not available",
         content_range: Some(format!("bytes */{total}")),
     }
-}
-
-fn escape_like(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
 }
 
 fn content_type(path: &FilePath) -> &'static str {
@@ -678,6 +717,10 @@ mod tests {
                 .execute(&pool)
                 .await
                 .expect("migrate fixture database");
+            sqlx::raw_sql(include_str!("../migrations/0002_catalog_query.sql"))
+                .execute(&pool)
+                .await
+                .expect("migrate catalog query schema");
             insert_song(&pool, "percent", &percent, "100% Mix", "B", "Zulu", 1).await;
             insert_song(&pool, "similar", &similar, "100X Mix", "A", "Zulu", 2).await;
             insert_song(&pool, "alpha", &alpha, "Alpha", "A", "Alpha", 1).await;
@@ -685,6 +728,7 @@ mod tests {
 
             let app = router(HttpState {
                 music_root: MusicRootSource::Fixed(root.to_string_lossy().into_owned()),
+                library: LibraryRepository::new(pool.clone()),
                 pool: pool.clone(),
             });
 
@@ -699,6 +743,7 @@ mod tests {
             assert_eq!(escaped_search.headers()[CACHE_CONTROL], "no-store");
             let escaped_json: Value =
                 serde_json::from_slice(&response_bytes(escaped_search).await).expect("search JSON");
+            assert!(escaped_json[0].get("path").is_none());
             let escaped_ids = escaped_json
                 .as_array()
                 .expect("search array")
@@ -708,6 +753,8 @@ mod tests {
             assert_eq!(escaped_ids, vec!["percent"]);
 
             let ordered_search = request(&app, "/api/tracks?limit=100", None).await;
+            assert_eq!(ordered_search.headers()[CATALOG_REVISION_HEADER], "4");
+            assert!(!ordered_search.headers().contains_key(NEXT_CURSOR_HEADER));
             let ordered_json: Value = serde_json::from_slice(&response_bytes(ordered_search).await)
                 .expect("ordered JSON");
             let ordered_ids = ordered_json
@@ -722,6 +769,51 @@ mod tests {
             let bounded_json: Value = serde_json::from_slice(&response_bytes(bounded_search).await)
                 .expect("bounded JSON");
             assert_eq!(bounded_json.as_array().map(Vec::len), Some(1));
+
+            let first_page = request(&app, "/api/tracks?limit=2", None).await;
+            assert_eq!(first_page.status(), StatusCode::OK);
+            let first_revision = first_page.headers()[CATALOG_REVISION_HEADER].clone();
+            let cursor = first_page.headers()[NEXT_CURSOR_HEADER]
+                .to_str()
+                .expect("cursor header")
+                .to_owned();
+            let first_json: Value =
+                serde_json::from_slice(&response_bytes(first_page).await).expect("first page JSON");
+            let first_ids = first_json
+                .as_array()
+                .expect("first page array")
+                .iter()
+                .map(|track| track["id"].as_str().expect("track id"))
+                .collect::<Vec<_>>();
+
+            let second_page =
+                request(&app, &format!("/api/tracks?limit=2&cursor={cursor}"), None).await;
+            assert_eq!(second_page.status(), StatusCode::OK);
+            assert_eq!(
+                second_page.headers()[CATALOG_REVISION_HEADER],
+                first_revision
+            );
+            assert!(!second_page.headers().contains_key(NEXT_CURSOR_HEADER));
+            let second_json: Value = serde_json::from_slice(&response_bytes(second_page).await)
+                .expect("second page JSON");
+            let second_ids = second_json
+                .as_array()
+                .expect("second page array")
+                .iter()
+                .map(|track| track["id"].as_str().expect("track id"))
+                .collect::<Vec<_>>();
+            assert_eq!(first_ids, vec!["alpha", "outside"]);
+            assert_eq!(second_ids, vec!["similar", "percent"]);
+
+            sqlx::query("UPDATE songs SET title = 'Updated' WHERE id = 'percent'")
+                .execute(&pool)
+                .await
+                .expect("mutate catalog");
+            let stale = request(&app, &format!("/api/tracks?limit=2&cursor={cursor}"), None).await;
+            assert_eq!(stale.status(), StatusCode::CONFLICT);
+            let stale_json: Value =
+                serde_json::from_slice(&response_bytes(stale).await).expect("stale cursor JSON");
+            assert_eq!(stale_json["code"], "stale_cursor");
 
             let full = request(&app, "/api/tracks/percent/stream", None).await;
             assert_eq!(full.status(), StatusCode::OK);
@@ -774,6 +866,7 @@ mod tests {
                 .connect_lazy_with(options);
             let app = router(HttpState {
                 music_root: MusicRootSource::Fixed(fixture.to_string_lossy().into_owned()),
+                library: LibraryRepository::new(pool.clone()),
                 pool,
             });
 
@@ -822,11 +915,6 @@ mod tests {
         let response = range_not_satisfiable(100).into_response();
         assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
         assert_eq!(response.headers()[CONTENT_RANGE], "bytes */100");
-    }
-
-    #[test]
-    fn escapes_like_wildcards() {
-        assert_eq!(escape_like(r"100%_mix\\live"), r"100\%\_mix\\\\live");
     }
 
     #[test]

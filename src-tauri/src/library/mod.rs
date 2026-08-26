@@ -1,8 +1,8 @@
 mod query;
 mod repository;
 
-pub use query::{LibraryError, TrackQuery};
-pub use repository::{LibraryRepository, TrackPage};
+pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
+pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::time::Duration;
