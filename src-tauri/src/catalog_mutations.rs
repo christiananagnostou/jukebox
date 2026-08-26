@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 use tauri::Manager;
@@ -194,8 +195,29 @@ where
         .begin()
         .await
         .map_err(|error| format!("Could not start library deletion: {error}"))?;
+    let mut affected_roots = BTreeSet::new();
 
     for (chunk_index, chunk) in ids.chunks(DELETE_CHUNK_SIZE).enumerate() {
+        let mut roots = QueryBuilder::<Sqlite>::new(
+            "SELECT DISTINCT root_id FROM songs WHERE root_id IS NOT NULL AND id IN (",
+        );
+        let mut separated = roots.separated(", ");
+        for id in chunk {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+        for row in roots
+            .build()
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(|error| format!("Could not inspect library deletion: {error}"))?
+        {
+            affected_roots.insert(
+                row.try_get::<i64, _>("root_id")
+                    .map_err(|error| format!("Could not inspect library deletion: {error}"))?,
+            );
+        }
+
         let mut query = QueryBuilder::<Sqlite>::new("DELETE FROM songs WHERE id IN (");
         let mut separated = query.separated(", ");
         for id in chunk {
@@ -210,6 +232,12 @@ where
         after_chunk(chunk_index + 1)?;
     }
 
+    for root_id in affected_roots {
+        crate::library::storage::rebuild_storage_index(&mut transaction, root_id)
+            .await
+            .map_err(|_| "Could not update the storage index after deletion.".to_owned())?;
+    }
+
     transaction
         .commit()
         .await
@@ -221,6 +249,10 @@ async fn clear_songs_in_pool(pool: &SqlitePool) -> Result<(), String> {
         .begin()
         .await
         .map_err(|error| format!("Could not start library clear: {error}"))?;
+    sqlx::query("DELETE FROM library_storage_nodes")
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| format!("Could not clear storage index: {error}"))?;
     sqlx::query("DELETE FROM songs")
         .execute(&mut *transaction)
         .await
@@ -253,8 +285,8 @@ mod tests {
         let pool = open_pool(root.join("library.db"), true)
             .await
             .expect("open isolated library database");
-        sqlx::raw_sql(crate::database::INITIAL_SCHEMA)
-            .execute(&pool)
+        crate::database::NATIVE_MIGRATOR
+            .run(&pool)
             .await
             .expect("migrate isolated library database");
         (pool, root)

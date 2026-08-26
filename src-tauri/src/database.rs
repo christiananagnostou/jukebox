@@ -14,6 +14,8 @@ pub(crate) const LIBRARY_RECONCILIATION_SCHEMA: &str =
     include_str!("../migrations/0006_library_scan_reconciliation.sql");
 pub(crate) const LIBRARY_REFRESH_SCHEMA: &str =
     include_str!("../migrations/0007_library_refresh_runs.sql");
+pub(crate) const LIBRARY_STORAGE_SCHEMA: &str =
+    include_str!("../migrations/0008_library_storage_nodes.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub fn migrations() -> Vec<Migration> {
@@ -58,6 +60,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 7,
             description: "identify orchestrated library refreshes",
             sql: LIBRARY_REFRESH_SCHEMA,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "add indexed native storage nodes",
+            sql: LIBRARY_STORAGE_SCHEMA,
             kind: MigrationKind::Up,
         },
     ]
@@ -253,7 +261,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                7
+                8
             );
             let scan_columns: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name IN (

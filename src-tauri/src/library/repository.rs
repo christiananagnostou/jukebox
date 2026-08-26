@@ -147,10 +147,16 @@ impl LibraryRepository {
             query.artist.as_deref(),
             has_filter,
         );
-        push_exact_filter(
+        has_filter = push_exact_filter(
             &mut count_query,
             "album",
             query.album.as_deref(),
+            has_filter,
+        );
+        push_storage_filter(
+            &mut count_query,
+            query.root_id,
+            query.path_prefix.as_deref(),
             has_filter,
         );
         let total: i64 = count_query
@@ -172,6 +178,12 @@ impl LibraryRepository {
         );
         has_filter =
             push_exact_filter(&mut page_query, "album", query.album.as_deref(), has_filter);
+        has_filter = push_storage_filter(
+            &mut page_query,
+            query.root_id,
+            query.path_prefix.as_deref(),
+            has_filter,
+        );
         let terms = sort_terms(query.sort);
         if let Some((values, last_song_id)) = cursor.as_ref() {
             page_query.push(if has_filter { " AND (" } else { " WHERE (" });
@@ -283,6 +295,40 @@ pub(super) fn push_exact_filter(
     } else {
         has_where
     }
+}
+
+fn push_storage_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    root_id: Option<i64>,
+    path_prefix: Option<&str>,
+    has_where: bool,
+) -> bool {
+    let Some(root_id) = root_id else {
+        return has_where;
+    };
+    builder.push(if has_where { " AND " } else { " WHERE " });
+    if root_id == 0 {
+        builder.push("root_id IS NULL AND availability = 'available'");
+        if let Some(song_id) = path_prefix {
+            builder.push(" AND id = ").push_bind(song_id.to_owned());
+        }
+        return true;
+    }
+    builder
+        .push("root_id = ")
+        .push_bind(root_id)
+        .push(" AND availability = 'available'");
+    if let Some(path_prefix) = path_prefix {
+        builder
+            .push(" AND (normalized_path = ")
+            .push_bind(path_prefix.to_owned())
+            .push(" OR (normalized_path >= ")
+            .push_bind(format!("{path_prefix}/"))
+            .push(" AND normalized_path < ")
+            .push_bind(format!("{path_prefix}0"))
+            .push("))");
+    }
+    true
 }
 
 fn sort_terms(sort: TrackSort) -> &'static [SortTerm] {

@@ -7,6 +7,7 @@ mod refresh;
 mod repository;
 mod roots;
 mod scanner;
+pub(crate) mod storage;
 mod watcher;
 
 pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, ArtistPage};
@@ -18,6 +19,7 @@ pub use refresh::{
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 pub use roots::LibraryRoot;
 pub use scanner::LibraryScan;
+pub use storage::{StoragePage, StorageQuery};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -81,6 +83,11 @@ impl LibraryState {
     pub async fn query_albums(&self, query: AggregateQuery) -> Result<AlbumPage, LibraryError> {
         self.ensure_initialized().await?;
         aggregates::load_album_page(&self.repository.pool(), query).await
+    }
+
+    pub async fn query_storage(&self, query: StorageQuery) -> Result<StoragePage, LibraryError> {
+        self.ensure_initialized().await?;
+        storage::load_storage_page(&self.repository.pool(), query).await
     }
 
     pub async fn add_library_root(&self, path: String) -> Result<LibraryRoot, LibraryError> {
@@ -192,6 +199,14 @@ pub async fn query_tracks(
     query: TrackQuery,
 ) -> Result<TrackPage, LibraryError> {
     library.query_tracks(query).await
+}
+
+#[tauri::command]
+pub async fn query_storage(
+    library: tauri::State<'_, LibraryState>,
+    query: StorageQuery,
+) -> Result<StoragePage, LibraryError> {
+    library.query_storage(query).await
 }
 
 #[tauri::command]

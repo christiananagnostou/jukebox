@@ -43,7 +43,9 @@ pub struct TrackQuery {
     pub cursor: Option<String>,
     pub direction: SortDirection,
     pub limit: u32,
+    pub path_prefix: Option<String>,
     pub q: String,
+    pub root_id: Option<i64>,
     pub sort: TrackSort,
 }
 
@@ -55,7 +57,9 @@ impl Default for TrackQuery {
             cursor: None,
             direction: SortDirection::default(),
             limit: default_page_size(),
+            path_prefix: None,
             q: String::new(),
+            root_id: None,
             sort: TrackSort::default(),
         }
     }
@@ -69,7 +73,9 @@ pub(crate) struct NormalizedTrackQuery {
     pub direction: SortDirection,
     pub fingerprint: String,
     pub limit: u32,
+    pub path_prefix: Option<String>,
     pub q: String,
+    pub root_id: Option<i64>,
     pub sort: TrackSort,
 }
 
@@ -94,12 +100,35 @@ impl TrackQuery {
                 return Err(LibraryError::invalid_query("Track filter is too long."));
             }
         }
+        if self.root_id.is_none() && self.path_prefix.is_some() {
+            return Err(LibraryError::invalid_query(
+                "A storage path filter requires a library root.",
+            ));
+        }
+        if self.root_id.is_some_and(|root_id| root_id < 0) {
+            return Err(LibraryError::invalid_query(
+                "Library root identifiers cannot be negative.",
+            ));
+        }
+        if let Some(path_prefix) = self.path_prefix.as_deref() {
+            if self.root_id == Some(0) {
+                if path_prefix.is_empty() || path_prefix.chars().count() > 1_024 {
+                    return Err(LibraryError::invalid_query(
+                        "Imported track identifiers are invalid.",
+                    ));
+                }
+            } else {
+                validate_relative_path(path_prefix)?;
+            }
+        }
         let fingerprint_source = serde_json::json!({
             "album": self.album,
             "artist": self.artist,
             "direction": self.direction,
             "limit": limit,
+            "pathPrefix": self.path_prefix,
             "q": q.to_lowercase(),
+            "rootId": self.root_id,
             "sort": self.sort,
         });
         let fingerprint = format!("{:x}", md5::compute(fingerprint_source.to_string()));
@@ -111,10 +140,27 @@ impl TrackQuery {
             direction: self.direction,
             fingerprint,
             limit,
+            path_prefix: self.path_prefix.clone(),
             q,
+            root_id: self.root_id,
             sort: self.sort,
         })
     }
+}
+
+pub(super) fn validate_relative_path(path: &str) -> Result<(), LibraryError> {
+    if path.chars().count() > 4_096
+        || path.starts_with('/')
+        || path.ends_with('/')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(LibraryError::invalid_query(
+            "Storage paths must be normalized relative paths.",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
