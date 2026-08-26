@@ -202,6 +202,19 @@ impl ReconciliationService {
         reconciliation_from_row(&row)
     }
 
+    pub async fn apply(&self, scan_id: i64) -> Result<LibraryReconciliation, LibraryError> {
+        if let Err(error) = self.load_scan_context(scan_id).await {
+            let _ = self.finish_apply_failure(scan_id).await;
+            return Err(error);
+        }
+        self.mark_applying(scan_id).await?;
+        if let Err(error) = self.apply_ready_with_hook(scan_id, || Ok(())).await {
+            let _ = self.finish_apply_failure(scan_id).await;
+            return Err(error);
+        }
+        self.get(scan_id).await
+    }
+
     async fn create(
         &self,
         scan_id: i64,
@@ -230,6 +243,362 @@ impl ReconciliationService {
             }
         })?;
         reconciliation_from_row(&row)
+    }
+
+    async fn mark_applying(&self, scan_id: i64) -> Result<(), LibraryError> {
+        let result = sqlx::query(
+            "UPDATE library_reconciliations SET status = 'applying'
+             WHERE scan_id = ? AND status = 'ready' AND processed = total",
+        )
+        .bind(scan_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            if error
+                .as_database_error()
+                .is_some_and(|database| database.is_unique_violation())
+            {
+                LibraryError::reconciliation_in_progress()
+            } else {
+                LibraryError::database()
+            }
+        })?;
+        if result.rows_affected() != 1 {
+            return Err(LibraryError::reconciliation_not_ready());
+        }
+        Ok(())
+    }
+
+    async fn apply_ready_with_hook<F>(
+        &self,
+        scan_id: i64,
+        after_upsert: F,
+    ) -> Result<(), LibraryError>
+    where
+        F: FnOnce() -> Result<(), LibraryError>,
+    {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| LibraryError::database())?;
+        let result = async {
+            // The first write reserves the SQLite writer before freshness is rechecked.
+            sqlx::query(
+                "UPDATE library_reconciliations SET status = status
+                 WHERE scan_id = ? AND status = 'applying'",
+            )
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+
+            let root_id: i64 = sqlx::query_scalar(
+                "SELECT reconciliation.root_id
+                 FROM library_reconciliations AS reconciliation
+                 JOIN library_scans AS scans ON scans.id = reconciliation.scan_id
+                 JOIN library_roots AS roots ON roots.id = reconciliation.root_id
+                 WHERE reconciliation.scan_id = ? AND reconciliation.status = 'applying'
+                   AND scans.status = 'completed' AND roots.enabled = 1
+                   AND NOT EXISTS (
+                     SELECT 1 FROM library_scans AS newer
+                     WHERE newer.root_id = reconciliation.root_id
+                       AND newer.status = 'completed' AND newer.id > reconciliation.scan_id
+                   )",
+            )
+            .bind(scan_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?
+            .ok_or_else(LibraryError::scan_not_ready)?;
+
+            sqlx::query(
+                "UPDATE library_scan_metadata AS metadata
+                 SET matched_song_id = (
+                   SELECT CASE WHEN COUNT(*) = 1 THEN MIN(old.id) END
+                   FROM songs AS old
+                   JOIN library_scan_files AS observed
+                     ON observed.scan_id = metadata.scan_id
+                    AND observed.normalized_path = metadata.normalized_path
+                   WHERE old.root_id = ? AND old.normalized_path IS NOT NULL
+                     AND old.file_size = observed.file_size
+                     AND old.quick_fingerprint = metadata.quick_fingerprint
+                     AND NOT EXISTS (
+                       SELECT 1 FROM library_scan_files AS current_snapshot
+                       WHERE current_snapshot.scan_id = metadata.scan_id
+                         AND current_snapshot.normalized_path = old.normalized_path
+                     )
+                 )
+                 WHERE metadata.scan_id = ?
+                   AND NOT EXISTS (
+                     SELECT 1 FROM songs AS same_path
+                     WHERE same_path.root_id = ?
+                       AND same_path.normalized_path = metadata.normalized_path
+                   )
+                   AND 1 = (
+                     SELECT COUNT(*)
+                     FROM library_scan_metadata AS peer
+                     JOIN library_scan_files AS peer_file
+                       ON peer_file.scan_id = peer.scan_id
+                      AND peer_file.normalized_path = peer.normalized_path
+                     JOIN library_scan_files AS current_file
+                       ON current_file.scan_id = metadata.scan_id
+                      AND current_file.normalized_path = metadata.normalized_path
+                     WHERE peer.scan_id = metadata.scan_id
+                       AND peer.quick_fingerprint = metadata.quick_fingerprint
+                       AND peer_file.file_size = current_file.file_size
+                   )",
+            )
+            .bind(root_id)
+            .bind(scan_id)
+            .bind(root_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+
+            let identity_collisions: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*)
+                 FROM library_scan_metadata AS metadata
+                 JOIN songs AS collision ON collision.id = metadata.candidate_id
+                 WHERE metadata.scan_id = ? AND metadata.matched_song_id IS NULL
+                   AND NOT EXISTS (
+                     SELECT 1 FROM songs AS same_path
+                     WHERE same_path.root_id = ?
+                       AND same_path.normalized_path = metadata.normalized_path
+                   )",
+            )
+            .bind(scan_id)
+            .bind(root_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+            if identity_collisions > 0 {
+                return Err(LibraryError::identity_collision());
+            }
+
+            sqlx::query(
+                "INSERT INTO songs (
+                   id, path, file, title, album, artist, genre, bpm, compilation, date, encoder,
+                   trackTotal, trackNumber, codec, duration, sampleRate, side, startTime,
+                   favorRating, dateAdded, visualsPath, root_id, normalized_path, file_size,
+                   modified_at_ns, quick_fingerprint, availability, last_seen_scan_id,
+                   metadata_version
+                 )
+                 SELECT
+                   COALESCE(same_path.id, metadata.matched_song_id, metadata.candidate_id),
+                   metadata.path, metadata.file, metadata.title, metadata.album, metadata.artist,
+                   metadata.genre, metadata.bpm, metadata.compilation, metadata.date,
+                   metadata.encoder, metadata.track_total, metadata.track_number, metadata.codec,
+                   metadata.duration, metadata.sample_rate, metadata.side, 0, 0,
+                   strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), metadata.visuals_path, ?,
+                   metadata.normalized_path,
+                   observed.file_size, observed.modified_at_ns, metadata.quick_fingerprint,
+                   'available', ?, ?
+                 FROM library_scan_metadata AS metadata
+                 JOIN library_scan_files AS observed
+                   ON observed.scan_id = metadata.scan_id
+                  AND observed.normalized_path = metadata.normalized_path
+                 LEFT JOIN songs AS same_path
+                   ON same_path.root_id = ?
+                  AND same_path.normalized_path = metadata.normalized_path
+                 WHERE metadata.scan_id = ?
+                 ON CONFLICT(id) DO UPDATE SET
+                   path = excluded.path,
+                   file = excluded.file,
+                   title = excluded.title,
+                   album = excluded.album,
+                   artist = excluded.artist,
+                   genre = excluded.genre,
+                   bpm = excluded.bpm,
+                   compilation = excluded.compilation,
+                   date = excluded.date,
+                   encoder = excluded.encoder,
+                   trackTotal = excluded.trackTotal,
+                   trackNumber = excluded.trackNumber,
+                   codec = excluded.codec,
+                   duration = excluded.duration,
+                   sampleRate = excluded.sampleRate,
+                   side = excluded.side,
+                   visualsPath = excluded.visualsPath,
+                   root_id = excluded.root_id,
+                   normalized_path = excluded.normalized_path,
+                   file_size = excluded.file_size,
+                   modified_at_ns = excluded.modified_at_ns,
+                   quick_fingerprint = excluded.quick_fingerprint,
+                   availability = excluded.availability,
+                   last_seen_scan_id = excluded.last_seen_scan_id,
+                   metadata_version = excluded.metadata_version",
+            )
+            .bind(root_id)
+            .bind(scan_id)
+            .bind(METADATA_VERSION)
+            .bind(root_id)
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+
+            after_upsert()?;
+
+            sqlx::query(
+                "UPDATE songs
+                 SET last_seen_scan_id = ?
+                 WHERE root_id = ? AND availability = 'available'
+                   AND last_seen_scan_id IS NOT ?
+                   AND EXISTS (
+                     SELECT 1 FROM library_scan_files AS observed
+                     WHERE observed.scan_id = ?
+                       AND observed.normalized_path = songs.normalized_path
+                   )",
+            )
+            .bind(scan_id)
+            .bind(root_id)
+            .bind(scan_id)
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+
+            sqlx::query(
+                "UPDATE songs
+                 SET availability = 'available', last_seen_scan_id = ?
+                 WHERE root_id = ? AND availability = 'unavailable'
+                   AND EXISTS (
+                     SELECT 1 FROM library_scan_files AS observed
+                     WHERE observed.scan_id = ?
+                       AND observed.normalized_path = songs.normalized_path
+                   )",
+            )
+            .bind(scan_id)
+            .bind(root_id)
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+
+            let unavailable: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM songs
+                 WHERE root_id = ? AND availability = 'available'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM library_scan_files AS observed
+                     WHERE observed.scan_id = ?
+                       AND observed.normalized_path = songs.normalized_path
+                   )",
+            )
+            .bind(root_id)
+            .bind(scan_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+            sqlx::query(
+                "UPDATE songs SET availability = 'unavailable'
+                 WHERE root_id = ? AND availability = 'available'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM library_scan_files AS observed
+                     WHERE observed.scan_id = ?
+                       AND observed.normalized_path = songs.normalized_path
+                   )",
+            )
+            .bind(root_id)
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+
+            let renamed: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM library_scan_metadata
+                 WHERE scan_id = ? AND matched_song_id IS NOT NULL",
+            )
+            .bind(scan_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+            let changed: i64 =
+                sqlx::query_scalar("SELECT changed FROM library_reconciliations WHERE scan_id = ?")
+                    .bind(scan_id)
+                    .fetch_one(&mut *transaction)
+                    .await
+                    .map_err(|_| LibraryError::database())?;
+
+            sqlx::query(
+                "UPDATE library_scans
+                 SET updated = ?, unavailable = ?, failed = 0, error_summary = NULL
+                 WHERE id = ?",
+            )
+            .bind(changed)
+            .bind(unavailable)
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+            sqlx::query("UPDATE library_roots SET last_scan_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(root_id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|_| LibraryError::database())?;
+            sqlx::query(
+                "UPDATE library_reconciliations
+                 SET status = 'completed', completed_at = CURRENT_TIMESTAMP,
+                     renamed = ?, unavailable = ?, failed = 0, error_summary = NULL
+                 WHERE scan_id = ? AND status = 'applying'",
+            )
+            .bind(renamed)
+            .bind(unavailable)
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+            sqlx::query("DELETE FROM library_scan_metadata WHERE scan_id = ?")
+                .bind(scan_id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|_| LibraryError::database())?;
+
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => transaction
+                .commit()
+                .await
+                .map_err(|_| LibraryError::database()),
+            Err(error) => {
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|_| LibraryError::database())?;
+                Err(error)
+            }
+        }
+    }
+
+    async fn finish_apply_failure(&self, scan_id: i64) -> Result<(), LibraryError> {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| LibraryError::database())?;
+        sqlx::query("DELETE FROM library_scan_metadata WHERE scan_id = ?")
+            .bind(scan_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+        sqlx::query(
+            "UPDATE library_reconciliations
+             SET status = 'failed', completed_at = CURRENT_TIMESTAMP, failed = 1,
+                 error_summary = 'Jukebox could not apply this library snapshot.'
+             WHERE scan_id = ? AND status IN ('ready', 'applying')",
+        )
+        .bind(scan_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LibraryError::database())?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LibraryError::database())?;
+        Ok(())
     }
 
     async fn run_prepare(
@@ -822,33 +1191,88 @@ mod tests {
         scan_id
     }
 
-    async fn insert_existing_song(
+    async fn insert_existing_song(pool: &SqlitePool, root_id: i64, observed: &ObservedFile) {
+        insert_native_song(
+            pool,
+            root_id,
+            "existing",
+            &observed.normalized_path,
+            observed,
+            "existing-fingerprint",
+            "available",
+        )
+        .await;
+    }
+
+    async fn insert_native_song(
         pool: &SqlitePool,
         root_id: i64,
-        scan_id: i64,
+        id: &str,
+        normalized_path: &str,
         observed: &ObservedFile,
+        quick_fingerprint: &str,
+        availability: &str,
     ) {
         sqlx::query(
             "INSERT INTO songs (
                id, path, file, title, album, artist, genre, bpm, compilation, date, encoder,
                trackTotal, trackNumber, codec, duration, sampleRate, side, startTime,
                favorRating, dateAdded, visualsPath, root_id, normalized_path, file_size,
-               modified_at_ns, quick_fingerprint, availability, last_seen_scan_id, metadata_version
+               modified_at_ns, quick_fingerprint, availability, metadata_version
              ) VALUES (
-               'existing', '/library/unchanged.wav', 'unchanged.wav', 'Existing', '', '', '',
-               0, 0, '', '', 0, 0, 'pcm', '', '8000', 0, 42, 2, 'original-date', '',
-               ?, ?, ?, ?, 'existing-fingerprint', 'available', ?, ?
+               ?, ?, ?, 'Old title', 'Old album', 'Old artist', '', 0, 0, '', '',
+               0, 0, 'pcm', '', '8000', 0, 42, 2, 'original-date', 'old-art',
+               ?, ?, ?, ?, ?, ?, ?
              )",
         )
+        .bind(id)
+        .bind(format!("/library/{normalized_path}"))
+        .bind(
+            Path::new(normalized_path)
+                .file_name()
+                .expect("song file name")
+                .to_string_lossy()
+                .into_owned(),
+        )
         .bind(root_id)
-        .bind(&observed.normalized_path)
+        .bind(normalized_path)
         .bind(observed.file_size)
         .bind(observed.modified_at_ns)
-        .bind(scan_id)
+        .bind(quick_fingerprint)
+        .bind(availability)
         .bind(METADATA_VERSION)
         .execute(pool)
         .await
-        .expect("insert existing song");
+        .expect("insert native song");
+    }
+
+    async fn prepare_snapshot(
+        service: &ReconciliationService,
+        scan_id: i64,
+        root_id: i64,
+        root: &Path,
+        total: i64,
+    ) {
+        service
+            .create(scan_id, root_id, total)
+            .await
+            .expect("create reconciliation");
+        service
+            .run_prepare(
+                scan_id,
+                root.to_path_buf(),
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+            .await;
+        assert_eq!(
+            service
+                .get(scan_id)
+                .await
+                .expect("read ready reconciliation")
+                .status,
+            "ready"
+        );
     }
 
     async fn insert_staged_metadata(pool: &SqlitePool, scan_id: i64) {
@@ -940,7 +1364,7 @@ mod tests {
             let unchanged = observation(&root, "unchanged.wav");
             observations.push(unchanged.clone());
             let scan_id = completed_scan(&pool, root_id, &observations).await;
-            insert_existing_song(&pool, root_id, scan_id, &unchanged).await;
+            insert_existing_song(&pool, root_id, &unchanged).await;
             service
                 .create(scan_id, root_id, observations.len() as i64)
                 .await
@@ -971,7 +1395,7 @@ mod tests {
             assert_eq!(staged, 201);
             assert_eq!(
                 songs,
-                (1, 42, "original-date".to_owned(), "Existing".to_owned())
+                (1, 42, "original-date".to_owned(), "Old title".to_owned())
             );
         });
     }
@@ -1163,6 +1587,356 @@ mod tests {
                     .expect_err("reject disabled root")
                     .code,
                 "library_scan_not_ready"
+            );
+        });
+    }
+
+    #[test]
+    fn atomic_apply_preserves_identity_and_user_state_across_updates_and_renames() {
+        tauri::async_runtime::block_on(async {
+            let (pool, service, directory, root_id) = fixture().await;
+            let root = directory.path().canonicalize().expect("canonical root");
+            for (name, seed) in [
+                ("changed.wav", 1),
+                ("renamed-new.wav", 2),
+                ("new.wav", 3),
+                ("returned.wav", 4),
+            ] {
+                write_wav(&root.join(name), seed);
+            }
+            let observations = [
+                observation(&root, "changed.wav"),
+                observation(&root, "renamed-new.wav"),
+                observation(&root, "new.wav"),
+                observation(&root, "returned.wav"),
+            ];
+            let scan_id = completed_scan(&pool, root_id, &observations).await;
+
+            let mut previous_changed = observations[0].clone();
+            previous_changed.modified_at_ns -= 1;
+            insert_native_song(
+                &pool,
+                root_id,
+                "same-id",
+                "changed.wav",
+                &previous_changed,
+                "old-changed-fingerprint",
+                "available",
+            )
+            .await;
+            let rename_fingerprint =
+                quick_fingerprint(&root.join("renamed-new.wav"), observations[1].file_size)
+                    .expect("fingerprint rename fixture");
+            insert_native_song(
+                &pool,
+                root_id,
+                "rename-id",
+                "renamed-old.wav",
+                &observations[1],
+                &rename_fingerprint,
+                "available",
+            )
+            .await;
+            insert_native_song(
+                &pool,
+                root_id,
+                "returned-id",
+                "returned.wav",
+                &observations[3],
+                "returned-fingerprint",
+                "unavailable",
+            )
+            .await;
+            insert_native_song(
+                &pool,
+                root_id,
+                "missing-id",
+                "missing.wav",
+                &observations[0],
+                "missing-fingerprint",
+                "available",
+            )
+            .await;
+
+            prepare_snapshot(&service, scan_id, root_id, &root, observations.len() as i64).await;
+            let completed = service.apply(scan_id).await.expect("apply ready snapshot");
+
+            let rows: Vec<(String, String, String, i64, i64, String)> = sqlx::query_as(
+                "SELECT id, normalized_path, availability, startTime, favorRating, dateAdded
+                 FROM songs WHERE root_id = ? ORDER BY id",
+            )
+            .bind(root_id)
+            .fetch_all(&pool)
+            .await
+            .expect("read reconciled songs");
+            let scan_counts: (i64, i64) =
+                sqlx::query_as("SELECT updated, unavailable FROM library_scans WHERE id = ?")
+                    .bind(scan_id)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read scan counters");
+            let last_scan_at: Option<String> =
+                sqlx::query_scalar("SELECT last_scan_at FROM library_roots WHERE id = ?")
+                    .bind(root_id)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read root scan time");
+
+            assert_eq!(completed.status, "completed");
+            assert_eq!(completed.changed, 3);
+            assert_eq!(completed.unchanged, 1);
+            assert_eq!(completed.renamed, 1);
+            assert_eq!(completed.unavailable, 1);
+            assert_eq!(scan_counts, (3, 1));
+            assert!(last_scan_at.is_some());
+            assert_eq!(rows.len(), 5);
+            assert!(rows.contains(&(
+                "same-id".to_owned(),
+                "changed.wav".to_owned(),
+                "available".to_owned(),
+                42,
+                2,
+                "original-date".to_owned(),
+            )));
+            assert!(rows.contains(&(
+                "rename-id".to_owned(),
+                "renamed-new.wav".to_owned(),
+                "available".to_owned(),
+                42,
+                2,
+                "original-date".to_owned(),
+            )));
+            assert!(rows.iter().any(|row| {
+                row.1 == "new.wav" && row.2 == "available" && row.3 == 0 && row.4 == 0
+            }));
+            assert!(rows.iter().any(|row| {
+                row.0 == "returned-id" && row.2 == "available" && row.3 == 42 && row.4 == 2
+            }));
+            assert!(rows
+                .iter()
+                .any(|row| row.0 == "missing-id" && row.2 == "unavailable"));
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM library_scan_metadata WHERE scan_id = ?",
+                )
+                .bind(scan_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count cleared metadata"),
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn ambiguous_rename_fingerprints_create_a_new_identity() {
+        tauri::async_runtime::block_on(async {
+            let (pool, service, directory, root_id) = fixture().await;
+            let root = directory.path().canonicalize().expect("canonical root");
+            write_wav(&root.join("candidate.wav"), 9);
+            let observed = observation(&root, "candidate.wav");
+            let fingerprint = quick_fingerprint(&root.join("candidate.wav"), observed.file_size)
+                .expect("fingerprint candidate");
+            let scan_id = completed_scan(&pool, root_id, std::slice::from_ref(&observed)).await;
+            insert_native_song(
+                &pool,
+                root_id,
+                "old-a",
+                "old-a.wav",
+                &observed,
+                &fingerprint,
+                "available",
+            )
+            .await;
+            insert_native_song(
+                &pool,
+                root_id,
+                "old-b",
+                "old-b.wav",
+                &observed,
+                &fingerprint,
+                "available",
+            )
+            .await;
+            prepare_snapshot(&service, scan_id, root_id, &root, 1).await;
+
+            let completed = service
+                .apply(scan_id)
+                .await
+                .expect("apply ambiguous snapshot");
+            let rows: Vec<(String, String)> =
+                sqlx::query_as("SELECT normalized_path, availability FROM songs WHERE root_id = ?")
+                    .bind(root_id)
+                    .fetch_all(&pool)
+                    .await
+                    .expect("read ambiguous results");
+
+            assert_eq!(completed.renamed, 0);
+            assert_eq!(completed.unavailable, 2);
+            assert_eq!(rows.len(), 3);
+            assert!(rows.contains(&("candidate.wav".to_owned(), "available".to_owned())));
+            assert!(rows.contains(&("old-a.wav".to_owned(), "unavailable".to_owned())));
+            assert!(rows.contains(&("old-b.wav".to_owned(), "unavailable".to_owned())));
+        });
+    }
+
+    #[test]
+    fn failure_after_upsert_rolls_back_the_entire_catalog_commit() {
+        tauri::async_runtime::block_on(async {
+            let (pool, service, directory, root_id) = fixture().await;
+            let root = directory.path().canonicalize().expect("canonical root");
+            write_wav(&root.join("changed.wav"), 1);
+            let observed = observation(&root, "changed.wav");
+            let scan_id = completed_scan(&pool, root_id, std::slice::from_ref(&observed)).await;
+            let mut previous = observed.clone();
+            previous.modified_at_ns -= 1;
+            insert_native_song(
+                &pool,
+                root_id,
+                "same-id",
+                "changed.wav",
+                &previous,
+                "old-fingerprint",
+                "available",
+            )
+            .await;
+            insert_native_song(
+                &pool,
+                root_id,
+                "missing-id",
+                "missing.wav",
+                &observed,
+                "missing-fingerprint",
+                "available",
+            )
+            .await;
+            prepare_snapshot(&service, scan_id, root_id, &root, 1).await;
+            service.mark_applying(scan_id).await.expect("mark applying");
+            let before: Vec<(String, String, String, String)> = sqlx::query_as(
+                "SELECT id, title, normalized_path, availability FROM songs ORDER BY id",
+            )
+            .fetch_all(&pool)
+            .await
+            .expect("read catalog before failure");
+            let revision_before: i64 =
+                sqlx::query_scalar("SELECT revision FROM catalog_meta WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read revision before failure");
+
+            let error = service
+                .apply_ready_with_hook(scan_id, || Err(LibraryError::database()))
+                .await
+                .expect_err("inject failure after upsert");
+            assert_eq!(error.code, "database_unavailable");
+
+            let after: Vec<(String, String, String, String)> = sqlx::query_as(
+                "SELECT id, title, normalized_path, availability FROM songs ORDER BY id",
+            )
+            .fetch_all(&pool)
+            .await
+            .expect("read catalog after rollback");
+            let revision_after: i64 =
+                sqlx::query_scalar("SELECT revision FROM catalog_meta WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read revision after rollback");
+            let root_scan_at: Option<String> =
+                sqlx::query_scalar("SELECT last_scan_at FROM library_roots WHERE id = ?")
+                    .bind(root_id)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read rolled back root state");
+            let scan_counts: (i64, i64) =
+                sqlx::query_as("SELECT updated, unavailable FROM library_scans WHERE id = ?")
+                    .bind(scan_id)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read rolled back scan state");
+
+            assert_eq!(after, before);
+            assert_eq!(revision_after, revision_before);
+            assert!(root_scan_at.is_none());
+            assert_eq!(scan_counts, (0, 0));
+            service
+                .finish_apply_failure(scan_id)
+                .await
+                .expect("settle failed apply");
+            assert_eq!(
+                service
+                    .get(scan_id)
+                    .await
+                    .expect("read settled failure")
+                    .status,
+                "failed"
+            );
+        });
+    }
+
+    #[test]
+    fn stale_snapshots_and_candidate_id_collisions_fail_closed() {
+        tauri::async_runtime::block_on(async {
+            let (pool, service, directory, root_id) = fixture().await;
+            let root = directory.path().canonicalize().expect("canonical root");
+            write_wav(&root.join("track.wav"), 1);
+            let observed = observation(&root, "track.wav");
+            let stale_scan = completed_scan(&pool, root_id, std::slice::from_ref(&observed)).await;
+            prepare_snapshot(&service, stale_scan, root_id, &root, 1).await;
+            completed_scan(&pool, root_id, std::slice::from_ref(&observed)).await;
+            assert_eq!(
+                service
+                    .apply(stale_scan)
+                    .await
+                    .expect_err("reject stale ready snapshot")
+                    .code,
+                "library_scan_not_ready"
+            );
+            assert_eq!(
+                service
+                    .get(stale_scan)
+                    .await
+                    .expect("read stale reconciliation")
+                    .status,
+                "failed"
+            );
+
+            let other_root: i64 = sqlx::query_scalar(
+                "INSERT INTO library_roots (path, canonical_path) VALUES (?, ?) RETURNING id",
+            )
+            .bind("/unrelated")
+            .bind("/unrelated")
+            .fetch_one(&pool)
+            .await
+            .expect("insert unrelated root");
+            let collision_scan =
+                completed_scan(&pool, root_id, std::slice::from_ref(&observed)).await;
+            prepare_snapshot(&service, collision_scan, root_id, &root, 1).await;
+            let candidate_id = hash_string(&root.join("track.wav").to_string_lossy());
+            insert_native_song(
+                &pool,
+                other_root,
+                &candidate_id,
+                "unrelated.wav",
+                &observed,
+                "unrelated-fingerprint",
+                "available",
+            )
+            .await;
+
+            assert_eq!(
+                service
+                    .apply(collision_scan)
+                    .await
+                    .expect_err("reject candidate identity collision")
+                    .code,
+                "library_identity_collision"
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM songs")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count collision-safe songs"),
+                1
             );
         });
     }

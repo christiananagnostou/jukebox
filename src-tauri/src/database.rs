@@ -10,6 +10,8 @@ pub(crate) const LIBRARY_DISCOVERY_SCHEMA: &str =
     include_str!("../migrations/0004_library_scan_discovery.sql");
 pub(crate) const LIBRARY_METADATA_SCHEMA: &str =
     include_str!("../migrations/0005_library_scan_metadata.sql");
+pub(crate) const LIBRARY_RECONCILIATION_SCHEMA: &str =
+    include_str!("../migrations/0006_library_scan_reconciliation.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub fn migrations() -> Vec<Migration> {
@@ -42,6 +44,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 5,
             description: "add bounded scan metadata staging",
             sql: LIBRARY_METADATA_SCHEMA,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "add atomic scan reconciliation support",
+            sql: LIBRARY_RECONCILIATION_SCHEMA,
             kind: MigrationKind::Up,
         },
     ]
@@ -237,7 +245,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                5
+                6
             );
             let scan_columns: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name IN (
@@ -276,6 +284,26 @@ mod tests {
                 .await
                 .expect("inspect metadata staging tables"),
                 2
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM pragma_table_info('library_scan_metadata')
+                     WHERE name = 'matched_song_id'",
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("inspect reconciliation match column"),
+                1
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'index' AND name = 'idx_songs_root_fingerprint'",
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("inspect reconciliation fingerprint index"),
+                1
             );
         });
     }
