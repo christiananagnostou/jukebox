@@ -22,8 +22,8 @@ export default component$(() => {
     confirmAction: '' as '' | 'missing' | 'clear',
     removed: 0,
     remoteAccessBusy: false,
-    tailscaleBusy: false,
-    tailscaleCopied: false,
+    tailscaleAction: '' as '' | 'refresh' | 'start' | 'stop',
+    tailscaleActionError: '',
     remoteAccess: {
       enabled: false,
       port: 45321,
@@ -34,6 +34,7 @@ export default component$(() => {
       connected: false,
       installed: false,
       serveConfigured: false,
+      serveManaged: false,
     } as TailscaleStatus,
   })
   const isBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
@@ -52,6 +53,7 @@ export default component$(() => {
         error: 'Tailscale status is unavailable',
         installed: false,
         serveConfigured: false,
+        serveManaged: false,
       })),
     ])
     state.remoteAccess = remoteAccess
@@ -110,26 +112,41 @@ export default component$(() => {
   })
 
   const refreshTailscale = $(async () => {
-    if (state.tailscaleBusy) return
-    state.tailscaleBusy = true
-    state.tailscaleCopied = false
+    if (state.tailscaleAction) return
+    state.tailscaleAction = 'refresh'
+    state.tailscaleActionError = ''
     try {
       state.tailscale = await invoke<TailscaleStatus>('get_tailscale_status')
     } catch (error) {
-      store.sync.status = 'error'
-      store.sync.message = getErrorMessage(error)
+      state.tailscaleActionError = getErrorMessage(error)
     } finally {
-      state.tailscaleBusy = false
+      state.tailscaleAction = ''
     }
   })
 
-  const copyTailscaleCommand = $(async () => {
+  const startTailscale = $(async () => {
+    if (state.tailscaleAction) return
+    state.tailscaleAction = 'start'
+    state.tailscaleActionError = ''
     try {
-      await navigator.clipboard.writeText('tailscale serve --bg 45321')
-      state.tailscaleCopied = true
+      state.tailscale = await invoke<TailscaleStatus>('start_tailscale_serve')
     } catch (error) {
-      store.sync.status = 'error'
-      store.sync.message = getErrorMessage(error)
+      state.tailscaleActionError = getErrorMessage(error)
+    } finally {
+      state.tailscaleAction = ''
+    }
+  })
+
+  const stopTailscale = $(async () => {
+    if (state.tailscaleAction) return
+    state.tailscaleAction = 'stop'
+    state.tailscaleActionError = ''
+    try {
+      state.tailscale = await invoke<TailscaleStatus>('stop_tailscale_serve')
+    } catch (error) {
+      state.tailscaleActionError = getErrorMessage(error)
+    } finally {
+      state.tailscaleAction = ''
     }
   })
 
@@ -255,36 +272,84 @@ export default component$(() => {
                 {state.remoteAccess.running ? `Local server ready at ${state.remoteAccess.url}` : 'Starting server…'}
               </p>
               {state.remoteAccess.error && <p class="text-red-300">{state.remoteAccess.error}</p>}
-              <div class="border border-gray-700 bg-gray-900 p-3">
-                <p class="font-medium text-gray-200">Private iPhone access</p>
+              <div class="border border-gray-700 bg-gray-900 p-4">
+                <div class="flex flex-wrap items-center gap-2 text-gray-300" aria-label="Private listening route">
+                  <span
+                    class={`h-2 w-2 rounded-full ${state.remoteAccess.running ? 'bg-emerald-400' : 'bg-gray-600'}`}
+                    aria-hidden="true"
+                  />
+                  <span>Mac</span>
+                  <span aria-hidden="true">→</span>
+                  <span
+                    class={`h-2 w-2 rounded-full ${state.tailscale.serveConfigured ? 'bg-emerald-400' : 'bg-gray-600'}`}
+                    aria-hidden="true"
+                  />
+                  <span>Private HTTPS</span>
+                  <span aria-hidden="true">→</span>
+                  <span>iPhone</span>
+                </div>
                 {!state.tailscale.installed ? (
-                  <p class="mt-1">
+                  <p class="mt-3">
                     Install Tailscale on this Mac and your iPhone, then sign both into the same tailnet.
                   </p>
                 ) : state.tailscale.serveConfigured ? (
-                  <p class="mt-1 text-emerald-300">
-                    Ready{state.tailscale.url ? ` at ${state.tailscale.url}` : ' through Tailscale Serve'}
-                  </p>
+                  <div class="mt-3 flex flex-col gap-2">
+                    <p class="font-medium text-emerald-300">Private access is running</p>
+                    {state.tailscale.url && (
+                      <code class="overflow-x-auto border border-gray-700 bg-black px-2 py-2 text-gray-200">
+                        {state.tailscale.url}
+                      </code>
+                    )}
+                    <p>
+                      Open this address in Safari, then use Share → Add to Home Screen. It installs separately from
+                      Coach.
+                    </p>
+                    {state.tailscale.serveManaged ? (
+                      <button class={BUTTON_CLASS} disabled={Boolean(state.tailscaleAction)} onClick$={stopTailscale}>
+                        {state.tailscaleAction === 'stop' ? 'Stopping…' : 'Stop private access'}
+                      </button>
+                    ) : (
+                      <p class="text-amber-300">
+                        This endpoint is shared with another app, so Jukebox will not remove it automatically.
+                      </p>
+                    )}
+                  </div>
                 ) : state.tailscale.connected ? (
-                  <div class="mt-2 flex flex-col gap-2">
-                    <p>Tailscale is connected. Run this once in Terminal to add private HTTPS:</p>
-                    <code class="overflow-x-auto border border-gray-700 bg-black px-2 py-2 text-gray-200">
-                      tailscale serve --bg 45321
-                    </code>
-                    <button class={BUTTON_CLASS} onClick$={copyTailscaleCommand}>
-                      {state.tailscaleCopied ? 'Copied' : 'Copy command'}
-                    </button>
+                  <div class="mt-3 flex flex-col gap-2">
+                    {state.tailscale.error ? (
+                      <p class="text-red-300">{state.tailscale.error}</p>
+                    ) : state.tailscale.recommendedHttpsPort ? (
+                      <>
+                        <p>
+                          Jukebox will use HTTPS port {state.tailscale.recommendedHttpsPort}. Existing Tailscale apps
+                          keep their current ports and routes.
+                        </p>
+                        <button
+                          class={BUTTON_CLASS}
+                          disabled={Boolean(state.tailscaleAction) || !state.remoteAccess.running}
+                          onClick$={startTailscale}
+                        >
+                          {state.tailscaleAction === 'start' ? 'Starting…' : 'Start private access'}
+                        </button>
+                      </>
+                    ) : (
+                      <p class="text-amber-300">
+                        Jukebox could not find a free private HTTPS port. Stop an unused Tailscale Serve endpoint, then
+                        check again.
+                      </p>
+                    )}
                   </div>
                 ) : (
-                  <div class="mt-1">
+                  <div class="mt-3">
                     <p>Open Tailscale and sign in before configuring private HTTPS.</p>
                     {state.tailscale.backendState && <p class="mt-1">State: {state.tailscale.backendState}</p>}
                     {state.tailscale.error && <p class="mt-1 text-red-300">{state.tailscale.error}</p>}
                   </div>
                 )}
+                {state.tailscaleActionError && <p class="mt-3 text-red-300">{state.tailscaleActionError}</p>}
                 <div class="mt-3 flex flex-wrap items-center gap-3">
-                  <button class={BUTTON_CLASS} disabled={state.tailscaleBusy} onClick$={refreshTailscale}>
-                    {state.tailscaleBusy ? 'Checking…' : 'Check again'}
+                  <button class={BUTTON_CLASS} disabled={Boolean(state.tailscaleAction)} onClick$={refreshTailscale}>
+                    {state.tailscaleAction === 'refresh' ? 'Checking…' : 'Check again'}
                   </button>
                   <span>Uses Tailscale Serve only. Public Funnel is not supported.</span>
                 </div>

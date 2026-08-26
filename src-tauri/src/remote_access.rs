@@ -25,6 +25,10 @@ use tokio_util::io::ReaderStream;
 const INDEX_HTML: &str = include_str!("remote_access/index.html");
 const APP_CSS: &str = include_str!("remote_access/app.css");
 const APP_JS: &str = include_str!("remote_access/app.js");
+const MANIFEST: &str = include_str!("remote_access/manifest.webmanifest");
+const SERVICE_WORKER: &str = include_str!("remote_access/sw.js");
+const ICON_192: &[u8] = include_bytes!("remote_access/icon-192.png");
+const ICON_512: &[u8] = include_bytes!("../icons/icon.png");
 const REMOTE_ACCESS_PORT: u16 = 45_321;
 const MAX_QUERY_LIMIT: u32 = 100;
 const MAX_QUERY_LENGTH: usize = 200;
@@ -222,6 +226,10 @@ fn router(state: HttpState) -> Router {
         .route("/", get(index))
         .route("/app.css", get(stylesheet))
         .route("/app.js", get(script))
+        .route("/manifest.webmanifest", get(manifest))
+        .route("/sw.js", get(service_worker))
+        .route("/icons/icon-192.png", get(icon_192))
+        .route("/icons/icon-512.png", get(icon_512))
         .route("/api/tracks", get(list_tracks))
         .route("/api/tracks/{id}/stream", get(stream_track))
         .with_state(state)
@@ -232,7 +240,7 @@ async fn index() -> impl IntoResponse {
     response.headers_mut().insert(
         "content-security-policy",
         HeaderValue::from_static(
-            "default-src 'none'; style-src 'self'; script-src 'self'; media-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; media-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         ),
     );
     response.headers_mut().insert(
@@ -253,6 +261,30 @@ async fn script() -> impl IntoResponse {
     static_asset(APP_JS, "text/javascript; charset=utf-8")
 }
 
+async fn manifest() -> impl IntoResponse {
+    static_asset(MANIFEST, "application/manifest+json; charset=utf-8")
+}
+
+async fn service_worker() -> impl IntoResponse {
+    let mut response = static_asset(SERVICE_WORKER, "text/javascript; charset=utf-8");
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response.headers_mut().insert(
+        HeaderName::from_static("service-worker-allowed"),
+        HeaderValue::from_static("/"),
+    );
+    response
+}
+
+async fn icon_192() -> impl IntoResponse {
+    binary_asset(ICON_192, "image/png")
+}
+
+async fn icon_512() -> impl IntoResponse {
+    binary_asset(ICON_512, "image/png")
+}
+
 fn static_asset(content: &'static str, content_type: &'static str) -> Response {
     (
         [
@@ -263,6 +295,15 @@ fn static_asset(content: &'static str, content_type: &'static str) -> Response {
         content,
     )
         .into_response()
+}
+
+fn binary_asset(content: &'static [u8], content_type: &'static str) -> Response {
+    Response::builder()
+        .header(CONTENT_TYPE, content_type)
+        .header(CACHE_CONTROL, "private, max-age=86400")
+        .header("x-content-type-options", "nosniff")
+        .body(Body::from(content))
+        .expect("static response headers are valid")
 }
 
 async fn list_tracks(
@@ -580,6 +621,30 @@ mod tests {
             content_type(FilePath::new("song.bin")),
             "application/octet-stream"
         );
+    }
+
+    #[test]
+    fn pwa_manifest_is_scoped_to_its_private_origin() {
+        let manifest: serde_json::Value = serde_json::from_str(MANIFEST).expect("valid manifest");
+
+        assert_eq!(manifest["id"], "/");
+        assert_eq!(manifest["start_url"], "/");
+        assert_eq!(manifest["scope"], "/");
+        assert_eq!(manifest["display"], "standalone");
+        assert_eq!(manifest["icons"].as_array().map(Vec::len), Some(2));
+        assert_eq!(manifest["icons"][0]["sizes"], "192x192");
+        assert_eq!(manifest["icons"][1]["sizes"], "512x512");
+        assert_eq!(png_dimensions(ICON_192), (192, 192));
+        assert_eq!(png_dimensions(ICON_512), (512, 512));
+        assert!(!SERVICE_WORKER.contains("/api/"));
+    }
+
+    fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+        (
+            u32::from_be_bytes(bytes[16..20].try_into().expect("PNG width")),
+            u32::from_be_bytes(bytes[20..24].try_into().expect("PNG height")),
+        )
     }
 
     #[test]

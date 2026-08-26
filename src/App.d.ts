@@ -80,8 +80,11 @@ export interface TailscaleStatus {
   connected: boolean
   dnsName?: string
   error?: string
+  httpsPort?: number
   installed: boolean
+  recommendedHttpsPort?: number
   serveConfigured: boolean
+  serveManaged: boolean
   url?: string
 }
 

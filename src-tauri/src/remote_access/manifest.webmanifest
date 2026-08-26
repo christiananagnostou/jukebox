@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Jukebox",
+  "short_name": "Jukebox",
+  "description": "Play the private music library on your Mac.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "prefer_related_applications": false,
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

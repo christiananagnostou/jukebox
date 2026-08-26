@@ -13,9 +13,10 @@ Original files are served with single HTTP byte ranges when Safari supports thei
 ## Implementation progress
 
 - The loopback server, mobile shell, bounded catalog search, direct byte-range streaming, path containment, and opt-in lifecycle are implemented.
-- Tailscale installation, connection state, DNS name, and the Jukebox Serve target are detected with bounded CLI calls.
-- Settings provides the exact private Serve command and refreshable readiness feedback without changing network configuration automatically.
-- Executing or removing the persistent Serve rule remains an explicit owner action; public Funnel is never offered.
+- Tailscale installation, connection state, DNS name, occupied HTTPS ports, and the Jukebox Serve target are detected with bounded CLI calls.
+- Settings can create and remove a dedicated Jukebox Serve endpoint after an explicit click. It selects an unused HTTPS port and refuses unsafe removal when an endpoint is shared with another app.
+- The mobile shell includes an origin-scoped web manifest, application icons, iPhone standalone metadata, and a shell-only service worker so it can be installed separately from other private apps.
+- Public Funnel is never offered or configured.
 
 ## Security boundaries
 
