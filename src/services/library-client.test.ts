@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }))
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
 import type { LibraryCatalogState, Song } from '~/App'
 import {
@@ -7,6 +11,9 @@ import {
   LibraryPager,
   loadLegacyCatalog,
   MAX_RETAINED_LIBRARY_PAGES,
+  queryAlbums,
+  queryArtists,
+  queryTracks,
   type TrackPageFetcher,
 } from './library-client'
 
@@ -65,6 +72,37 @@ describe('catalogQuery', () => {
     expect(catalogQuery('jazz', 'default')).toEqual({ direction: 'asc', q: 'jazz', sort: 'default' })
     expect(catalogQuery('', 'hertz-desc')).toEqual({ direction: 'desc', q: '', sort: 'sample_rate' })
     expect(catalogQuery('', 'date-added-asc')).toEqual({ direction: 'asc', q: '', sort: 'date_added' })
+  })
+})
+
+describe('native library commands', () => {
+  beforeEach(() => invokeMock.mockReset())
+
+  it('sends exact track filters through the shared query boundary', async () => {
+    invokeMock.mockResolvedValue({ items: [], revision: 3, total: 0 })
+    const query = {
+      album: 'Homogenic',
+      artist: 'Björk',
+      direction: 'asc' as const,
+      limit: 50,
+      q: '',
+      sort: 'track' as const,
+    }
+
+    await queryTracks(query)
+
+    expect(invokeMock).toHaveBeenCalledWith('query_tracks', { query })
+  })
+
+  it('uses bounded aggregate query payloads for artist and album pages', async () => {
+    invokeMock.mockResolvedValue({ items: [], revision: 3, total: 0 })
+    const query = { artist: 'Björk', direction: 'desc' as const, limit: 50, offset: 100, q: 'ambient' }
+
+    await queryArtists(query)
+    await queryAlbums(query)
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'query_artists', { query })
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'query_albums', { query })
   })
 })
 

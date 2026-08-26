@@ -1,3 +1,4 @@
+mod aggregates;
 #[cfg(test)]
 mod performance;
 mod query;
@@ -8,6 +9,7 @@ mod roots;
 mod scanner;
 mod watcher;
 
+pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, ArtistPage};
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
 pub use refresh::{
@@ -69,6 +71,16 @@ impl LibraryState {
     pub async fn query_tracks(&self, query: TrackQuery) -> Result<TrackPage, LibraryError> {
         self.ensure_initialized().await?;
         self.repository.query_tracks(query).await
+    }
+
+    pub async fn query_artists(&self, query: AggregateQuery) -> Result<ArtistPage, LibraryError> {
+        self.ensure_initialized().await?;
+        aggregates::load_artist_page(&self.repository.pool(), query).await
+    }
+
+    pub async fn query_albums(&self, query: AggregateQuery) -> Result<AlbumPage, LibraryError> {
+        self.ensure_initialized().await?;
+        aggregates::load_album_page(&self.repository.pool(), query).await
     }
 
     pub async fn add_library_root(&self, path: String) -> Result<LibraryRoot, LibraryError> {

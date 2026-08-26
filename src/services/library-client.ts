@@ -10,11 +10,44 @@ type NativeTrackSort =
   'default' | 'album' | 'artist' | 'date' | 'date_added' | 'favorite' | 'sample_rate' | 'title' | 'track'
 
 export interface TrackQuery {
+  album?: string
+  artist?: string
   cursor?: string
   direction: 'asc' | 'desc'
   limit: number
   q: string
   sort: NativeTrackSort
+}
+
+export interface AggregateQuery {
+  artist?: string
+  direction: 'asc' | 'desc'
+  limit: number
+  offset: number
+  q: string
+}
+
+export interface ArtistSummary {
+  albumCount: number
+  name: string
+  trackCount: number
+  value: string
+}
+
+export interface AlbumSummary {
+  artist: string
+  artistValue: string
+  date: string
+  name: string
+  trackCount: number
+  value: string
+  visualsPath: string
+}
+
+export interface AggregatePage<Item> {
+  items: Item[]
+  revision: number
+  total: number
 }
 
 interface NativeTrackSummary {
@@ -66,6 +99,14 @@ function toSong(track: NativeTrackSummary): Song {
 export async function queryTracks(query: TrackQuery): Promise<TrackPage> {
   const page = await invoke<NativeTrackPage>('query_tracks', { query })
   return { ...page, items: page.items.map(toSong) }
+}
+
+export function queryArtists(query: AggregateQuery): Promise<AggregatePage<ArtistSummary>> {
+  return invoke('query_artists', { query })
+}
+
+export function queryAlbums(query: AggregateQuery): Promise<AggregatePage<AlbumSummary>> {
+  return invoke('query_albums', { query })
 }
 
 export function catalogQuery(searchTerm: string, sorting: Store['sorting']): Omit<TrackQuery, 'cursor' | 'limit'> {

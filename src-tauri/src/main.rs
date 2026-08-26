@@ -5,8 +5,8 @@ use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
     cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
     get_library_scan, list_library_refreshes, list_library_roots, prepare_library_scan,
-    query_tracks, set_library_root_enabled, start_library_refresh, start_library_scan,
-    LibraryState,
+    query_albums, query_artists, query_tracks, set_library_root_enabled, start_library_refresh,
+    start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
 use crate::remote_access::{
@@ -141,6 +141,8 @@ fn main() {
             delete_songs,
             clear_library_songs,
             query_tracks,
+            query_artists,
+            query_albums,
             add_library_root,
             list_library_roots,
             set_library_root_enabled,

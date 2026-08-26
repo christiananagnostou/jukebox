@@ -38,6 +38,8 @@ fn default_page_size() -> u32 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct TrackQuery {
+    pub album: Option<String>,
+    pub artist: Option<String>,
     pub cursor: Option<String>,
     pub direction: SortDirection,
     pub limit: u32,
@@ -48,6 +50,8 @@ pub struct TrackQuery {
 impl Default for TrackQuery {
     fn default() -> Self {
         Self {
+            album: None,
+            artist: None,
             cursor: None,
             direction: SortDirection::default(),
             limit: default_page_size(),
@@ -59,6 +63,8 @@ impl Default for TrackQuery {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct NormalizedTrackQuery {
+    pub album: Option<String>,
+    pub artist: Option<String>,
     pub cursor: Option<String>,
     pub direction: SortDirection,
     pub fingerprint: String,
@@ -80,7 +86,17 @@ impl TrackQuery {
             return Err(LibraryError::invalid_query("Track search is too long."));
         }
         let limit = self.limit.min(MAX_PAGE_SIZE);
+        for filter in [self.album.as_deref(), self.artist.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            if filter.chars().count() > 1_024 {
+                return Err(LibraryError::invalid_query("Track filter is too long."));
+            }
+        }
         let fingerprint_source = serde_json::json!({
+            "album": self.album,
+            "artist": self.artist,
             "direction": self.direction,
             "limit": limit,
             "q": q.to_lowercase(),
@@ -89,6 +105,8 @@ impl TrackQuery {
         let fingerprint = format!("{:x}", md5::compute(fingerprint_source.to_string()));
 
         Ok(NormalizedTrackQuery {
+            album: self.album.clone(),
+            artist: self.artist.clone(),
             cursor: self.cursor.clone(),
             direction: self.direction,
             fingerprint,
@@ -334,6 +352,8 @@ mod tests {
     #[test]
     fn query_contract_serializes_with_stable_camel_case_fields() {
         let json = serde_json::to_value(TrackQuery {
+            album: Some("Homogenic".to_owned()),
+            artist: Some("Björk".to_owned()),
             direction: SortDirection::Desc,
             limit: 25,
             q: "Björk".to_owned(),
@@ -343,6 +363,8 @@ mod tests {
         .expect("serialize query");
 
         assert_eq!(json["direction"], "desc");
+        assert_eq!(json["album"], "Homogenic");
+        assert_eq!(json["artist"], "Björk");
         assert_eq!(json["sort"], "date_added");
         assert_eq!(json["limit"], 25);
         assert_eq!(json["q"], "Björk");

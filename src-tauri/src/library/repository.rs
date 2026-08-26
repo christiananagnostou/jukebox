@@ -140,7 +140,19 @@ impl LibraryRepository {
         let search = fts_expression(&query.q);
 
         let mut count_query = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM songs");
-        push_search(&mut count_query, search.as_deref(), false);
+        let mut has_filter = push_search(&mut count_query, search.as_deref(), false);
+        has_filter = push_exact_filter(
+            &mut count_query,
+            "artist",
+            query.artist.as_deref(),
+            has_filter,
+        );
+        push_exact_filter(
+            &mut count_query,
+            "album",
+            query.album.as_deref(),
+            has_filter,
+        );
         let total: i64 = count_query
             .build_query_scalar()
             .fetch_one(&mut *transaction)
@@ -151,10 +163,18 @@ impl LibraryRepository {
             "SELECT id, path, file, title, album, artist, date, trackNumber, codec, duration, \
              sampleRate, side, startTime, favorRating, dateAdded, visualsPath FROM songs",
         );
-        let has_search = push_search(&mut page_query, search.as_deref(), false);
+        let mut has_filter = push_search(&mut page_query, search.as_deref(), false);
+        has_filter = push_exact_filter(
+            &mut page_query,
+            "artist",
+            query.artist.as_deref(),
+            has_filter,
+        );
+        has_filter =
+            push_exact_filter(&mut page_query, "album", query.album.as_deref(), has_filter);
         let terms = sort_terms(query.sort);
         if let Some((values, last_song_id)) = cursor.as_ref() {
-            page_query.push(if has_search { " AND (" } else { " WHERE (" });
+            page_query.push(if has_filter { " AND (" } else { " WHERE (" });
             push_keyset_condition(
                 &mut page_query,
                 terms,
@@ -220,7 +240,7 @@ impl LibraryRepository {
     }
 }
 
-fn push_search(
+pub(super) fn push_search(
     builder: &mut QueryBuilder<'_, Sqlite>,
     search: Option<&str>,
     has_where: bool,
@@ -237,7 +257,7 @@ fn push_search(
     }
 }
 
-fn fts_expression(query: &str) -> Option<String> {
+pub(super) fn fts_expression(query: &str) -> Option<String> {
     let tokens = query
         .split_whitespace()
         .map(|token| token.replace('"', "\"\""))
@@ -245,6 +265,24 @@ fn fts_expression(query: &str) -> Option<String> {
         .map(|token| format!("\"{token}\""))
         .collect::<Vec<_>>();
     (!tokens.is_empty()).then(|| tokens.join(" AND "))
+}
+
+pub(super) fn push_exact_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    column: &'static str,
+    value: Option<&str>,
+    has_where: bool,
+) -> bool {
+    if let Some(value) = value {
+        builder
+            .push(if has_where { " AND " } else { " WHERE " })
+            .push(column)
+            .push(" = ")
+            .push_bind(value.to_owned());
+        true
+    } else {
+        has_where
+    }
 }
 
 fn sort_terms(sort: TrackSort) -> &'static [SortTerm] {
@@ -477,6 +515,38 @@ mod tests {
             assert_eq!(page.items[0].artist, "Björk");
             assert_eq!(page.total, 1);
             assert_eq!(page.next_cursor, None);
+        });
+    }
+
+    #[test]
+    fn exact_artist_and_album_filters_bound_drill_down_queries() {
+        run_async(async {
+            let repository = repository().await;
+            let artist = repository
+                .query_tracks(TrackQuery {
+                    artist: Some("Björk".to_owned()),
+                    limit: 100,
+                    ..TrackQuery::default()
+                })
+                .await
+                .expect("filter artist tracks");
+            assert_eq!(artist.total, 1);
+            assert_eq!(artist.items[0].artist, "Björk");
+
+            let album = repository
+                .query_tracks(TrackQuery {
+                    album: Some("Album".to_owned()),
+                    artist: Some("Artist".to_owned()),
+                    limit: 100,
+                    ..TrackQuery::default()
+                })
+                .await
+                .expect("filter album tracks");
+            assert_eq!(album.total, 22);
+            assert!(album
+                .items
+                .iter()
+                .all(|track| track.artist == "Artist" && track.album == "Album"));
         });
     }
 
