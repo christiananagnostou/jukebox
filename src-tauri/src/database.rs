@@ -2,7 +2,7 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const LIBRARY_DB_URL: &str = "sqlite:library.db";
 
-const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
+pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
 
 pub fn migrations() -> Vec<Migration> {
     vec![Migration {

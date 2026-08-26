@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use crate::catalog_mutations::{clear_library_songs, delete_songs, upsert_songs};
 use crate::metadata::Metadata;
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
@@ -14,6 +15,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::RunEvent;
 use tauri::{Manager, WindowEvent};
 
+mod catalog_mutations;
 mod database;
 mod metadata;
 mod remote_access;
@@ -117,6 +119,9 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            upsert_songs,
+            delete_songs,
+            clear_library_songs,
             get_metadata,
             get_settings,
             set_settings,
