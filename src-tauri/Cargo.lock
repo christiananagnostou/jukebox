@@ -69,6 +69,7 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "md5",
  "serde",
  "serde_json",
