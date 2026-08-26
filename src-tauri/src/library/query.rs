@@ -128,6 +128,20 @@ impl LibraryError {
         }
     }
 
+    pub(crate) fn invalid_root(message: &str) -> Self {
+        Self {
+            code: "invalid_library_root".to_owned(),
+            message: message.to_owned(),
+        }
+    }
+
+    pub(crate) fn root_not_found() -> Self {
+        Self {
+            code: "library_root_not_found".to_owned(),
+            message: "That library folder is no longer registered.".to_owned(),
+        }
+    }
+
     pub(crate) fn stale_cursor() -> Self {
         Self {
             code: "stale_cursor".to_owned(),

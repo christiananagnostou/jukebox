@@ -1,8 +1,10 @@
 mod query;
 mod repository;
+mod roots;
 
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
+pub use roots::LibraryRoot;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -46,11 +48,40 @@ impl LibraryState {
     }
 
     pub async fn query_tracks(&self, query: TrackQuery) -> Result<TrackPage, LibraryError> {
+        self.ensure_initialized().await?;
+        self.repository.query_tracks(query).await
+    }
+
+    pub async fn add_library_root(&self, path: String) -> Result<LibraryRoot, LibraryError> {
+        self.ensure_initialized().await?;
+        let root = tauri::async_runtime::spawn_blocking(move || {
+            let path = std::path::PathBuf::from(path);
+            roots::canonicalize_library_root(&path)
+        })
+        .await
+        .map_err(|_| LibraryError::invalid_root("The selected library folder is unavailable."))??;
+        roots::add_library_root(&self.repository.pool(), root).await
+    }
+
+    pub async fn list_library_roots(&self) -> Result<Vec<LibraryRoot>, LibraryError> {
+        self.ensure_initialized().await?;
+        roots::list_library_roots(&self.repository.pool()).await
+    }
+
+    pub async fn set_library_root_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<LibraryRoot, LibraryError> {
+        self.ensure_initialized().await?;
+        roots::set_library_root_enabled(&self.repository.pool(), id, enabled).await
+    }
+
+    async fn ensure_initialized(&self) -> Result<(), LibraryError> {
         self.initialized
             .get_or_init(|| self.repository.initialize_schema())
             .await
-            .clone()?;
-        self.repository.query_tracks(query).await
+            .clone()
     }
 }
 
@@ -69,6 +100,30 @@ pub async fn query_tracks(
     query: TrackQuery,
 ) -> Result<TrackPage, LibraryError> {
     library.query_tracks(query).await
+}
+
+#[tauri::command]
+pub async fn add_library_root(
+    library: tauri::State<'_, LibraryState>,
+    path: String,
+) -> Result<LibraryRoot, LibraryError> {
+    library.add_library_root(path).await
+}
+
+#[tauri::command]
+pub async fn list_library_roots(
+    library: tauri::State<'_, LibraryState>,
+) -> Result<Vec<LibraryRoot>, LibraryError> {
+    library.list_library_roots().await
+}
+
+#[tauri::command]
+pub async fn set_library_root_enabled(
+    library: tauri::State<'_, LibraryState>,
+    id: i64,
+    enabled: bool,
+) -> Result<LibraryRoot, LibraryError> {
+    library.set_library_root_enabled(id, enabled).await
 }
 
 #[cfg(test)]
