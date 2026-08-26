@@ -6,8 +6,11 @@ use std::sync::RwLock;
 use tauri::command;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Manager, RunEvent, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
+use tauri::{Manager, WindowEvent};
 
+mod database;
 mod metadata;
 mod settings;
 
@@ -101,12 +104,16 @@ fn main() {
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations(database::LIBRARY_DB_URL, database::migrations())
+                .build(),
+        )
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
+    #[cfg(target_os = "macos")]
     app.run(|app_handle, event| {
-        #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = event {
             with_main_window(app_handle, |window| {
                 let _ = window.show();
@@ -114,4 +121,7 @@ fn main() {
             });
         }
     });
+
+    #[cfg(not(target_os = "macos"))]
+    app.run(|_, _| {});
 }

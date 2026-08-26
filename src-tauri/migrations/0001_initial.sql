@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS songs (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL,
+  file TEXT NOT NULL,
+  title TEXT NOT NULL,
+  album TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  genre TEXT NOT NULL,
+  bpm INTEGER NOT NULL,
+  compilation INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  encoder TEXT NOT NULL,
+  trackTotal INTEGER NOT NULL,
+  trackNumber INTEGER NOT NULL,
+  codec TEXT NOT NULL,
+  duration TEXT NOT NULL,
+  sampleRate TEXT NOT NULL,
+  side INTEGER NOT NULL,
+  startTime INTEGER NOT NULL,
+  favorRating INTEGER NOT NULL CHECK (favorRating IN (0, 1, 2)),
+  dateAdded TEXT NOT NULL,
+  visualsPath TEXT NOT NULL
+);

@@ -71,6 +71,7 @@ dependencies = [
  "md5",
  "serde",
  "serde_json",
+ "sqlx",
  "symphonia",
  "tauri",
  "tauri-build",
