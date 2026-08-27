@@ -30,6 +30,9 @@ export default component$(() => {
   const storeActions = useContext(StoreActionsContext)
   const state = useStore({
     confirmAction: '' as '' | 'clear',
+    diagnosticsAction: '' as '' | 'copy' | 'open',
+    diagnosticsError: '',
+    diagnosticsMessage: '',
     libraryError: '',
     refreshes: {} as Record<string, LibraryRefresh>,
     roots: [] as LibraryRoot[],
@@ -236,6 +239,36 @@ export default component$(() => {
       state.tailscaleActionError = getErrorMessage(error)
     } finally {
       state.tailscaleAction = ''
+    }
+  })
+
+  const copyDiagnostics = $(async () => {
+    if (state.diagnosticsAction) return
+    state.diagnosticsAction = 'copy'
+    state.diagnosticsError = ''
+    state.diagnosticsMessage = ''
+    try {
+      await invoke('copy_diagnostics_summary')
+      state.diagnosticsMessage = 'Diagnostics summary copied.'
+    } catch (error) {
+      state.diagnosticsError = getErrorMessage(error)
+    } finally {
+      state.diagnosticsAction = ''
+    }
+  })
+
+  const openDiagnostics = $(async () => {
+    if (state.diagnosticsAction) return
+    state.diagnosticsAction = 'open'
+    state.diagnosticsError = ''
+    state.diagnosticsMessage = ''
+    try {
+      await invoke('open_diagnostics_directory')
+      state.diagnosticsMessage = 'Diagnostics folder opened.'
+    } catch (error) {
+      state.diagnosticsError = getErrorMessage(error)
+    } finally {
+      state.diagnosticsAction = ''
     }
   })
 
@@ -495,6 +528,26 @@ export default component$(() => {
           ) : (
             <p class="text-xs text-gray-500">No music folders registered.</p>
           )}
+        </div>
+
+        <div class={SECTION_CLASS}>
+          <div>
+            <h2 class="text-sm font-medium">Diagnostics</h2>
+            <p class="mt-1 text-xs text-gray-400">
+              Jukebox keeps bounded local logs with categorized errors. Music paths, filenames, device names, and
+              private network addresses are excluded.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class={BUTTON_CLASS} disabled={Boolean(state.diagnosticsAction)} onClick$={copyDiagnostics}>
+              {state.diagnosticsAction === 'copy' ? 'Copying…' : 'Copy diagnostics summary'}
+            </button>
+            <button class={BUTTON_CLASS} disabled={Boolean(state.diagnosticsAction)} onClick$={openDiagnostics}>
+              {state.diagnosticsAction === 'open' ? 'Opening…' : 'Open diagnostics folder'}
+            </button>
+          </div>
+          {state.diagnosticsMessage && <p class="text-xs text-emerald-300">{state.diagnosticsMessage}</p>}
+          {state.diagnosticsError && <p class="text-xs text-red-300">{state.diagnosticsError}</p>}
         </div>
 
         <div class={SECTION_CLASS}>

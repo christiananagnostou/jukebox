@@ -3,7 +3,10 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
+use std::time::Instant;
+use tauri::{Emitter, Manager};
+
+use crate::diagnostics::DiagnosticsState;
 
 const REFRESH_PROGRESS_EVENT: &str = "library-refresh-progress";
 
@@ -78,12 +81,57 @@ impl LibraryState {
             );
 
         let library = self.clone();
+        let diagnostics = app
+            .try_state::<DiagnosticsState>()
+            .map(|state| state.inner().clone());
+        if let Some(diagnostics) = &diagnostics {
+            diagnostics.record_info(
+                "library_refresh",
+                "started",
+                &format!("scan_id={scan_id} root_id={root_id}"),
+            );
+        }
         tauri::async_runtime::spawn(async move {
+            let started = Instant::now();
             let result = library
                 .complete_refresh(task, cancelled, Some(app.clone()))
                 .await;
-            if let Ok(refresh) = result {
-                let _ = app.emit(REFRESH_PROGRESS_EVENT, refresh);
+            match &result {
+                Ok(refresh) => {
+                    let detail = format!(
+                        "scan_id={scan_id} root_id={root_id} status={} discovered={} updated={} unavailable={} failed={} elapsed_ms={}",
+                        refresh.status,
+                        refresh.scan.discovered,
+                        refresh.scan.updated,
+                        refresh.scan.unavailable,
+                        refresh.scan.failed,
+                        started.elapsed().as_millis()
+                    );
+                    if let Some(diagnostics) = &diagnostics {
+                        if refresh.scan.failed > 0 || refresh.scan.error_summary.is_some() {
+                            diagnostics.record_error(
+                                "library_refresh",
+                                "completed_with_errors",
+                                &detail,
+                            );
+                        } else {
+                            diagnostics.record_info("library_refresh", "completed", &detail);
+                        }
+                    }
+                    let _ = app.emit(REFRESH_PROGRESS_EVENT, refresh);
+                }
+                Err(error) => {
+                    if let Some(diagnostics) = &diagnostics {
+                        diagnostics.record_error(
+                            "library_refresh",
+                            &error.code,
+                            &format!(
+                                "scan_id={scan_id} root_id={root_id} elapsed_ms={}",
+                                started.elapsed().as_millis()
+                            ),
+                        );
+                    }
+                }
             }
             if let Ok(mut active) = library.active_refreshes.0.lock() {
                 active.remove(&scan_id);

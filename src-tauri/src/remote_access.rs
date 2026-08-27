@@ -1,3 +1,4 @@
+use crate::diagnostics::DiagnosticsState;
 use crate::library::{
     AggregateQuery as LibraryAggregateQuery, AlbumPage as LibraryAlbumPage,
     ArtistPage as LibraryArtistPage, LibraryError, LibraryState, TrackQuery as LibraryTrackQuery,
@@ -278,26 +279,36 @@ impl RemoteAccessState {
             return Ok(());
         }
 
+        let diagnostics = app
+            .try_state::<DiagnosticsState>()
+            .map(|state| state.inner().clone());
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, REMOTE_ACCESS_PORT));
-        let listener = tokio::net::TcpListener::bind(address)
-            .await
-            .map_err(|error| {
+        let listener = match tokio::net::TcpListener::bind(address).await {
+            Ok(listener) => listener,
+            Err(error) => {
+                if let Some(diagnostics) = &diagnostics {
+                    diagnostics.record_error("remote_access", "bind_failed", "port=45321");
+                }
                 let message = format!("Could not bind {address}: {error}");
                 inner.last_error = Some(message.clone());
-                message
-            })?;
+                return Err(message);
+            }
+        };
         let state = HttpState::new(app)?;
         let router = router(state);
         let (shutdown, receiver) = oneshot::channel();
 
+        let task_diagnostics = diagnostics.clone();
         let task = tokio::spawn(async move {
             let server = axum::serve(listener, router)
                 .with_graceful_shutdown(async move {
                     let _ = receiver.await;
                 })
                 .await;
-            if let Err(error) = server {
-                eprintln!("remote access server stopped: {error}");
+            if server.is_err() {
+                if let Some(diagnostics) = task_diagnostics {
+                    diagnostics.record_error("remote_access", "server_stopped", "port=45321");
+                }
             }
         });
 
@@ -306,6 +317,9 @@ impl RemoteAccessState {
             shutdown: Some(shutdown),
             task,
         });
+        if let Some(diagnostics) = diagnostics {
+            diagnostics.record_info("remote_access", "started", "port=45321");
+        }
         Ok(())
     }
 

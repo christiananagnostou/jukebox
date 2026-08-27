@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use tauri::Manager;
+
+use crate::diagnostics::DiagnosticsState;
 use tempfile::{NamedTempFile, PersistError};
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -389,6 +391,16 @@ pub fn set_settings(
     state: tauri::State<'_, AppState>,
     settings: AppSettings,
 ) -> Result<SettingsSnapshot, String> {
-    save_settings(&app, &settings)?;
-    update_settings_state(&state, settings)
+    let diagnostics = app.state::<DiagnosticsState>().inner().clone();
+    if let Err(error) = save_settings(&app, &settings) {
+        diagnostics.record_error(
+            "settings",
+            "save_failed",
+            "previous_settings_preserved=true",
+        );
+        return Err(error);
+    }
+    update_settings_state(&state, settings).inspect_err(|_| {
+        diagnostics.record_error("settings", "state_update_failed", "persisted=true");
+    })
 }

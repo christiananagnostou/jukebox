@@ -12,7 +12,7 @@ Make future Jukebox development safe to ship by replacing implicit runtime setup
 - `src-tauri/tauri.conf.json` has `csp: null`, asset protocol scope `['**']`, an identifier ending in `.app`, a `DeveloperTool` bundle category, and no signing/updater configuration.
 - `src-tauri/capabilities/default.json` grants recursive home-directory read and metadata access to the frontend.
 - CI builds Ubuntu and macOS but not Windows, and does not run `cargo test`, `cargo clippy`, an audit check, or artifact smoke checks.
-- Operational errors are reduced to strings in the footer or dialogs; there is no structured local log for import or playback failures.
+- Plan 032 added bounded structured local logs, categorized recent errors, scan-operation evidence, and Settings actions for copying a redacted summary or opening the app-owned log directory.
 - Public source and packaged-bundle portability checks now reject developer home, checkout, toolchain, and temporary paths. Release builds remap those paths before Rust compilation so distributable binaries do not expose the build machine layout.
 
 ## Scope
@@ -51,10 +51,12 @@ Make future Jukebox development safe to ship by replacing implicit runtime setup
 
 ### 3. Add diagnostics
 
-- Add `src-tauri/src/diagnostics.rs` with rotating local logs, level filtering, and redaction helpers. Log path basenames or stable hashes by default, not full personal music paths.
-- Give imports and scans an operation ID. Log start, counts, elapsed time, failure categories, and completion; keep per-track logs at debug level.
-- Add a Settings action that opens the log directory and a “Copy diagnostics summary” action containing app version, OS, schema version, and recent categorized errors.
-- Preserve current user-facing errors, but map backend errors to typed codes so UI text is stable and testable.
+Delivered by [plan 032](032-privacy-conscious-diagnostics.md).
+
+- `src-tauri/src/diagnostics.rs` owns rotating local logs, bounded recent errors, and redaction helpers; personal music paths and filenames are excluded.
+- Library refreshes use scan IDs and log start, bounded counts, elapsed time, failure categories, and completion without per-track logging.
+- Settings can open the app-owned log directory or copy a summary containing app version, OS, schema version, and recent categorized errors.
+- Existing user-facing errors remain intact while diagnostics use stable categories and codes.
 
 ### 4. Tighten the Tauri boundary
 

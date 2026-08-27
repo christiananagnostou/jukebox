@@ -3,6 +3,9 @@
 use crate::catalog_mutations::{
     clear_library_songs, delete_songs, update_favorite_rating, upsert_songs,
 };
+use crate::diagnostics::{
+    copy_diagnostics_summary, get_diagnostics_summary, open_diagnostics_directory, DiagnosticsState,
+};
 use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
     cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
@@ -19,6 +22,7 @@ use crate::remote_access::{
 };
 use crate::settings::{
     get_settings, load_settings, set_settings, should_start_remote_access, AppState,
+    SettingsWarningCode,
 };
 use crate::tailscale::{get_tailscale_status, start_tailscale_serve, stop_tailscale_serve};
 use std::sync::RwLock;
@@ -31,6 +35,7 @@ use tauri::{Manager, WindowEvent};
 mod artwork;
 mod catalog_mutations;
 mod database;
+mod diagnostics;
 mod library;
 mod metadata;
 mod playback;
@@ -45,9 +50,15 @@ const TRAY_QUIT: &str = "tray_quit";
 
 #[command]
 async fn get_metadata(app_handle: tauri::AppHandle, file_path: String) -> Result<Metadata, String> {
-    tauri::async_runtime::spawn_blocking(move || Metadata::new(&app_handle, file_path))
-        .await
-        .map_err(|error| error.to_string())?
+    let diagnostics = app_handle.state::<DiagnosticsState>().inner().clone();
+    let result =
+        tauri::async_runtime::spawn_blocking(move || Metadata::new(&app_handle, file_path))
+            .await
+            .map_err(|_| "Jukebox could not read that audio file.".to_owned())?;
+    if result.is_err() {
+        diagnostics.record_error("metadata", "read_failed", "");
+    }
+    result
 }
 
 fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f: F) {
@@ -59,19 +70,46 @@ fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f:
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
+            let schema_version = database::migrations()
+                .last()
+                .map(|migration| migration.version)
+                .unwrap_or_default();
+            let diagnostics = DiagnosticsState::new(app.handle(), schema_version);
+            diagnostics.record_info(
+                "application",
+                "startup",
+                &format!("schema_version={schema_version}"),
+            );
+            app.manage(diagnostics.clone());
+
             let settings_snapshot = load_settings(app.handle());
+            if let Some(warning) = &settings_snapshot.warning {
+                let code = match warning.code {
+                    SettingsWarningCode::InvalidJson => "invalid_json",
+                    SettingsWarningCode::Unreadable => "unreadable",
+                };
+                diagnostics.record_error("settings", code, "defaults_active=true");
+            }
             let start_remote_access = should_start_remote_access(&settings_snapshot);
             app.manage(AppState {
                 settings: RwLock::new(settings_snapshot.settings),
                 settings_warning: RwLock::new(settings_snapshot.warning),
             });
-            let library = LibraryState::new(app.handle()).map_err(std::io::Error::other)?;
+            let library = LibraryState::new(app.handle()).map_err(|error| {
+                diagnostics.record_error("library", "initialization_failed", "");
+                std::io::Error::other(error)
+            })?;
             app.manage(library.clone());
             app.manage(PlaybackState::new(library.pool()));
             let watcher_app = app.handle().clone();
+            let watcher_diagnostics = diagnostics.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = library.recover_library_watchers(watcher_app).await {
-                    eprintln!("library watchers failed to start: {}", error.code);
+                    watcher_diagnostics.record_error(
+                        "library_watcher",
+                        &error.code,
+                        "phase=startup",
+                    );
                 }
             });
 
@@ -79,9 +117,10 @@ fn main() {
             app.manage(remote_access.clone());
             if start_remote_access {
                 let app_handle = app.handle().clone();
+                let remote_diagnostics = diagnostics.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = remote_access.start(app_handle).await {
-                        eprintln!("remote access failed to start: {error}");
+                    if remote_access.start(app_handle).await.is_err() {
+                        remote_diagnostics.record_error("remote_access", "startup_failed", "");
                     }
                 });
             }
@@ -169,6 +208,9 @@ fn main() {
             get_library_refresh,
             list_library_refreshes,
             get_metadata,
+            copy_diagnostics_summary,
+            get_diagnostics_summary,
+            open_diagnostics_directory,
             get_playback_snapshot,
             dispatch_playback_command,
             observe_playback_position,
@@ -201,10 +243,11 @@ fn main() {
 
         if matches!(event, RunEvent::Resumed) {
             let library = app_handle.state::<LibraryState>().inner().clone();
+            let diagnostics = app_handle.state::<DiagnosticsState>().inner().clone();
             let watcher_app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = library.recover_library_watchers(watcher_app).await {
-                    eprintln!("library watchers failed to recover: {}", error.code);
+                    diagnostics.record_error("library_watcher", &error.code, "phase=resume");
                 }
             });
         }
