@@ -17,6 +17,8 @@ export const LIBRARY_PAGE_SIZE = 100
 export const MAX_RETAINED_LIBRARY_PAGES = 5
 export const AGGREGATE_PAGE_SIZE = 100
 export const MAX_RETAINED_AGGREGATE_PAGES = 5
+export const BUILT_IN_COLLECTION_PAGE_SIZE = 100
+export const MAX_RETAINED_BUILT_IN_COLLECTION_PAGES = 5
 
 type NativeTrackSort =
   'default' | 'album' | 'artist' | 'date' | 'date_added' | 'favorite' | 'sample_rate' | 'title' | 'track'
@@ -134,6 +136,16 @@ export interface BuiltInCollectionPage {
   total: number
 }
 
+export interface BuiltInCollectionCatalogState {
+  error: string
+  pages: Record<string, BuiltInCollectionItem[]>
+  revision: string
+  status: 'loading' | 'ready' | 'error'
+  total: number
+}
+
+export type BuiltInCollectionPageFetcher = (query: BuiltInCollectionQuery) => Promise<BuiltInCollectionPage>
+
 export type TrackPageFetcher = (query: TrackQuery) => Promise<TrackPage>
 export type AggregatePageFetcher<Item> = (query: AggregateQuery) => Promise<AggregatePage<Item>>
 export type StoragePageFetcher = (query: StorageQuery) => Promise<AggregatePage<StorageNode>>
@@ -154,6 +166,122 @@ export async function queryTracks(query: TrackQuery): Promise<TrackPage> {
 
 export function queryBuiltInCollection(query: BuiltInCollectionQuery): Promise<BuiltInCollectionPage> {
   return invoke('query_built_in_collection', { query })
+}
+
+export class BuiltInCollectionPager {
+  private generation = 0
+  private kind: BuiltInCollectionKind = 'recently_played'
+  private queryKey = ''
+  private queue = Promise.resolve()
+
+  constructor(
+    private readonly state: BuiltInCollectionCatalogState,
+    private readonly fetchPage: BuiltInCollectionPageFetcher = queryBuiltInCollection
+  ) {}
+
+  reset(kind: BuiltInCollectionKind): Promise<void> {
+    if (kind === this.queryKey && this.state.status !== 'error') return this.queue
+    this.kind = kind
+    this.queryKey = kind
+    return this.enqueueRange(0, 0, this.beginQuery())
+  }
+
+  reload(): Promise<void> {
+    this.queryKey = ''
+    return this.reset(this.kind)
+  }
+
+  clear(): void {
+    this.queryKey = ''
+    this.beginQuery()
+  }
+
+  ensureRange(startIndex: number, endIndex: number): Promise<void> {
+    if (this.state.status === 'error' || endIndex < 0) return Promise.resolve()
+    const startPage = Math.max(0, Math.floor(startIndex / BUILT_IN_COLLECTION_PAGE_SIZE))
+    const endPage = Math.max(startPage, Math.floor(endIndex / BUILT_IN_COLLECTION_PAGE_SIZE))
+    return this.enqueueRange(startPage, endPage, this.generation)
+  }
+
+  dispose(): void {
+    this.generation += 1
+  }
+
+  private enqueueRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    this.queue = this.queue.then(() => this.loadRange(startPage, endPage, generation))
+    return this.queue
+  }
+
+  private async loadRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    try {
+      for (let pageIndex = startPage; pageIndex <= endPage; pageIndex += 1) {
+        if (generation !== this.generation) return
+        if (this.state.pages[String(pageIndex)]) continue
+        const page = await this.fetchPage({
+          kind: this.kind,
+          limit: BUILT_IN_COLLECTION_PAGE_SIZE,
+          offset: pageIndex * BUILT_IN_COLLECTION_PAGE_SIZE,
+        })
+        if (generation !== this.generation) return
+        if (this.state.revision && page.revision !== this.state.revision) {
+          await this.loadRange(0, 0, this.beginQuery())
+          return
+        }
+
+        this.state.pages[String(pageIndex)] = page.items
+        this.state.revision = page.revision
+        this.state.total = page.total
+      }
+      if (generation !== this.generation) return
+      this.evictDistantPages(startPage, endPage)
+      this.state.error = ''
+      this.state.status = 'ready'
+    } catch (error) {
+      if (generation !== this.generation) return
+      this.state.error = libraryErrorMessage(error)
+      this.state.status = 'error'
+    }
+  }
+
+  private beginQuery(): number {
+    this.generation += 1
+    this.state.error = ''
+    this.state.pages = {}
+    this.state.revision = ''
+    this.state.status = 'loading'
+    this.state.total = 0
+    return this.generation
+  }
+
+  private evictDistantPages(startPage: number, endPage: number): void {
+    const center = (startPage + endPage) / 2
+    const retained = Object.keys(this.state.pages)
+      .map(Number)
+      .sort((left, right) => Math.abs(left - center) - Math.abs(right - center))
+      .slice(0, MAX_RETAINED_BUILT_IN_COLLECTION_PAGES)
+    const keep = new Set(retained.map(String))
+    for (const pageIndex of Object.keys(this.state.pages)) {
+      if (!keep.has(pageIndex)) delete this.state.pages[pageIndex]
+    }
+  }
+}
+
+export function builtInCollectionItemAt(
+  state: BuiltInCollectionCatalogState,
+  index: number
+): BuiltInCollectionItem | undefined {
+  const pageIndex = Math.floor(index / BUILT_IN_COLLECTION_PAGE_SIZE)
+  return state.pages[String(pageIndex)]?.[index % BUILT_IN_COLLECTION_PAGE_SIZE]
+}
+
+export function builtInCollectionPlaybackAt(
+  state: BuiltInCollectionCatalogState,
+  index: number
+): { playlist: Song[]; playlistIndex: number; song: Song } | undefined {
+  const page = state.pages[String(Math.floor(index / BUILT_IN_COLLECTION_PAGE_SIZE))]
+  const playlistIndex = index % BUILT_IN_COLLECTION_PAGE_SIZE
+  const song = page?.[playlistIndex]?.track
+  return song ? { playlist: page.map((item) => item.track), playlistIndex, song } : undefined
 }
 
 export function queryFacets(query: FacetQuery): Promise<AggregatePage<FacetItem>> {

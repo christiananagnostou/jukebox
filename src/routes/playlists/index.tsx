@@ -12,8 +12,10 @@ import {
 import type { DocumentHead } from '@builder.io/qwik-city'
 
 import type { ListItemStyle } from '~/App'
+import BuiltInCollectionView from '~/components/playlists/BuiltInCollectionView'
+import { BUILT_IN_COLLECTIONS } from '~/components/playlists/built-in-collections'
 import VirtualList from '~/components/Shared/VirtualList'
-import { resolvePlaybackTracks } from '~/services/library-client'
+import { type BuiltInCollectionKind, resolvePlaybackTracks } from '~/services/library-client'
 import {
   addPlaylistEntries,
   createPlaylist,
@@ -58,6 +60,7 @@ export default component$(() => {
     error: '',
     notice: '',
     renameName: '',
+    selectedBuiltIn: '' as '' | BuiltInCollectionKind,
     selectedId: '',
     selectedName: '',
   })
@@ -79,9 +82,12 @@ export default component$(() => {
 
   useTask$(({ track }) => {
     const selectedId = track(() => state.selectedId)
+    const selectedBuiltIn = track(() => state.selectedBuiltIn)
     state.confirmDelete = false
     state.editing = false
-    if (selectedId) {
+    if (selectedBuiltIn) {
+      entryPager.value?.clear()
+    } else if (selectedId) {
       void entryPager.value?.reset(selectedId)
     } else {
       entryPager.value?.clear()
@@ -91,9 +97,18 @@ export default component$(() => {
   const selectPlaylist = $((playlist: PlaylistSummary) => {
     state.error = ''
     state.notice = ''
+    state.selectedBuiltIn = ''
     state.selectedId = playlist.id
     state.selectedName = playlist.name
     state.renameName = playlist.name
+  })
+
+  const selectBuiltIn = $((kind: BuiltInCollectionKind) => {
+    state.error = ''
+    state.notice = ''
+    state.selectedBuiltIn = kind
+    state.selectedId = ''
+    state.selectedName = ''
   })
 
   const createPlaylistRecord = $(async () => {
@@ -105,6 +120,7 @@ export default component$(() => {
     try {
       const created = await createPlaylist(name)
       state.createName = ''
+      state.selectedBuiltIn = ''
       state.selectedId = created.id
       state.selectedName = created.name
       state.renameName = created.name
@@ -250,7 +266,7 @@ export default component$(() => {
               Create
             </button>
           </form>
-          {!state.selectedId && (
+          {!state.selectedId && !state.selectedBuiltIn && (
             <div class="mt-2 min-h-4 text-xs" aria-live="polite">
               {state.error ? (
                 <span role="alert" class="text-red-300">
@@ -263,7 +279,28 @@ export default component$(() => {
           )}
         </div>
 
+        <div class="border-b border-gray-700 p-2">
+          <h2 class="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Built-in</h2>
+          <div class="flex flex-col" aria-label="Built-in collections">
+            {BUILT_IN_COLLECTIONS.map((collection) => {
+              const selected = collection.kind === state.selectedBuiltIn
+              return (
+                <button
+                  key={collection.kind}
+                  class={`min-h-10 px-2 text-left text-sm hover:bg-gray-800 ${selected ? 'bg-gray-700' : ''}`}
+                  disabled={busy}
+                  onClick$={() => selectBuiltIn(collection.kind)}
+                  aria-current={selected ? 'page' : undefined}
+                >
+                  {collection.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         <div class="relative min-h-0 flex-1">
+          <h2 class="sr-only">Your playlists</h2>
           {playlists.status === 'ready' && playlists.total === 0 && (
             <p class="p-4 text-sm leading-relaxed text-slate-400">Create a playlist to collect tracks for later.</p>
           )}
@@ -301,7 +338,9 @@ export default component$(() => {
       </aside>
 
       <div class="flex min-h-0 min-w-0 flex-col">
-        {!state.selectedId ? (
+        {state.selectedBuiltIn ? (
+          <BuiltInCollectionView kind={state.selectedBuiltIn} />
+        ) : !state.selectedId ? (
           <div class="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400">
             <div>
               <p class="text-base text-slate-300">Select a playlist</p>
