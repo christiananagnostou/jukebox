@@ -34,6 +34,8 @@ jobs:
         run: npm run fmt.check
       - name: Public source portability
         run: npm run check:public-source
+      - name: App packaging and identity boundary
+        run: npm run check:app-identity
       - name: Desktop security boundary
         run: npm run check:desktop-security
       - name: Lint

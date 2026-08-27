@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Song, Store } from '~/App'
 import { BrowserAudioTransport, type AudioTransport } from '~/services/audio-transport'
 import { resolvePlaybackTracks } from '~/services/library-client'
-import { authorizePlaybackSource } from '~/services/media-source'
+import { authorizePlaybackSource, PlaybackSourceAccessError } from '~/services/media-source'
 import {
   NativePlaybackBridge,
   type PlaybackBridge,
@@ -14,6 +14,7 @@ import {
 } from '~/services/playback-client'
 
 export const PLAYBACK_ERROR_MESSAGE = 'This track could not be played'
+export const PLAYBACK_ACCESS_ERROR_MESSAGE = 'Music folder access is required. Reconnect the folder in Settings.'
 export const PLAYBACK_PERSISTENCE_WARNING_MESSAGE = 'Playback progress may not be saved'
 
 const POSITION_OBSERVATION_INTERVAL_MS = 250
@@ -59,6 +60,12 @@ function milliseconds(seconds: number): number {
 
 function recordPlaybackFailure(store: PlaybackStore): void {
   store.player.error = PLAYBACK_ERROR_MESSAGE
+  store.player.isPaused = true
+}
+
+function recordSourceFailure(store: PlaybackStore, error: unknown): void {
+  store.player.error =
+    error instanceof PlaybackSourceAccessError ? PLAYBACK_ACCESS_ERROR_MESSAGE : PLAYBACK_ERROR_MESSAGE
   store.player.isPaused = true
 }
 
@@ -153,13 +160,14 @@ export function createPlaybackController(
     if (transport.loadedSongId !== song.id) {
       try {
         await loadSong(song)
-      } catch {
+      } catch (error) {
         recordPlaybackClientEvent('source_authorization_failed')
         try {
           await rejectPreparedTransition(snapshot, 'unavailable')
         } catch {
           recordPlaybackFailure(store)
         }
+        recordSourceFailure(store, error)
         throw new Error(PLAYBACK_ERROR_MESSAGE)
       }
     }
@@ -243,11 +251,6 @@ export function createPlaybackController(
       }
     }
     mirrorSnapshot(snapshot)
-    const current = songForSelection(snapshot.current)
-    if (current) {
-      await loadSong(current)
-      transport.currentTime = snapshot.positionMs / 1000
-    }
   }
 
   const playSong = async (song: Song, index: number) => {
@@ -264,6 +267,22 @@ export function createPlaybackController(
 
   const resumeSong = async () => {
     await waitForTransition()
+    const current = store.player.currSong
+    if (current && transport.loadedSongId !== current.id) {
+      try {
+        await loadSong(current)
+        transport.currentTime = store.player.currentTime
+      } catch (error) {
+        recordPlaybackClientEvent('source_authorization_failed')
+        try {
+          mirrorSnapshot(await bridge.dispatch({ type: 'reportError', code: 'unavailable', recoverable: true }))
+        } catch {
+          recordPlaybackFailure(store)
+        }
+        recordSourceFailure(store, error)
+        throw new Error(PLAYBACK_ERROR_MESSAGE)
+      }
+    }
     try {
       await transport.play()
       mirrorSnapshot(await bridge.dispatch({ type: 'play' }))

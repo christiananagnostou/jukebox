@@ -191,7 +191,7 @@ impl From<LibraryAlbumPage> for RemotePage<RemoteAlbumSummary> {
 }
 
 #[derive(Debug)]
-struct ApiError {
+pub(crate) struct ApiError {
     status: StatusCode,
     code: &'static str,
     message: &'static str,
@@ -208,7 +208,7 @@ impl ApiError {
         }
     }
 
-    fn not_found() -> Self {
+    pub(crate) fn not_found() -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
             code: "track_not_found",
@@ -590,7 +590,7 @@ async fn stream_track(
     stream_file(&path, headers.get(RANGE)).await
 }
 
-async fn stream_file(
+pub(crate) async fn stream_file(
     path: &FilePath,
     range_header: Option<&HeaderValue>,
 ) -> Result<Response, ApiError> {

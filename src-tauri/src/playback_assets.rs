@@ -1,11 +1,128 @@
 use crate::library::LibraryState;
+use crate::remote_access::{stream_file, ApiError};
 use crate::DiagnosticsState;
+use axum::extract::{Path as AxumPath, State};
+use axum::http::header::RANGE;
+use axum::http::HeaderMap;
+use axum::response::Response;
+use axum::routing::get;
+use axum::Router;
 use sqlx::{Row, SqlitePool};
+use std::fmt::Write;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
-use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 const MAX_TRACK_ID_BYTES: usize = 128;
 const PLAYBACK_ASSET_ERROR: &str = "That track is not available for playback.";
+const PLAYBACK_ACCESS_ERROR: &str =
+    "Music folder access is required. Reconnect the folder in Settings.";
+const PLAYBACK_SERVER_ERROR: &str = "Jukebox could not start its local playback server.";
+
+#[derive(Clone)]
+struct PlaybackHttpState {
+    pool: SqlitePool,
+    token: String,
+}
+
+pub struct PlaybackAssetServer {
+    access_probe_pending: Arc<AtomicBool>,
+    base_url: String,
+    token: String,
+}
+
+impl PlaybackAssetServer {
+    pub async fn start(pool: SqlitePool, diagnostics: DiagnosticsState) -> Result<Self, String> {
+        let listener = tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+            .await
+            .map_err(|_| PLAYBACK_SERVER_ERROR.to_owned())?;
+        let port = listener
+            .local_addr()
+            .map_err(|_| PLAYBACK_SERVER_ERROR.to_owned())?
+            .port();
+        let token = playback_token()?;
+        let router = playback_router(PlaybackHttpState {
+            pool,
+            token: token.clone(),
+        });
+        tokio::spawn(async move {
+            if axum::serve(listener, router).await.is_err() {
+                diagnostics.record_error("playback_server", "server_stopped", "");
+            }
+        });
+        Ok(Self {
+            access_probe_pending: Arc::new(AtomicBool::new(false)),
+            base_url: format!("http://127.0.0.1:{port}"),
+            token,
+        })
+    }
+
+    fn source_url(&self, track_id: &str) -> String {
+        format!("{}/media/{}/{}", self.base_url, self.token, track_id)
+    }
+
+    async fn verify_track_access(&self, path: PathBuf) -> Result<(), String> {
+        if self
+            .access_probe_pending
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(PLAYBACK_ACCESS_ERROR.to_owned());
+        }
+
+        let pending = self.access_probe_pending.clone();
+        let mut open = tokio::task::spawn_blocking(move || std::fs::File::open(path));
+        match tokio::time::timeout(Duration::from_secs(2), &mut open).await {
+            Ok(Ok(Ok(_))) => {
+                pending.store(false, Ordering::Release);
+                Ok(())
+            }
+            Ok(_) => {
+                pending.store(false, Ordering::Release);
+                Err(PLAYBACK_ASSET_ERROR.to_owned())
+            }
+            Err(_) => {
+                tokio::spawn(async move {
+                    let _ = open.await;
+                    pending.store(false, Ordering::Release);
+                });
+                Err(PLAYBACK_ACCESS_ERROR.to_owned())
+            }
+        }
+    }
+}
+
+fn playback_token() -> Result<String, String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes).map_err(|_| PLAYBACK_SERVER_ERROR.to_owned())?;
+    let mut token = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut token, "{byte:02x}").map_err(|_| PLAYBACK_SERVER_ERROR.to_owned())?;
+    }
+    Ok(token)
+}
+
+fn playback_router(state: PlaybackHttpState) -> Router {
+    Router::new()
+        .route("/media/{token}/{track_id}", get(stream_playback_asset))
+        .with_state(state)
+}
+
+async fn stream_playback_asset(
+    State(state): State<PlaybackHttpState>,
+    AxumPath((token, track_id)): AxumPath<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    if token != state.token {
+        return Err(ApiError::not_found());
+    }
+    let path = resolve_playback_asset(&state.pool, &track_id)
+        .await
+        .map_err(|_| ApiError::not_found())?;
+    stream_file(&path, headers.get(RANGE)).await
+}
 
 fn valid_track_id(track_id: &str) -> bool {
     !track_id.is_empty()
@@ -73,8 +190,8 @@ fn canonical_file(path: &Path) -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub async fn authorize_playback_asset(
-    app: tauri::AppHandle,
     library: tauri::State<'_, LibraryState>,
+    server: tauri::State<'_, PlaybackAssetServer>,
     diagnostics: tauri::State<'_, DiagnosticsState>,
     track_id: String,
 ) -> Result<String, String> {
@@ -83,22 +200,27 @@ pub async fn authorize_playback_asset(
         .inspect_err(|_| {
             diagnostics.record_error("playback_asset", "resolution_failed", "");
         })?;
-    let scope = app.asset_protocol_scope();
-    scope.allow_file(&path).map_err(|_| {
-        diagnostics.record_error("playback_asset", "scope_update_failed", "");
-        "Jukebox could not authorize that track for playback.".to_owned()
-    })?;
-    if !scope.is_allowed(&path) {
-        diagnostics.record_error("playback_asset", "scope_verification_failed", "");
-        return Err("Jukebox could not authorize that track for playback.".to_owned());
-    }
-    Ok(path.to_string_lossy().into_owned())
+    server
+        .verify_track_access(path)
+        .await
+        .inspect_err(|error| {
+            let code = if error == PLAYBACK_ACCESS_ERROR {
+                "access_timed_out"
+            } else {
+                "access_failed"
+            };
+            diagnostics.record_error("playback_asset", code, "");
+        })?;
+    Ok(server.source_url(&track_id))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
     use sqlx::sqlite::SqlitePoolOptions;
+    use tower::ServiceExt;
 
     async fn repository() -> SqlitePool {
         let pool = SqlitePoolOptions::new()
@@ -222,6 +344,70 @@ mod tests {
                 assert_eq!(error, PLAYBACK_ASSET_ERROR);
                 assert!(!error.contains(directory.path().to_string_lossy().as_ref()));
             }
+        });
+    }
+
+    #[test]
+    fn streams_only_authorized_tracks_with_byte_ranges() {
+        tauri::async_runtime::block_on(async {
+            let pool = repository().await;
+            let directory = tempfile::tempdir().expect("create playback stream fixture");
+            let track = directory.path().join("stream.mp3");
+            std::fs::write(&track, b"0123456789").expect("write playback stream fixture");
+            insert_track(&pool, "stream", &track, None).await;
+            let server = PlaybackAssetServer {
+                access_probe_pending: Arc::new(AtomicBool::new(false)),
+                base_url: "http://127.0.0.1:49152".to_owned(),
+                token: "private-token".to_owned(),
+            };
+            server
+                .verify_track_access(track.clone())
+                .await
+                .expect("probe readable track");
+            assert!(!server.access_probe_pending.load(Ordering::Acquire));
+            server.access_probe_pending.store(true, Ordering::Release);
+            assert_eq!(
+                server
+                    .verify_track_access(track.clone())
+                    .await
+                    .expect_err("reject a duplicate access probe"),
+                PLAYBACK_ACCESS_ERROR
+            );
+            server.access_probe_pending.store(false, Ordering::Release);
+            let app = playback_router(PlaybackHttpState {
+                pool,
+                token: "private-token".to_owned(),
+            });
+
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/media/private-token/stream")
+                        .header(RANGE, "bytes=2-5")
+                        .body(Body::empty())
+                        .expect("build ranged playback request"),
+                )
+                .await
+                .expect("stream authorized track");
+            assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+            assert_eq!(
+                to_bytes(response.into_body(), 16)
+                    .await
+                    .expect("read ranged playback body"),
+                b"2345".as_slice()
+            );
+
+            let rejected = app
+                .oneshot(
+                    Request::builder()
+                        .uri("/media/wrong-token/stream")
+                        .body(Body::empty())
+                        .expect("build rejected playback request"),
+                )
+                .await
+                .expect("reject unauthorized stream");
+            assert_eq!(rejected.status(), StatusCode::NOT_FOUND);
         });
     }
 }

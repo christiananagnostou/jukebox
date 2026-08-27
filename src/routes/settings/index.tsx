@@ -53,6 +53,7 @@ export default component$(() => {
     } as TailscaleStatus,
   })
   const isBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
+  const isImporting = store.sync.status === 'importing'
 
   useVisibleTask$(({ cleanup }) => {
     let disposed = false
@@ -446,14 +447,15 @@ export default component$(() => {
           <div>
             <h2 class="text-sm font-medium">Music folders</h2>
             <p class="mt-1 text-xs text-gray-400">
-              Jukebox indexes enabled folders natively and watches them for changes.
+              Jukebox indexes enabled folders natively and watches them for changes. Re-select a folder here if macOS
+              asks Jukebox to reconnect after an update.
             </p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <button class={BUTTON_CLASS} onClick$={chooseMusicFolder} disabled={isBusy}>
+            <button class={BUTTON_CLASS} onClick$={chooseMusicFolder} disabled={isImporting}>
               Add folder
             </button>
-            <button class={BUTTON_CLASS} onClick$={restoreDefaultFolder} disabled={isBusy}>
+            <button class={BUTTON_CLASS} onClick$={restoreDefaultFolder} disabled={isImporting}>
               Add system music folder
             </button>
           </div>

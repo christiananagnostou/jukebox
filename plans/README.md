@@ -1,6 +1,6 @@
 # Jukebox implementation plans
 
-Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-034 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
+Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-035 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
 
 The product direction remains local-first: a fast native catalog, dependable playback, durable collections, a compact accessible interface, and private iPhone listening through loopback-only Jukebox HTTP plus Tailscale Serve. Public sharing, mandatory accounts, visualizers, and large decorative animations remain out of scope.
 
@@ -36,6 +36,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [032](032-privacy-conscious-diagnostics.md)        | Add bounded privacy-conscious local diagnostics                     | P1       | M      | 031        | DONE   |
 | [033](033-native-import-path-inspection.md)        | Remove direct renderer filesystem inspection                        | P1       | S      | 032        | DONE   |
 | [034](034-exact-track-asset-scope.md)              | Authorize exact playback assets and enable production CSP           | P1       | M      | 033        | DONE   |
+| [035](035-data-safe-app-identity.md)               | Stabilize packaging and nonblocking desktop playback                | P1       | M      | 034        | ACTIVE |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
@@ -64,7 +65,7 @@ Plans 007-010 are deliberately independent and may be delivered as separate PRs.
 
 - FTS-rich facets remain high-impact plan 002 work; plan 026 addresses content-addressed artwork and post-commit cache collection.
 - A native playback backend and gapless output remain plan 003. Do not choose a decoder/output stack before plan 009's state-machine tests and the existing feasibility gate.
-- Windows packaging, signing, updater support, CSP/asset-protocol scope narrowing, and app-identity migration remain plan 001. Direct renderer filesystem inspection is removed; runtime playback/artwork asset scopes remain the permission boundary.
+- Windows packaging, signing, updater support, and a future signed-identity permission migration remain plan 001. Direct renderer filesystem inspection and production CSP are complete; plan 035 preserves the established identity while removing the obsolete renderer SQL surface and main-thread playback I/O.
 - Shared queue state and optional bounded HLS fallback remain later phases of plan 006; mobile artist/album browsing and Media Session transport handlers landed in plan 027.
 - Separate filesystem-discovery and changed-metadata benchmarks remain useful additions to the existing executable 100,000-track query and no-change preparation budgets.
 - Narrowing Symphonia features is deferred until one metadata fixture exists for every supported format; binary-size savings do not justify risking format regressions now.
