@@ -10,6 +10,7 @@ mod refresh;
 mod repository;
 mod roots;
 mod scanner;
+mod smart_playlists;
 pub(crate) mod storage;
 mod watcher;
 
@@ -28,6 +29,9 @@ pub use refresh::{
 pub use repository::{LibraryRepository, TrackPage, TrackSummary};
 pub use roots::LibraryRoot;
 pub use scanner::LibraryScan;
+pub use smart_playlists::{
+    SmartPlaylist, SmartPlaylistDefinition, SmartPlaylistPage, SmartPlaylistQuery,
+};
 pub use storage::{StoragePage, StorageQuery};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -189,6 +193,56 @@ impl LibraryState {
         self.ensure_initialized().await?;
         playlists::move_playlist_entry(&self.repository.pool(), playlist_id, entry_id, direction)
             .await
+    }
+
+    pub async fn create_smart_playlist(
+        &self,
+        name: String,
+        definition: SmartPlaylistDefinition,
+    ) -> Result<SmartPlaylist, LibraryError> {
+        self.ensure_initialized().await?;
+        smart_playlists::create_smart_playlist(&self.repository.pool(), name, definition).await
+    }
+
+    pub async fn get_smart_playlist(
+        &self,
+        playlist_id: String,
+    ) -> Result<SmartPlaylist, LibraryError> {
+        self.ensure_initialized().await?;
+        smart_playlists::get_smart_playlist(&self.repository.pool(), playlist_id).await
+    }
+
+    pub async fn update_smart_playlist(
+        &self,
+        playlist_id: String,
+        name: String,
+        definition: SmartPlaylistDefinition,
+    ) -> Result<SmartPlaylist, LibraryError> {
+        self.ensure_initialized().await?;
+        smart_playlists::update_smart_playlist(
+            &self.repository.pool(),
+            playlist_id,
+            name,
+            definition,
+        )
+        .await
+    }
+
+    pub async fn delete_smart_playlist(
+        &self,
+        playlist_id: String,
+    ) -> Result<PlaylistMutation, LibraryError> {
+        self.ensure_initialized().await?;
+        smart_playlists::delete_smart_playlist(&self.repository.pool(), playlist_id).await
+    }
+
+    pub async fn query_smart_playlist(
+        &self,
+        playlist_id: String,
+        query: SmartPlaylistQuery,
+    ) -> Result<SmartPlaylistPage, LibraryError> {
+        self.ensure_initialized().await?;
+        smart_playlists::query_smart_playlist(&self.repository.pool(), playlist_id, query).await
     }
 
     pub async fn resolve_playback_tracks(
@@ -446,6 +500,52 @@ pub async fn move_playlist_entry(
     library
         .move_playlist_entry(playlist_id, entry_id, direction)
         .await
+}
+
+#[tauri::command]
+pub async fn create_smart_playlist(
+    library: tauri::State<'_, LibraryState>,
+    name: String,
+    definition: SmartPlaylistDefinition,
+) -> Result<SmartPlaylist, LibraryError> {
+    library.create_smart_playlist(name, definition).await
+}
+
+#[tauri::command]
+pub async fn get_smart_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+) -> Result<SmartPlaylist, LibraryError> {
+    library.get_smart_playlist(playlist_id).await
+}
+
+#[tauri::command]
+pub async fn update_smart_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    name: String,
+    definition: SmartPlaylistDefinition,
+) -> Result<SmartPlaylist, LibraryError> {
+    library
+        .update_smart_playlist(playlist_id, name, definition)
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_smart_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+) -> Result<PlaylistMutation, LibraryError> {
+    library.delete_smart_playlist(playlist_id).await
+}
+
+#[tauri::command]
+pub async fn query_smart_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    query: SmartPlaylistQuery,
+) -> Result<SmartPlaylistPage, LibraryError> {
+    library.query_smart_playlist(playlist_id, query).await
 }
 
 #[tauri::command]

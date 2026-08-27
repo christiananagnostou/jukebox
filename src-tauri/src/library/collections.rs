@@ -203,7 +203,7 @@ pub(crate) async fn load_built_in_collection(
     })
 }
 
-fn collection_item_from_row(
+pub(super) fn collection_item_from_row(
     row: &sqlx::sqlite::SqliteRow,
 ) -> Result<BuiltInCollectionItem, LibraryError> {
     let play_count = row

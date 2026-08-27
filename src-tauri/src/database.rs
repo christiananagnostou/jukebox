@@ -1,4 +1,4 @@
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
 
 #[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
@@ -36,6 +36,9 @@ pub(crate) const PLAY_HISTORY_SCHEMA: &str =
 #[cfg(test)]
 pub(crate) const HISTORY_COLLECTION_SCHEMA: &str =
     include_str!("../migrations/0013_history_collection_index.sql");
+#[cfg(test)]
+pub(crate) const SMART_PLAYLIST_SCHEMA: &str =
+    include_str!("../migrations/0014_smart_playlists.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[cfg(test)]
@@ -235,7 +238,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                13
+                LATEST_SCHEMA_VERSION
             );
             assert_eq!(
                 sqlx::query_scalar::<_, i64>(
@@ -539,6 +542,85 @@ mod tests {
             .expect("inspect completed history index");
             assert!(definition.contains("track_id, started_at DESC, id DESC"));
             assert!(definition.contains("WHERE completed = 1"));
+        });
+    }
+
+    #[test]
+    fn smart_playlist_schema_preserves_manual_rows_and_cascades_only_owned_rules() {
+        run_async(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open smart playlist migration database");
+            sqlx::query("PRAGMA foreign_keys = ON")
+                .execute(&pool)
+                .await
+                .expect("enable foreign keys");
+            sqlx::raw_sql(INITIAL_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply initial schema");
+            sqlx::raw_sql(PLAYLIST_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply playlist schema");
+            sqlx::query(
+                "INSERT INTO playlists (id, name, name_key, kind)
+                 VALUES ('playlist_manual', 'Manual', 'manual', 'manual'),
+                        ('playlist_smart', 'Smart', 'smart', 'smart')",
+            )
+            .execute(&pool)
+            .await
+            .expect("insert pre-migration playlists");
+
+            sqlx::raw_sql(SMART_PLAYLIST_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply smart playlist schema");
+            sqlx::query(
+                "INSERT INTO smart_playlist_rules (playlist_id, version, rule_json)
+                 VALUES ('playlist_smart', 1, '{}')",
+            )
+            .execute(&pool)
+            .await
+            .expect("insert smart rule document");
+
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM playlists")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count preserved playlists"),
+                2
+            );
+            assert!(sqlx::query(
+                "INSERT INTO smart_playlist_rules (playlist_id, version, rule_json)
+                 VALUES ('playlist_manual', 1, '{}')"
+            )
+            .execute(&pool)
+            .await
+            .is_err());
+
+            sqlx::query("DELETE FROM playlists WHERE id = 'playlist_smart'")
+                .execute(&pool)
+                .await
+                .expect("delete smart playlist");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM smart_playlist_rules")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count cascaded smart rules"),
+                0
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM playlists WHERE id = 'playlist_manual'"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("confirm manual playlist remains"),
+                1
+            );
         });
     }
 
