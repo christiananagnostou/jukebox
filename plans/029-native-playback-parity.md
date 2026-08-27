@@ -1,6 +1,6 @@
 # Plan 029: Route browser playback through native state
 
-Status: IN PROGRESS on branch `codex/029-native-playback-parity`.
+Status: DONE in PR #79 (`be7549008d49fee4698dd7c2c1b027f7887eeed1`).
 
 ## Problem
 
