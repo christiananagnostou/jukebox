@@ -13,6 +13,7 @@ Make future Jukebox development safe to ship by replacing implicit runtime setup
 - `src-tauri/capabilities/default.json` grants recursive home-directory read and metadata access to the frontend.
 - CI builds Ubuntu and macOS but not Windows, and does not run `cargo test`, `cargo clippy`, an audit check, or artifact smoke checks.
 - Operational errors are reduced to strings in the footer or dialogs; there is no structured local log for import or playback failures.
+- Public source and packaged-bundle portability checks now reject developer home, checkout, toolchain, and temporary paths. Release builds remap those paths before Rust compilation so distributable binaries do not expose the build machine layout.
 
 ## Scope
 
@@ -72,6 +73,7 @@ Make future Jukebox development safe to ship by replacing implicit runtime setup
 ### 6. Raise CI and release quality
 
 - Add `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and a Windows Tauri build to `.github/workflows/ci.yml`.
+- Keep source and bundle portability checks in CI. Build release artifacts through the repository Tauri wrapper so compiler diagnostics and metadata use generic remapped paths.
 - Add dependency review and scheduled Rust/npm audit jobs. Keep the current known Qwik build-chain advisory documented until an upstream-compatible release exists; do not force a framework downgrade.
 - Add a release workflow that builds signed artifacts for macOS, Windows, and Linux, attaches checksums/SBOMs, and only publishes after artifact launch/install smoke checks.
 - Add the Tauri updater only after signing keys are managed outside the repository and rollback behavior is documented.
@@ -91,6 +93,7 @@ Make future Jukebox development safe to ship by replacing implicit runtime setup
 - Production CSP and runtime scopes no longer grant blanket filesystem/asset access.
 - User data survives the identifier correction.
 - CI is green on macOS, Windows, and Linux and release artifacts are reproducible and signed.
+- Distributed source and binaries contain no developer-specific paths or unrelated project references.
 
 ## Rollout and rollback
 

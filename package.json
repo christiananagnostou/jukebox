@@ -10,13 +10,14 @@
     "build.client": "vite build",
     "build.server": "vite build -c adapters/static/vite.config.ts",
     "build.types": "tsc --incremental --noEmit",
+    "check:bundle-portability": "node scripts/check-bundle-portability.mjs",
     "check:public-source": "node scripts/check-public-source.mjs",
     "dev": "vite --mode ssr",
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",
     "lint": "eslint \"src/**/*.ts*\"",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "node scripts/run-tauri.mjs"
   },
   "devDependencies": {
     "@builder.io/qwik": "^1.20.0",

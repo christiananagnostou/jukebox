@@ -38,6 +38,10 @@ Public-source portability:
 
 - npm run check:public-source
 
+Built-bundle portability:
+
+- npm run check:bundle-portability -- src-tauri/target/release/Jukebox src-tauri/target/release/bundle
+
 Lint:
 
 - npm run lint
@@ -145,6 +149,8 @@ Rust only:
 - Treat every tracked file as public distribution material. Never commit developer usernames, home-directory paths, LAN or tailnet hostnames, or names of unrelated applications.
 - Machine-specific paths and URLs may exist only as runtime-selected user data. Canonical repository URLs and clearly synthetic test fixtures are allowed.
 - Run `npm run check:public-source` before a PR. It rejects committed macOS, Linux, Windows, and shell home-directory layouts.
+- Build releases through `npm run tauri build`; its wrapper remaps checkout, toolchain, home, and temporary paths before Rust compilation.
+- Run `npm run check:bundle-portability -- <bundle paths>` after packaging. It rejects builder paths embedded in distributable files.
 
 ## PR / Commit Expectations
 

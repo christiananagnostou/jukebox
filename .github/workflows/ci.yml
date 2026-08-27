@@ -91,3 +91,5 @@ jobs:
         working-directory: src-tauri
       - name: Tauri build
         run: npm run tauri build
+      - name: Bundle portability
+        run: npm run check:bundle-portability -- src-tauri/target/release/Jukebox src-tauri/target/release/bundle
