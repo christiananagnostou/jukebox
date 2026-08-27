@@ -115,7 +115,10 @@ export default component$(() => {
   })
 
   return (
-    <div class="app-shell" data-player-open={store.player.currSong || store.queue.length ? 'true' : 'false'}>
+    <div
+      class="app-shell"
+      data-player-open={store.player.currSong || store.queue.length || store.player.canUndoQueueEdit ? 'true' : 'false'}
+    >
       <Nav />
 
       <main class="app-main h-screen max-h-screen min-w-0 flex flex-col relative">

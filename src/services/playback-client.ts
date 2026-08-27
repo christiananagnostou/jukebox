@@ -16,6 +16,7 @@ export interface PlaybackSelection {
 }
 
 export interface PlaybackSnapshot {
+  canUndoQueueEdit: boolean
   context: {
     cursor?: number | null
     order: number[]
@@ -44,6 +45,8 @@ export type PlaybackCommand =
   | { type: 'removeQueueEntry'; entryId: string }
   | { type: 'moveQueueEntry'; beforeEntryId?: string | null; entryId: string }
   | { type: 'clearUpcoming' }
+  | { type: 'undoQueueEdit' }
+  | { type: 'discardQueueUndo' }
   | { type: 'play' }
   | { type: 'pause' }
   | { type: 'seek'; positionMs: number }

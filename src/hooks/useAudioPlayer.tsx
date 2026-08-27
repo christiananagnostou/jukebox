@@ -50,6 +50,7 @@ export interface PlaybackController {
   resumeSong(): Promise<void>
   removeQueuedSong(entryId: string): Promise<void>
   seekSong(positionSeconds: number): Promise<void>
+  undoQueueEdit(): Promise<void>
 }
 
 function defaultQueueId(): string {
@@ -85,6 +86,7 @@ export function createPlaybackController(
   resolveTracks: TrackResolver = resolvePlaybackTracks
 ): PlaybackController {
   const queuedSongs = new Map<string, Song>()
+  let undoEntryIds = new Set<string>()
   let transitionTask: Promise<void> | undefined
 
   const loadSong = async (song: Song) => {
@@ -111,6 +113,7 @@ export function createPlaybackController(
   const mirrorSnapshot = (snapshot: PlaybackSnapshot): void => {
     const currentSong = songForSelection(snapshot.current)
     store.player.currSong = currentSong
+    store.player.canUndoQueueEdit = snapshot.canUndoQueueEdit
     if (snapshot.current?.contextIndex !== null && snapshot.current?.contextIndex !== undefined) {
       store.player.currSongIndex = snapshot.current.contextIndex
     } else if (snapshot.current?.resumeContextIndex !== null && snapshot.current?.resumeContextIndex !== undefined) {
@@ -135,6 +138,11 @@ export function createPlaybackController(
         .filter((entryId): entryId is string => Boolean(entryId))
     )
     for (const entry of snapshot.queue) retainedEntryIds.add(entry.entryId)
+    if (snapshot.canUndoQueueEdit) {
+      for (const entryId of undoEntryIds) retainedEntryIds.add(entryId)
+    } else {
+      undoEntryIds.clear()
+    }
     for (const entryId of queuedSongs.keys()) {
       if (!retainedEntryIds.has(entryId)) queuedSongs.delete(entryId)
     }
@@ -229,6 +237,25 @@ export function createPlaybackController(
     }
   }
 
+  const dispatchQueueEdit = async (command: PlaybackCommand): Promise<void> => {
+    const previousUndoEntryIds = undoEntryIds
+    const previousQueueEntryIds = store.queue.map((entry) => entry.entryId)
+    undoEntryIds = new Set(previousQueueEntryIds)
+    try {
+      const snapshot = await bridge.dispatch(command)
+      if (
+        snapshot.queue.length === previousQueueEntryIds.length &&
+        snapshot.queue.every((entry, index) => entry.entryId === previousQueueEntryIds[index])
+      ) {
+        undoEntryIds = previousUndoEntryIds
+      }
+      mirrorSnapshot(snapshot)
+    } catch (error) {
+      undoEntryIds = previousUndoEntryIds
+      throw error
+    }
+  }
+
   const initialize = async () => {
     let snapshot = await bridge.getSnapshot()
     if (snapshot.transitionPending) {
@@ -302,14 +329,16 @@ export function createPlaybackController(
   return {
     clearUpcoming: async () => {
       await waitForTransition()
-      mirrorSnapshot(await bridge.dispatch({ type: 'clearUpcoming' }))
+      await dispatchQueueEdit({ type: 'clearUpcoming' })
     },
     clearPlayback: async () => {
       await waitForTransition()
       transport.clear()
       await bridge.dispatch({ type: 'replaceContext', autoplay: false, startIndex: 0, trackIds: [] })
-      const snapshot = await bridge.dispatch({ type: 'clearUpcoming' })
+      await bridge.dispatch({ type: 'clearUpcoming' })
+      const snapshot = await bridge.dispatch({ type: 'discardQueueUndo' })
       queuedSongs.clear()
+      undoEntryIds.clear()
       store.playlist = []
       mirrorSnapshot(snapshot)
     },
@@ -318,7 +347,7 @@ export function createPlaybackController(
       const entryId = createQueueId()
       queuedSongs.set(entryId, song)
       try {
-        mirrorSnapshot(await bridge.dispatch({ type: 'enqueue', entries: [{ entryId, trackId: song.id }] }))
+        await dispatchQueueEdit({ type: 'enqueue', entries: [{ entryId, trackId: song.id }] })
       } catch (error) {
         queuedSongs.delete(entryId)
         throw error
@@ -336,7 +365,7 @@ export function createPlaybackController(
     initialize,
     moveQueuedSong: async (entryId, beforeEntryId) => {
       await waitForTransition()
-      mirrorSnapshot(await bridge.dispatch({ type: 'moveQueueEntry', entryId, beforeEntryId }))
+      await dispatchQueueEdit({ type: 'moveQueueEntry', entryId, beforeEntryId })
     },
     nextSong: () => {
       const first = store.playlist[0]
@@ -366,7 +395,7 @@ export function createPlaybackController(
     resumeSong,
     removeQueuedSong: async (entryId) => {
       await waitForTransition()
-      mirrorSnapshot(await bridge.dispatch({ type: 'removeQueueEntry', entryId }))
+      await dispatchQueueEdit({ type: 'removeQueueEntry', entryId })
     },
     seekSong: async (positionSeconds) => {
       await waitForTransition()
@@ -376,6 +405,12 @@ export function createPlaybackController(
       if (trackId && Number.isFinite(transport.duration) && transport.duration > 0) {
         await bridge.observePosition(trackId, milliseconds(positionSeconds), milliseconds(transport.duration))
       }
+    },
+    undoQueueEdit: async () => {
+      await waitForTransition()
+      const snapshot = await bridge.dispatch({ type: 'undoQueueEdit' })
+      undoEntryIds.clear()
+      mirrorSnapshot(snapshot)
     },
   }
 }
@@ -422,6 +457,7 @@ export function bindPlaybackEvents(
 
 export const AudioPlayerState = {
   player: {
+    canUndoQueueEdit: false,
     currSong: undefined,
     currSongIndex: 0,
     audioElem: undefined,
@@ -455,6 +491,7 @@ export function useAudioPlayer(store: Store) {
   const clearUpcoming = $(async () => controller.value?.clearUpcoming())
   const clearPlayback = $(async () => controller.value?.clearPlayback())
   const seekSong = $(async (positionSeconds: number) => controller.value?.seekSong(positionSeconds))
+  const undoQueueEdit = $(async () => controller.value?.undoQueueEdit())
 
   useVisibleTask$(({ cleanup }) => {
     if (store.player.audioElem) return
@@ -509,5 +546,6 @@ export function useAudioPlayer(store: Store) {
     resumeSong,
     removeQueuedSong,
     seekSong,
+    undoQueueEdit,
   }
 }

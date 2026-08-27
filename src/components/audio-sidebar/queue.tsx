@@ -28,6 +28,19 @@ export default component$(() => {
     }
   })
 
+  const undoQueueEdit = $(async () => {
+    if (state.action) return
+    state.action = 'undo'
+    state.error = ''
+    try {
+      await storeActions.undoQueueEdit()
+    } catch {
+      state.error = QUEUE_ERROR_MESSAGE
+    } finally {
+      state.action = ''
+    }
+  })
+
   const removeEntry = $(async (entryId: string) => {
     if (state.action) return
     state.action = `remove:${entryId}`
@@ -58,11 +71,18 @@ export default component$(() => {
     <section class="border-t border-gray-700 p-2" aria-label={hasExplicitQueue ? 'Queued tracks' : 'Upcoming tracks'}>
       <div class="flex min-h-7 items-center justify-between gap-2">
         <span class="text-xs text-gray-400">{hasExplicitQueue ? 'Queue' : 'Up next'}</span>
-        {hasExplicitQueue && (
-          <button class={ACTION_CLASS} onClick$={clearQueue} disabled={busy}>
-            Clear
-          </button>
-        )}
+        <div class="flex items-center gap-2">
+          {store.player.canUndoQueueEdit && (
+            <button class={ACTION_CLASS} onClick$={undoQueueEdit} disabled={busy}>
+              Undo
+            </button>
+          )}
+          {hasExplicitQueue && (
+            <button class={ACTION_CLASS} onClick$={clearQueue} disabled={busy}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {state.error && (
