@@ -34,6 +34,10 @@ Typecheck:
 
 - npm run build.types
 
+Public-source portability:
+
+- npm run check:public-source
+
 Lint:
 
 - npm run lint
@@ -59,6 +63,8 @@ Rust only:
 ## CI Parity (GitHub Actions)
 
 - npm ci
+- npm run fmt.check
+- npm run check:public-source
 - npm run lint
 - npm run build.types
 - npm run build
@@ -138,6 +144,7 @@ Rust only:
 - Do not edit generated schema files manually.
 - Treat every tracked file as public distribution material. Never commit developer usernames, home-directory paths, LAN or tailnet hostnames, or names of unrelated applications.
 - Machine-specific paths and URLs may exist only as runtime-selected user data. Canonical repository URLs and clearly synthetic test fixtures are allowed.
+- Run `npm run check:public-source` before a PR. It rejects committed macOS, Linux, Windows, and shell home-directory layouts.
 
 ## PR / Commit Expectations
 
