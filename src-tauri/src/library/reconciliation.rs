@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 use tokio::task::JoinSet;
 
-const METADATA_VERSION: i64 = 1;
+const METADATA_VERSION: i64 = 2;
 const QUERY_BATCH_SIZE: i64 = 1_000;
 const WRITE_BATCH_SIZE: usize = 100;
 const FINGERPRINT_SAMPLE_SIZE: usize = 64 * 1024;
@@ -977,7 +977,7 @@ fn prepare_file(
     let path_string = path.to_string_lossy().into_owned();
     let candidate_id = hash_string(&path_string);
     let visuals_path = app
-        .map(|app| extracted.cache_visual_path(app, &candidate_id))
+        .map(|app| extracted.cache_visual_path(app))
         .transpose()
         .map_err(|_| ())?
         .unwrap_or_default();

@@ -28,10 +28,13 @@ use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::OnceCell;
 
+use crate::artwork::ArtworkCache;
+
 #[derive(Clone)]
 pub struct LibraryState {
     initialized: Arc<OnceCell<Result<(), LibraryError>>>,
     active_refreshes: refresh::ActiveRefreshes,
+    artwork_cache: Option<ArtworkCache>,
     repository: LibraryRepository,
     reconciliation: reconciliation::ReconciliationService,
     scanner: scanner::ScannerService,
@@ -52,18 +55,32 @@ impl LibraryState {
             .create_if_missing(true)
             .busy_timeout(Duration::from_secs(5));
         let pool = open_pool(options)?;
-        Ok(Self::from_pool(pool))
+        Ok(Self::from_pool_and_artwork_cache(
+            pool,
+            Some(ArtworkCache::from_app(app)?),
+        ))
     }
 
+    #[cfg(test)]
     pub(crate) fn from_pool(pool: SqlitePool) -> Self {
+        Self::from_pool_and_artwork_cache(pool, None)
+    }
+
+    fn from_pool_and_artwork_cache(pool: SqlitePool, artwork_cache: Option<ArtworkCache>) -> Self {
         Self {
             initialized: Arc::new(OnceCell::new()),
             active_refreshes: refresh::ActiveRefreshes::default(),
+            artwork_cache,
             repository: LibraryRepository::new(pool.clone()),
             reconciliation: reconciliation::ReconciliationService::new(pool.clone()),
             scanner: scanner::ScannerService::new(pool),
             watchers: watcher::WatcherService::default(),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_pool_with_artwork_root(pool: SqlitePool, root: std::path::PathBuf) -> Self {
+        Self::from_pool_and_artwork_cache(pool, Some(ArtworkCache::from_root(root)))
     }
 
     pub(crate) fn pool(&self) -> SqlitePool {
@@ -169,7 +186,18 @@ impl LibraryState {
         scan_id: i64,
     ) -> Result<LibraryReconciliation, LibraryError> {
         self.ensure_initialized().await?;
-        self.reconciliation.apply(scan_id).await
+        let reconciliation = self.reconciliation.apply(scan_id).await?;
+        self.collect_artwork_cache().await;
+        Ok(reconciliation)
+    }
+
+    pub(crate) async fn collect_artwork_cache(&self) {
+        let Some(cache) = &self.artwork_cache else {
+            return;
+        };
+        if let Err(error) = cache.collect(&self.repository.pool()).await {
+            eprintln!("artwork cache collection failed: {error}");
+        }
     }
 
     pub(crate) async fn ensure_initialized(&self) -> Result<(), LibraryError> {
