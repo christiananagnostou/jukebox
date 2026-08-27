@@ -11,6 +11,7 @@ use crate::library::{
     start_library_refresh, start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
+use crate::playback::{dispatch_playback_command, get_playback_snapshot, PlaybackState};
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
 };
@@ -30,6 +31,7 @@ mod catalog_mutations;
 mod database;
 mod library;
 mod metadata;
+mod playback;
 mod remote_access;
 mod settings;
 mod tailscale;
@@ -63,6 +65,7 @@ fn main() {
             });
             let library = LibraryState::new(app.handle()).map_err(std::io::Error::other)?;
             app.manage(library.clone());
+            app.manage(PlaybackState::default());
             let watcher_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = library.recover_library_watchers(watcher_app).await {
@@ -163,6 +166,8 @@ fn main() {
             get_library_refresh,
             list_library_refreshes,
             get_metadata,
+            get_playback_snapshot,
+            dispatch_playback_command,
             get_settings,
             set_settings,
             get_remote_access_status,
