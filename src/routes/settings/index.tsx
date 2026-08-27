@@ -21,12 +21,13 @@ import {
   type LibraryRoot,
 } from '~/services/library-refresh'
 import { getErrorMessage } from '~/utils/Errors'
-import { StoreContext } from '../layout'
+import { StoreActionsContext, StoreContext } from '../layout'
 
 const SECTION_CLASS = 'border-b border-gray-700 pb-6 flex flex-col gap-3'
 const BUTTON_CLASS = 'w-fit border border-gray-600 px-3 py-2 text-sm hover:border-gray-400 disabled:opacity-50'
 export default component$(() => {
   const store = useContext(StoreContext)
+  const storeActions = useContext(StoreActionsContext)
   const state = useStore({
     confirmAction: '' as '' | 'clear',
     libraryError: '',
@@ -238,24 +239,6 @@ export default component$(() => {
     }
   })
 
-  const resetPlayback = $(() => {
-    const audioElement = store.player.audioElem
-    if (audioElement) {
-      audioElement.pause()
-      audioElement.removeAttribute('src')
-      delete audioElement.dataset.loadedSongId
-      audioElement.load()
-    }
-
-    store.playlist = []
-    store.queue = []
-    store.player.currSong = undefined
-    store.player.currSongIndex = 0
-    store.player.currentTime = 0
-    store.player.duration = 0
-    store.player.isPaused = true
-  })
-
   const clearLibrary = $(async () => {
     store.sync.status = 'scanning'
     store.sync.processed = 0
@@ -269,7 +252,7 @@ export default component$(() => {
       const disabledById = new Map(disabled.map((root) => [root.id, root]))
       state.roots = state.roots.map((root) => disabledById.get(root.id) || root)
       await clearLibrarySongs()
-      await resetPlayback()
+      await storeActions.clearPlayback()
       store.libraryCatalog.pages = {}
       store.libraryCatalog.total = 0
       store.libraryCatalog.loadedSongCount = 0

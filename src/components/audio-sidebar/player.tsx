@@ -52,9 +52,7 @@ export default component$(() => {
           aria-label="Playback position"
           class="mt-3 w-full accent-yellow-500"
           onInput$={(_, element) => {
-            if (store.player.audioElem) {
-              store.player.audioElem.currentTime = Number(element.value)
-            }
+            void storeActions.seekSong(Number(element.value))
           }}
         />
 

@@ -200,12 +200,14 @@ export type ListItemStyle = {
 }
 
 export interface StoreActions {
-  loadSong: QRL<(song: Song) => void>
-  playSong: QRL<(song: Song, index: number) => void>
-  pauseSong: QRL<() => void>
-  resumeSong: QRL<() => void>
-  nextSong: QRL<() => void>
-  prevSong: QRL<() => void>
+  clearPlayback: QRL<() => Promise<void>>
+  enqueueSong: QRL<(song: Song) => Promise<void>>
+  playSong: QRL<(song: Song, index: number) => Promise<void> | undefined>
+  pauseSong: QRL<() => Promise<void> | undefined>
+  resumeSong: QRL<() => Promise<void> | undefined>
+  nextSong: QRL<() => Promise<void> | undefined>
+  prevSong: QRL<() => Promise<void> | undefined>
+  seekSong: QRL<(positionSeconds: number) => Promise<void> | undefined>
   reloadLibrary: QRL<() => Promise<void>>
   requestLibraryRange: QRL<(startIndex: number, endIndex: number) => Promise<void>>
 }
