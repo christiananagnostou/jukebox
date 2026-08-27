@@ -172,7 +172,7 @@ impl LibraryState {
         self.reconciliation.apply(scan_id).await
     }
 
-    async fn ensure_initialized(&self) -> Result<(), LibraryError> {
+    pub(crate) async fn ensure_initialized(&self) -> Result<(), LibraryError> {
         self.initialized
             .get_or_init(|| async {
                 self.repository.initialize_schema().await?;
