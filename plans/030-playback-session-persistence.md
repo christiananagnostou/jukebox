@@ -1,6 +1,6 @@
 # Plan 030: Restore committed playback sessions and queues
 
-Status: IN PROGRESS on branch `codex/030-playback-session-persistence`.
+Status: DONE on branch `codex/030-playback-session-persistence`.
 
 ## Problem
 
@@ -33,6 +33,14 @@ Plan 029 made native state authoritative during a running desktop session, but a
 - Playback tests cover committed structural persistence, failed-transition non-persistence, monotonic restore revision, and no-autoplay startup.
 - Frontend tests cover bounded ID resolution, stale restored entries, explicit resume, and generic recovery warnings.
 - Run formatting, lint, typecheck, frontend/Rust/static/build/bundle gates, public-source privacy scan, installed launch, and loopback PWA smoke checks.
+
+## Outcome
+
+- Added a versioned singleton SQLite session with revision-guarded atomic replacement and strict path-free snapshot validation.
+- Restores once through native state, pauses rather than autoplaying, prunes unavailable catalog IDs, preserves intentionally stopped queues, and repairs invalid saved state safely.
+- Persists committed structural changes immediately and coalesces timing checkpoints to at most once every five seconds without awaiting SQL under the playback mutex.
+- Resolves only the restored session's bounded opaque IDs into renderer track summaries, hydrates the browser transport without playback, and surfaces a generic recoverable durability warning.
+- Verified formatting, lint, typecheck, 55 frontend tests, 125 ordinary Rust tests with one opt-in benchmark ignored, warning-free Clippy, production frontend build, macOS application bundle, DMG, and public-source privacy scan.
 
 ## STOP conditions
 
