@@ -34,9 +34,42 @@ h1 {
   font-size: 1.25rem;
 }
 
+nav {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+nav button {
+  text-align: center;
+}
+
+nav button[aria-pressed='true'] {
+  border-color: #34d399;
+  background: #064e3b;
+}
+
 form {
   display: flex;
   gap: 0.5rem;
+}
+
+#context {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+#context[hidden] {
+  display: none;
+}
+
+#context-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 input,
@@ -73,27 +106,38 @@ input:focus-visible {
   font-size: 0.875rem;
 }
 
-#tracks {
+#items {
   display: grid;
   gap: 0.375rem;
 }
 
-.track {
+.item {
   width: 100%;
   display: grid;
   gap: 0.2rem;
 }
 
-.track strong,
-.track span {
+.item strong,
+.item span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.track span {
+.item span {
   color: #9ca3af;
   font-size: 0.8125rem;
+}
+
+#load-more {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+#load-more[hidden] {
+  display: none;
 }
 
 footer {
@@ -103,6 +147,16 @@ footer {
     max(1rem, env(safe-area-inset-left));
   border-top: 1px solid #374151;
   background: #111827;
+}
+
+#now-playing {
+  width: min(100%, 44rem);
+  margin: 0 auto 0.5rem;
+  overflow: hidden;
+  color: #d1d5db;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 audio {
