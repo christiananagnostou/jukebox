@@ -1,5 +1,6 @@
 use crate::library::{
-    LibraryError, LibraryState, TrackQuery as LibraryTrackQuery,
+    AggregateQuery as LibraryAggregateQuery, AlbumPage as LibraryAlbumPage,
+    ArtistPage as LibraryArtistPage, LibraryError, LibraryState, TrackQuery as LibraryTrackQuery,
     TrackSummary as LibraryTrackSummary, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE,
 };
 use crate::settings::{save_settings, AppState};
@@ -13,7 +14,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path as FilePath, PathBuf};
 use std::str::FromStr;
@@ -79,9 +80,19 @@ pub struct RemoteAccessStatus {
 
 #[derive(Deserialize)]
 struct RemoteTrackQuery {
+    album: Option<String>,
+    artist: Option<String>,
     q: Option<String>,
     limit: Option<u32>,
     cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RemoteAggregateQuery {
+    artist: Option<String>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+    q: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -106,6 +117,74 @@ impl From<LibraryTrackSummary> for RemoteTrackSummary {
             artist: track.artist,
             duration: track.duration,
             codec: track.codec,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteArtistSummary {
+    album_count: i64,
+    name: String,
+    track_count: i64,
+    value: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteAlbumSummary {
+    artist: String,
+    artist_value: String,
+    date: String,
+    name: String,
+    track_count: i64,
+    value: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemotePage<T> {
+    items: Vec<T>,
+    revision: i64,
+    total: i64,
+}
+
+impl From<LibraryArtistPage> for RemotePage<RemoteArtistSummary> {
+    fn from(page: LibraryArtistPage) -> Self {
+        Self {
+            items: page
+                .items
+                .into_iter()
+                .map(|artist| RemoteArtistSummary {
+                    album_count: artist.album_count,
+                    name: artist.name,
+                    track_count: artist.track_count,
+                    value: artist.value,
+                })
+                .collect(),
+            revision: page.revision,
+            total: page.total,
+        }
+    }
+}
+
+impl From<LibraryAlbumPage> for RemotePage<RemoteAlbumSummary> {
+    fn from(page: LibraryAlbumPage) -> Self {
+        Self {
+            items: page
+                .items
+                .into_iter()
+                .map(|album| RemoteAlbumSummary {
+                    artist: album.artist,
+                    artist_value: album.artist_value,
+                    date: album.date,
+                    name: album.name,
+                    track_count: album.track_count,
+                    value: album.value,
+                })
+                .collect(),
+            revision: page.revision,
+            total: page.total,
         }
     }
 }
@@ -297,6 +376,8 @@ fn router(state: HttpState) -> Router {
         .route("/icons/icon-192.png", get(icon_192))
         .route("/icons/icon-512.png", get(icon_512))
         .route("/api/tracks", get(list_tracks))
+        .route("/api/artists", get(list_artists))
+        .route("/api/albums", get(list_albums))
         .route("/api/tracks/{id}/stream", get(stream_track))
         .with_state(state)
 }
@@ -379,6 +460,8 @@ async fn list_tracks(
     let page = state
         .library
         .query_tracks(LibraryTrackQuery {
+            album: query.album,
+            artist: query.artist,
             cursor: query.cursor,
             limit: query
                 .limit
@@ -411,19 +494,85 @@ async fn list_tracks(
     Ok(response)
 }
 
+async fn list_artists(
+    State(state): State<HttpState>,
+    Query(query): Query<RemoteAggregateQuery>,
+) -> Result<Response, ApiError> {
+    let page = state
+        .library
+        .query_artists(LibraryAggregateQuery {
+            limit: query
+                .limit
+                .unwrap_or(DEFAULT_PAGE_SIZE)
+                .clamp(1, MAX_PAGE_SIZE),
+            offset: query.offset.unwrap_or_default(),
+            q: query.q.unwrap_or_default(),
+            ..LibraryAggregateQuery::default()
+        })
+        .await
+        .map_err(ApiError::library)?;
+    api_json(RemotePage::<RemoteArtistSummary>::from(page))
+}
+
+async fn list_albums(
+    State(state): State<HttpState>,
+    Query(query): Query<RemoteAggregateQuery>,
+) -> Result<Response, ApiError> {
+    let page = state
+        .library
+        .query_albums(LibraryAggregateQuery {
+            artist: query.artist,
+            limit: query
+                .limit
+                .unwrap_or(DEFAULT_PAGE_SIZE)
+                .clamp(1, MAX_PAGE_SIZE),
+            offset: query.offset.unwrap_or_default(),
+            q: query.q.unwrap_or_default(),
+            ..LibraryAggregateQuery::default()
+        })
+        .await
+        .map_err(ApiError::library)?;
+    api_json(RemotePage::<RemoteAlbumSummary>::from(page))
+}
+
+fn api_json<T: Serialize>(value: T) -> Result<Response, ApiError> {
+    let mut response = Json(value).into_response();
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
 async fn stream_track(
     State(state): State<HttpState>,
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let track_path: String = sqlx::query_scalar("SELECT path FROM songs WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|_| ApiError::internal())?
-        .ok_or_else(ApiError::not_found)?;
-    let music_root = state.music_root()?;
-    let path = approved_track_path(&music_root, &track_path).await?;
+    let row = sqlx::query(
+        "SELECT songs.path, songs.root_id, roots.canonical_path, roots.enabled
+         FROM songs
+         LEFT JOIN library_roots AS roots ON roots.id = songs.root_id
+         WHERE songs.id = ? AND songs.availability = 'available'",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| ApiError::internal())?
+    .ok_or_else(ApiError::not_found)?;
+    let track_path: String = row.try_get("path").map_err(|_| ApiError::internal())?;
+    let root_id: Option<i64> = row.try_get("root_id").map_err(|_| ApiError::internal())?;
+    let approved_root = if root_id.is_some() {
+        let enabled: Option<i64> = row.try_get("enabled").map_err(|_| ApiError::internal())?;
+        if enabled != Some(1) {
+            return Err(ApiError::not_found());
+        }
+        row.try_get::<Option<String>, _>("canonical_path")
+            .map_err(|_| ApiError::internal())?
+            .ok_or_else(ApiError::not_found)?
+    } else {
+        state.music_root()?
+    };
+    let path = approved_track_path(&approved_root, &track_path).await?;
     stream_file(&path, headers.get(RANGE)).await
 }
 
@@ -685,11 +834,13 @@ mod tests {
         run_async(async {
             let fixture = test_path("router");
             let root = fixture.join("music");
+            let native_root = fixture.join("native-music");
             let outside = fixture.join("outside.mp3");
             let percent = root.join("percent.mp3");
             let similar = root.join("similar.mp3");
             let alpha = root.join("alpha.mp3");
             std::fs::create_dir_all(&root).expect("create fixture root");
+            std::fs::create_dir_all(&native_root).expect("create native root");
             std::fs::write(&percent, b"0123456789").expect("write percent fixture");
             std::fs::write(&similar, b"similar").expect("write similar fixture");
             std::fs::write(&alpha, b"alpha").expect("write alpha fixture");
@@ -755,6 +906,28 @@ mod tests {
                 .map(|track| track["id"].as_str().expect("track id"))
                 .collect::<Vec<_>>();
             assert_eq!(ordered_ids, vec!["alpha", "outside", "similar", "percent"]);
+
+            let artists = request(&app, "/api/artists?limit=1", None).await;
+            assert_eq!(artists.status(), StatusCode::OK);
+            assert_eq!(artists.headers()[CACHE_CONTROL], "no-store");
+            let artists_json: Value =
+                serde_json::from_slice(&response_bytes(artists).await).expect("artists JSON");
+            assert_eq!(artists_json["total"], 2);
+            assert_eq!(artists_json["items"][0]["value"], "Alpha");
+
+            let albums = request(&app, "/api/albums?artist=Zulu&limit=100", None).await;
+            assert_eq!(albums.status(), StatusCode::OK);
+            let albums_json: Value =
+                serde_json::from_slice(&response_bytes(albums).await).expect("albums JSON");
+            assert_eq!(albums_json["total"], 2);
+            assert!(albums_json["items"][0].get("visualsPath").is_none());
+            assert!(albums_json["items"][0].get("path").is_none());
+
+            let album_tracks = request(&app, "/api/tracks?artist=Zulu&album=B", None).await;
+            let album_json: Value = serde_json::from_slice(&response_bytes(album_tracks).await)
+                .expect("album tracks JSON");
+            assert_eq!(album_json.as_array().map(Vec::len), Some(1));
+            assert_eq!(album_json[0]["id"], "percent");
 
             let bounded_search = request(&app, "/api/tracks?limit=0", None).await;
             let bounded_json: Value = serde_json::from_slice(&response_bytes(bounded_search).await)
@@ -833,6 +1006,48 @@ mod tests {
             );
             assert_eq!(
                 request(&app, "/api/tracks/outside/stream", None)
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+
+            let native_track = native_root.join("native.mp3");
+            std::fs::write(&native_track, b"native").expect("write native-root fixture");
+            let native_root_id: i64 = sqlx::query_scalar(
+                "INSERT INTO library_roots (path, canonical_path, enabled)
+                 VALUES (?, ?, 1) RETURNING id",
+            )
+            .bind(native_root.to_string_lossy().as_ref())
+            .bind(native_root.to_string_lossy().as_ref())
+            .fetch_one(&pool)
+            .await
+            .expect("insert native root");
+            insert_song(
+                &pool,
+                "native",
+                &native_track,
+                "Native",
+                "Rooted",
+                "Artist",
+                1,
+            )
+            .await;
+            sqlx::query("UPDATE songs SET root_id = ? WHERE id = 'native'")
+                .bind(native_root_id)
+                .execute(&pool)
+                .await
+                .expect("assign native root");
+            let native_stream = request(&app, "/api/tracks/native/stream", None).await;
+            assert_eq!(native_stream.status(), StatusCode::OK);
+            assert_eq!(response_bytes(native_stream).await, b"native");
+
+            sqlx::query("UPDATE library_roots SET enabled = 0 WHERE id = ?")
+                .bind(native_root_id)
+                .execute(&pool)
+                .await
+                .expect("disable native root");
+            assert_eq!(
+                request(&app, "/api/tracks/native/stream", None)
                     .await
                     .status(),
                 StatusCode::NOT_FOUND
@@ -932,6 +1147,17 @@ mod tests {
         assert_eq!(png_dimensions(ICON_192), (192, 192));
         assert_eq!(png_dimensions(ICON_512), (512, 512));
         assert!(!SERVICE_WORKER.contains("/api/"));
+        assert!(SERVICE_WORKER.contains("jukebox-shell-v2"));
+        for view in ["tracks", "albums", "artists"] {
+            assert!(INDEX_HTML.contains(&format!("data-view=\"{view}\"")));
+            assert!(APP_JS.contains(&format!("view = '{view}'")));
+        }
+        assert!(APP_JS.contains("/api/${view}"));
+        for action in ["play", "pause", "previoustrack", "nexttrack"] {
+            assert!(APP_JS.contains(action));
+        }
+        assert!(APP_JS.contains("x-jukebox-next-cursor"));
+        assert!(!APP_JS.contains("visualsPath"));
     }
 
     fn png_dimensions(bytes: &[u8]) -> (u32, u32) {

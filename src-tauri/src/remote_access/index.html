@@ -17,15 +17,28 @@
     <main>
       <header>
         <h1>Jukebox</h1>
+        <nav aria-label="Library views">
+          <button type="button" data-view="tracks" aria-pressed="true">Tracks</button>
+          <button type="button" data-view="albums" aria-pressed="false">Albums</button>
+          <button type="button" data-view="artists" aria-pressed="false">Artists</button>
+        </nav>
         <form id="search-form" role="search">
           <input id="search" type="search" placeholder="Search title, artist, or album" aria-label="Search library" />
           <button type="submit">Search</button>
         </form>
+        <div id="context" hidden>
+          <button id="back" type="button">Back</button>
+          <strong id="context-label"></strong>
+        </div>
         <p id="status" role="status">Loading library…</p>
       </header>
-      <section id="tracks" aria-label="Tracks"></section>
+      <section id="items" aria-label="Tracks"></section>
+      <button id="load-more" type="button" hidden>Load more</button>
     </main>
-    <footer><audio id="player" controls preload="metadata"></audio></footer>
+    <footer>
+      <div id="now-playing" aria-live="polite">Nothing playing</div>
+      <audio id="player" controls preload="metadata"></audio>
+    </footer>
     <script src="/app.js" defer></script>
   </body>
 </html>
