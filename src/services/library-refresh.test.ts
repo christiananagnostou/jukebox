@@ -81,8 +81,6 @@ describe('library refresh presentation', () => {
 
   it('invalidates catalog state once for a completed refresh', () => {
     const store = {
-      legacyCatalog: [{ id: 'old' }],
-      legacyCatalogLoaded: true,
       libraryCatalog: { refreshKey: 4 },
       sync: { lastRunAt: '', message: '', processed: 0, status: 'scanning', total: 1 },
     } as unknown as Store
@@ -90,8 +88,6 @@ describe('library refresh presentation', () => {
     const completed = refresh('completed')
 
     expect(applyLibraryRefreshEvent(store, completed, terminalScanIds)).toBe(true)
-    expect(store.legacyCatalog).toEqual([])
-    expect(store.legacyCatalogLoaded).toBe(false)
     expect(store.libraryCatalog.refreshKey).toBe(5)
     expect(store.sync.status).toBe('idle')
 
@@ -101,8 +97,6 @@ describe('library refresh presentation', () => {
 
   it('reports active progress without invalidating the catalog', () => {
     const store = {
-      legacyCatalog: [],
-      legacyCatalogLoaded: false,
       libraryCatalog: { refreshKey: 2 },
       sync: { lastRunAt: '', message: '', processed: 0, status: 'idle', total: 0 },
     } as unknown as Store

@@ -70,6 +70,22 @@ pub async fn clear_library_songs(app_handle: tauri::AppHandle) -> Result<(), Str
     result
 }
 
+#[tauri::command]
+pub async fn update_favorite_rating(
+    app_handle: tauri::AppHandle,
+    id: String,
+    rating: i64,
+) -> Result<(), String> {
+    if !(0..=2).contains(&rating) {
+        return Err("Favorite rating must be between 0 and 2.".to_string());
+    }
+
+    let pool = production_pool(&app_handle).await?;
+    let result = update_favorite_rating_in_pool(&pool, &id, rating).await;
+    pool.close().await;
+    result
+}
+
 fn production_database_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     app_handle
         .path()
@@ -94,6 +110,27 @@ async fn open_pool(path: PathBuf, create_if_missing: bool) -> Result<SqlitePool,
         .max_connections(1)
         .connect_with(options)
         .await
+}
+
+async fn update_favorite_rating_in_pool(
+    pool: &SqlitePool,
+    id: &str,
+    rating: i64,
+) -> Result<(), String> {
+    if !(0..=2).contains(&rating) {
+        return Err("Favorite rating must be between 0 and 2.".to_string());
+    }
+
+    let result = sqlx::query("UPDATE songs SET favorRating = ? WHERE id = ?")
+        .bind(rating)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|error| format!("Could not update favorite rating: {error}"))?;
+    if result.rows_affected() == 0 {
+        return Err("The selected track is no longer in the library.".to_string());
+    }
+    Ok(())
 }
 
 async fn upsert_songs_in_pool<F>(
@@ -162,7 +199,6 @@ where
                 duration = excluded.duration,
                 sampleRate = excluded.sampleRate,
                 side = excluded.side,
-                startTime = excluded.startTime,
                 visualsPath = excluded.visualsPath",
         );
         query
@@ -341,25 +377,26 @@ mod tests {
             assert_eq!(song_count(&pool).await, 101);
 
             sqlx::query(
-                "UPDATE songs SET favorRating = 2, dateAdded = 'original' WHERE id = 'song-0'",
+                "UPDATE songs SET startTime = 42, favorRating = 2, dateAdded = 'original' WHERE id = 'song-0'",
             )
             .execute(&pool)
             .await
             .expect("set user fields");
             songs[0].title = "Updated".to_string();
+            songs[0].start_time = 0;
             songs[0].favor_rating = 0;
             songs[0].date_added = "replacement".to_string();
             upsert_songs_in_pool(&pool, &songs[..1], |_| Ok(()))
                 .await
                 .expect("update song");
 
-            let row: (String, i64, String) = sqlx::query_as(
-                "SELECT title, favorRating, dateAdded FROM songs WHERE id = 'song-0'",
+            let row: (String, i64, i64, String) = sqlx::query_as(
+                "SELECT title, startTime, favorRating, dateAdded FROM songs WHERE id = 'song-0'",
             )
             .fetch_one(&pool)
             .await
             .expect("read updated song");
-            assert_eq!(row, ("Updated".to_string(), 2, "original".to_string()));
+            assert_eq!(row, ("Updated".to_string(), 42, 2, "original".to_string()));
             close_test_pool(pool, root).await;
         });
     }
@@ -389,6 +426,36 @@ mod tests {
                 .await
                 .expect("read pre-operation song");
             assert_eq!(remaining, "song-999");
+            close_test_pool(pool, root).await;
+        });
+    }
+
+    #[test]
+    fn favorite_updates_validate_rating_and_existing_track() {
+        run_async(async {
+            let (pool, root) = test_pool("favorite-update").await;
+            upsert_songs_in_pool(&pool, &[song(1)], |_| Ok(()))
+                .await
+                .expect("insert song");
+
+            update_favorite_rating_in_pool(&pool, "song-1", 2)
+                .await
+                .expect("update favorite");
+            let rating: i64 =
+                sqlx::query_scalar("SELECT favorRating FROM songs WHERE id = 'song-1'")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read favorite");
+            assert_eq!(rating, 2);
+            assert!(update_favorite_rating_in_pool(&pool, "song-1", 3)
+                .await
+                .expect_err("invalid rating should fail")
+                .contains("between 0 and 2"));
+            assert!(update_favorite_rating_in_pool(&pool, "missing", 1)
+                .await
+                .expect_err("missing song should fail")
+                .contains("no longer in the library"));
+
             close_test_pool(pool, root).await;
         });
     }

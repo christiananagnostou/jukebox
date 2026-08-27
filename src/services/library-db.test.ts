@@ -5,9 +5,8 @@ import type { Song } from '~/App'
 const invokeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
-vi.mock('@tauri-apps/plugin-sql', () => ({ default: { load: vi.fn() } }))
 
-import { clearLibrarySongs, deleteSongs, upsertSongs } from './library-db'
+import { clearLibrarySongs, deleteSongs, updateFavoriteRating, upsertSongs } from './library-db'
 
 const song = (id: string): Song => ({
   id,
@@ -54,6 +53,12 @@ describe('library mutation wrappers', () => {
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'delete_songs', { ids: ['one', 'two'] })
     expect(invokeMock).toHaveBeenNthCalledWith(2, 'clear_library_songs')
+  })
+
+  it('sends favorite updates through a native validated command', async () => {
+    await updateFavoriteRating('one', 2)
+
+    expect(invokeMock).toHaveBeenCalledWith('update_favorite_rating', { id: 'one', rating: 2 })
   })
 
   it('does not invoke native commands for empty chunkable mutations', async () => {

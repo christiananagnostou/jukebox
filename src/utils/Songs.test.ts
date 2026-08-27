@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Song } from '~/App'
-import { compareSongsByAlbumTrack, filterAndSortSongs, getUpcomingSongs, mergeSongs } from './Songs'
+import { getUpcomingSongs } from './Songs'
 
 const song = (overrides: Partial<Song>): Song => ({
   id: 'song',
@@ -28,31 +28,6 @@ const song = (overrides: Partial<Song>): Song => ({
   ...overrides,
 })
 
-describe('compareSongsByAlbumTrack', () => {
-  it('orders by album, side, track, title, and path', () => {
-    const songs = [
-      song({ id: 'b2', album: 'Beta', side: 1, trackNumber: 2 }),
-      song({ id: 'a2', album: 'Alpha', side: 2, trackNumber: 1 }),
-      song({ id: 'a1', album: 'Alpha', side: 1, trackNumber: 2 }),
-      song({ id: 'a0', album: 'Alpha', side: 1, trackNumber: 1 }),
-    ]
-
-    expect(songs.sort(compareSongsByAlbumTrack).map(({ id }) => id)).toEqual(['a0', 'a1', 'a2', 'b2'])
-  })
-})
-
-describe('mergeSongs', () => {
-  it('replaces matching ids, keeps other songs, and returns default order', () => {
-    const existing = [song({ id: 'two', album: 'Beta', title: 'Old title' }), song({ id: 'one', album: 'Alpha' })]
-    const imported = [song({ id: 'two', album: 'Beta', title: 'New title' })]
-
-    const merged = mergeSongs(existing, imported)
-
-    expect(merged.map(({ id }) => id)).toEqual(['one', 'two'])
-    expect(merged[1].title).toBe('New title')
-  })
-})
-
 describe('getUpcomingSongs', () => {
   it('wraps once without repeating the current song', () => {
     const playlist = ['one', 'two', 'three'].map((id) => song({ id }))
@@ -66,26 +41,5 @@ describe('getUpcomingSongs', () => {
     expect(getUpcomingSongs([], 0)).toEqual([])
     expect(getUpcomingSongs(playlist.slice(0, 1), 0)).toEqual([])
     expect(getUpcomingSongs(playlist, 5).map(({ id }) => id)).toEqual(['one'])
-  })
-})
-
-describe('filterAndSortSongs', () => {
-  it('searches case-insensitively without mutating the library', () => {
-    const library = [
-      song({ id: 'two', artist: 'Björk', title: 'Jóga' }),
-      song({ id: 'one', artist: 'Air', title: 'La femme d’argent' }),
-    ]
-
-    const filtered = filterAndSortSongs(library, 'BJÖRK', 'default')
-
-    expect(filtered.map(({ id }) => id)).toEqual(['two'])
-    expect(library.map(({ id }) => id)).toEqual(['two', 'one'])
-  })
-
-  it('implements ascending and descending directions directly', () => {
-    const library = [song({ id: 'beta', title: 'Beta' }), song({ id: 'alpha', title: 'Alpha' })]
-
-    expect(filterAndSortSongs(library, '', 'title-asc').map(({ id }) => id)).toEqual(['alpha', 'beta'])
-    expect(filterAndSortSongs(library, '', 'title-desc').map(({ id }) => id)).toEqual(['beta', 'alpha'])
   })
 })

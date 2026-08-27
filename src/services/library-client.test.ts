@@ -13,7 +13,6 @@ import {
   catalogQuery,
   LIBRARY_PAGE_SIZE,
   LibraryPager,
-  loadLegacyCatalog,
   loadTrackSelection,
   MAX_RETAINED_AGGREGATE_PAGES,
   MAX_RETAINED_LIBRARY_PAGES,
@@ -296,16 +295,6 @@ describe('StoragePager', () => {
       { offset: 200, parent: 'Albums', rootId: 4 },
     ])
     expect(storageNodeAt(catalog, 200)?.relativePath).toBe('Albums/Live')
-  })
-})
-
-describe('loadLegacyCatalog', () => {
-  it('uses repeated bounded pages only when explicitly requested', async () => {
-    const requests: string[] = []
-    const songs = await loadLegacyCatalog(fixtureFetcher(205, requests))
-
-    expect(songs).toHaveLength(205)
-    expect(requests).toHaveLength(3)
   })
 })
 

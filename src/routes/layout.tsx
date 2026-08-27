@@ -1,12 +1,4 @@
-import {
-  component$,
-  createContextId,
-  Slot,
-  useContextProvider,
-  useStore,
-  useTask$,
-  useVisibleTask$,
-} from '@builder.io/qwik'
+import { component$, createContextId, Slot, useContextProvider, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { invoke } from '@tauri-apps/api/core'
 import { audioDir } from '@tauri-apps/api/path'
 
@@ -17,7 +9,6 @@ import {
   SETTINGS_BOOTSTRAP_ERROR_MESSAGE,
   SETTINGS_SAVE_ERROR_MESSAGE,
 } from '~/services/bootstrap'
-import { filterAndSortSongs } from '~/utils/Songs'
 import { useKeyboardShortcuts } from '~/hooks/useKeyboardShortcuts'
 import Nav from '~/components/nav'
 import Footer from '~/components/footer'
@@ -35,9 +26,6 @@ export const StoreActionsContext = createContextId<StoreActions>('store-actions-
 export default component$(() => {
   const store = useStore<Store>(
     {
-      legacyCatalog: [],
-      legacyCatalogLoaded: false,
-      filteredSongs: [],
       libraryCatalog: {
         error: '',
         loadedSongCount: 0,
@@ -124,14 +112,6 @@ export default component$(() => {
         store.sync.message = 'The saved music folder could not be registered.'
       }
     }
-  })
-
-  useTask$(({ track }) => {
-    const legacyCatalog = track(() => store.legacyCatalog)
-    const sorting = track(() => store.sorting)
-    const searchTerm = track(() => store.searchTerm)
-
-    store.filteredSongs = filterAndSortSongs(legacyCatalog, searchTerm, sorting)
   })
 
   return (

@@ -1,7 +1,4 @@
 export interface Store {
-  legacyCatalog: Song[]
-  legacyCatalogLoaded: boolean
-  filteredSongs: Song[]
   libraryCatalog: LibraryCatalogState
   playlist: Song[]
   searchTerm: string

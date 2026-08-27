@@ -270,9 +270,6 @@ export default component$(() => {
       state.roots = state.roots.map((root) => disabledById.get(root.id) || root)
       await clearLibrarySongs()
       await resetPlayback()
-      store.legacyCatalog = []
-      store.legacyCatalogLoaded = true
-      store.filteredSongs = []
       store.libraryCatalog.pages = {}
       store.libraryCatalog.total = 0
       store.libraryCatalog.loadedSongCount = 0
