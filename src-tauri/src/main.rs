@@ -4,9 +4,10 @@ use crate::catalog_mutations::{
     clear_library_songs, delete_songs, update_favorite_rating, upsert_songs,
 };
 use crate::diagnostics::{
-    copy_diagnostics_summary, get_diagnostics_summary, open_diagnostics_directory, DiagnosticsState,
+    copy_diagnostics_summary, get_diagnostics_summary, open_diagnostics_directory,
+    record_playback_client_event, DiagnosticsState,
 };
-use crate::import_paths::classify_import_paths;
+use crate::import_paths::{classify_import_paths, pick_import_directories};
 use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
     cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
@@ -18,6 +19,7 @@ use crate::metadata::Metadata;
 use crate::playback::{
     dispatch_playback_command, get_playback_snapshot, observe_playback_position, PlaybackState,
 };
+use crate::playback_assets::authorize_playback_asset;
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
 };
@@ -41,6 +43,7 @@ mod import_paths;
 mod library;
 mod metadata;
 mod playback;
+mod playback_assets;
 mod remote_access;
 mod settings;
 mod tailscale;
@@ -211,9 +214,12 @@ fn main() {
             list_library_refreshes,
             get_metadata,
             classify_import_paths,
+            pick_import_directories,
             copy_diagnostics_summary,
             get_diagnostics_summary,
             open_diagnostics_directory,
+            record_playback_client_event,
+            authorize_playback_asset,
             get_playback_snapshot,
             dispatch_playback_command,
             observe_playback_position,

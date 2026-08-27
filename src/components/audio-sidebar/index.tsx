@@ -8,11 +8,8 @@ export default component$(() => {
 
   return (
     <aside
-      class="border-l border-gray-700 fixed top-0 right-0 h-screen flex z-20 flex-col text-sm overflow-y-auto overflow-x-hidden"
-      style={{
-        right: store.player.currSong ? '0' : 'calc(var(--audio-sidebar-width) * -1)',
-        width: 'var(--audio-sidebar-width)',
-      }}
+      class="app-audio-sidebar border-l border-gray-700 h-screen min-w-0 flex z-20 flex-col text-sm overflow-y-auto overflow-x-hidden"
+      data-open={store.player.currSong ? 'true' : 'false'}
     >
       <div class="mt-[29px] border-t border-gray-700 flex flex-col h-full">
         <Player />

@@ -164,7 +164,11 @@ pub struct PlaybackPositionState {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum PlaybackCommand {
     ReplaceContext {
         autoplay: bool,
@@ -1389,6 +1393,30 @@ mod tests {
         } else {
             snapshot
         }
+    }
+
+    #[test]
+    fn command_request_deserializes_camel_case_variant_fields() {
+        let request: PlaybackCommandRequest = serde_json::from_value(serde_json::json!({
+            "command": {
+                "type": "replaceContext",
+                "autoplay": true,
+                "startIndex": 1,
+                "trackIds": ["track-one", "track-two"]
+            },
+            "expectedRevision": 4
+        }))
+        .expect("camel-case playback command request");
+
+        assert_eq!(request.expected_revision, 4);
+        assert!(matches!(
+            request.command,
+            PlaybackCommand::ReplaceContext {
+                autoplay: true,
+                start_index: 1,
+                track_ids
+            } if track_ids == ["track-one", "track-two"]
+        ));
     }
 
     #[test]

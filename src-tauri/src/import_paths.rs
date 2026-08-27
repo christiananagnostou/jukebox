@@ -1,5 +1,6 @@
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tauri_plugin_dialog::DialogExt;
 
 const MAX_SELECTED_PATHS: usize = 4_096;
 const MAX_PATH_BYTES: usize = 32_768;
@@ -32,6 +33,45 @@ fn classify_paths(paths: Vec<String>) -> Result<ImportPathPartition, String> {
     }
 
     Ok(ImportPathPartition { directories, files })
+}
+
+fn validated_default_directory(path: Option<String>) -> Option<PathBuf> {
+    let path = path
+        .filter(|path| !path.is_empty() && path.len() <= MAX_PATH_BYTES && !path.contains('\0'))?;
+    let path = PathBuf::from(path);
+    path.is_dir().then_some(path)
+}
+
+#[tauri::command]
+pub async fn pick_import_directories(
+    app: tauri::AppHandle,
+    default_path: Option<String>,
+    multiple: bool,
+) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app.dialog().file();
+        if let Some(default_path) = validated_default_directory(default_path) {
+            dialog = dialog.set_directory(default_path);
+        }
+        let selected = if multiple {
+            dialog.blocking_pick_folders().unwrap_or_default()
+        } else {
+            dialog.blocking_pick_folder().into_iter().collect()
+        };
+        if selected.len() > MAX_SELECTED_PATHS {
+            return Err("Too many folders were selected at once.".to_owned());
+        }
+        selected
+            .into_iter()
+            .map(|path| {
+                path.into_path()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .map_err(|_| "Jukebox could not read the selected folder.".to_owned())
+            })
+            .collect()
+    })
+    .await
+    .map_err(|_| "Jukebox could not open the music folder picker.".to_owned())?
 }
 
 #[tauri::command]
@@ -77,5 +117,20 @@ mod tests {
         assert!(classify_paths(vec![String::new()]).is_err());
         assert!(classify_paths(vec!["x".repeat(MAX_PATH_BYTES + 1)]).is_err());
         assert!(classify_paths(vec!["x".to_owned(); MAX_SELECTED_PATHS + 1]).is_err());
+    }
+
+    #[test]
+    fn default_picker_directory_must_be_an_existing_bounded_folder() {
+        let directory = tempfile::tempdir().expect("create picker directory");
+        let file = directory.path().join("track.flac");
+        fs::write(&file, b"fixture").expect("create picker file");
+
+        assert_eq!(
+            validated_default_directory(Some(directory.path().to_string_lossy().into_owned())),
+            Some(directory.path().to_path_buf())
+        );
+        assert!(validated_default_directory(Some(file.to_string_lossy().into_owned())).is_none());
+        assert!(validated_default_directory(Some("x".repeat(MAX_PATH_BYTES + 1))).is_none());
+        assert!(validated_default_directory(Some("bad\0path".to_owned())).is_none());
     }
 }

@@ -300,7 +300,7 @@ function setup(store = playbackStore()): {
   const controller = createPlaybackController(
     store,
     transport,
-    (path) => `asset:${path}`,
+    async (track) => `asset:${track.path}`,
     bridge,
     () => {
       nextQueueId += 1
@@ -311,9 +311,7 @@ function setup(store = playbackStore()): {
 }
 
 const flushPromises = async () => {
-  await Promise.resolve()
-  await Promise.resolve()
-  await Promise.resolve()
+  for (let index = 0; index < 10; index += 1) await Promise.resolve()
 }
 
 describe('native-backed playback controller', () => {
@@ -338,7 +336,7 @@ describe('native-backed playback controller', () => {
     const controller = createPlaybackController(
       store,
       transport,
-      (path) => `asset:${path}`,
+      async (track) => `asset:${track.path}`,
       bridge,
       undefined,
       async (trackIds) => {
@@ -367,7 +365,7 @@ describe('native-backed playback controller', () => {
     const controller = createPlaybackController(
       store,
       new FakeAudioTransport(),
-      (path) => path,
+      async (track) => track.path,
       new FakePlaybackBridge(snapshot),
       undefined,
       async () => []
@@ -410,6 +408,35 @@ describe('native-backed playback controller', () => {
     expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
     expect(store.player.isPaused).toBe(true)
     expect(bridge.commands.at(-1)).toEqual({ type: 'rejectTransition', code: 'decoder', recoverable: true })
+    expect(transport.loadedSongId).toBe('current')
+  })
+
+  it('rolls back a transition when native source authorization rejects the next track', async () => {
+    const current = song('current')
+    const queued = song('blocked')
+    const store = playbackStore([current])
+    const bridge = new FakePlaybackBridge()
+    const transport = new FakeAudioTransport()
+    const controller = createPlaybackController(
+      store,
+      transport,
+      async (track) => {
+        if (track.id === queued.id) throw new Error('path-bearing authorization error')
+        return `asset:${track.path}`
+      },
+      bridge,
+      () => 'blocked-entry'
+    )
+    await controller.initialize()
+    await controller.playSong(current, 0)
+    await controller.enqueueSong(queued)
+
+    await expect(controller.nextSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
+
+    expect(store.queue).toEqual([queued])
+    expect(store.player.currSong).toBe(current)
+    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
+    expect(bridge.commands.at(-1)).toEqual({ type: 'rejectTransition', code: 'unavailable', recoverable: true })
     expect(transport.loadedSongId).toBe('current')
   })
 
@@ -475,8 +502,7 @@ describe('playback event bindings', () => {
 
     transport.emit('ended')
     transport.emit('ended')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
     expect(transport.playCalls).toBe(2)
     resolvePlay()
     await flushPromises()

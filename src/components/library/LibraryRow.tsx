@@ -1,4 +1,5 @@
 import { $, component$, useContext } from '@builder.io/qwik'
+import { invoke } from '@tauri-apps/api/core'
 
 import type { Song } from '~/App'
 import { libraryPlaybackAt } from '~/services/library-client'
@@ -29,15 +30,23 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
 
   const isPlaying = store.player.currSong?.id === song.id
 
-  const onClick = $(() => {
-    store.libraryView.cursorIdx = index
-  })
-
-  const onDblClick = $(() => {
-    const playback = libraryPlaybackAt(store.libraryCatalog, index)
-    if (!playback) return
-    store.playlist = playback.playlist
-    storeActions.playSong(playback.song, playback.playlistIndex)
+  const playTrack = $(async () => {
+    void invoke('record_playback_client_event', { event: 'activation_requested' }).catch(() => undefined)
+    try {
+      store.libraryView.cursorIdx = index
+      const playback = libraryPlaybackAt(store.libraryCatalog, index) || {
+        playlist: [song],
+        playlistIndex: 0,
+        song,
+      }
+      const playlist = playback.playlist.map((track) => ({ ...track }))
+      const selectedSong = playlist[playback.playlistIndex] || { ...playback.song }
+      store.playlist = playlist
+      await storeActions.playSong(selectedSong, playback.playlistIndex)
+    } catch {
+      void invoke('record_playback_client_event', { event: 'activation_failed' }).catch(() => undefined)
+      // Playback state exposes the generic, path-free failure to the player UI.
+    }
   })
 
   const handleFavorClick = $(async (rating: Song['favorRating']) => {
@@ -56,8 +65,15 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
   return (
     <div
       key={song.title}
-      onDblClick$={onDblClick}
-      onClick$={onClick}
+      aria-label={`Play ${song.title} by ${song.artist || 'Unknown artist'}`}
+      onClick$={playTrack}
+      onKeyDown$={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        void playTrack()
+      }}
+      role="button"
+      tabIndex={0}
       style={style}
       class={
         classes +
@@ -89,7 +105,6 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
             event.stopPropagation()
             handleFavorClick(nextRating)
           }}
-          onDblClick$={(event) => event.stopPropagation()}
         >
           {song.favorRating === 0 && <Star0 />}
           {song.favorRating === 1 && <Star1 />}

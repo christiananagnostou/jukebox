@@ -20,7 +20,7 @@ export default component$(() => {
         searchInput.value.blur()
         store.searchTerm = ''
       }
-      if (key === 'Enter') {
+      if (key === 'Enter' && store.isTyping) {
         e.preventDefault()
         e.stopPropagation()
         searchInput.value.blur()
