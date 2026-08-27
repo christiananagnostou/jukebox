@@ -7,8 +7,8 @@ use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
     cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
     get_library_scan, list_library_refreshes, list_library_roots, prepare_library_scan,
-    query_albums, query_artists, query_storage, query_tracks, set_library_root_enabled,
-    start_library_refresh, start_library_scan, LibraryState,
+    query_albums, query_artists, query_storage, query_tracks, resolve_playback_tracks,
+    set_library_root_enabled, start_library_refresh, start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
 use crate::playback::{
@@ -67,7 +67,7 @@ fn main() {
             });
             let library = LibraryState::new(app.handle()).map_err(std::io::Error::other)?;
             app.manage(library.clone());
-            app.manage(PlaybackState::default());
+            app.manage(PlaybackState::new(library.pool()));
             let watcher_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = library.recover_library_watchers(watcher_app).await {
@@ -150,6 +150,7 @@ fn main() {
             clear_library_songs,
             update_favorite_rating,
             query_tracks,
+            resolve_playback_tracks,
             query_artists,
             query_albums,
             query_storage,

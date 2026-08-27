@@ -1,14 +1,19 @@
+use super::persistence::PlaybackRepository;
+use crate::library::LibraryState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::State;
+use tokio::sync::OnceCell;
 
-const SNAPSHOT_VERSION: u32 = 1;
+pub(super) const SNAPSHOT_VERSION: u32 = 1;
 const MAX_CONTEXT_TRACKS: usize = 10_000;
 const MAX_QUEUE_ENTRIES: usize = 10_000;
 const MAX_HISTORY_ENTRIES: usize = 1_000;
 const MAX_IDENTIFIER_LENGTH: usize = 128;
 const PREVIOUS_RESTART_THRESHOLD_MS: u64 = 10_000;
+const POSITION_CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +43,7 @@ pub enum PlaybackErrorCode {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackFailure {
     code: PlaybackErrorCode,
@@ -45,13 +51,15 @@ pub struct PlaybackFailure {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueEntry {
     entry_id: String,
     track_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSelection {
     context_index: Option<usize>,
@@ -60,7 +68,8 @@ pub struct PlaybackSelection {
     track_id: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackContext {
     cursor: Option<usize>,
@@ -68,7 +77,8 @@ pub struct PlaybackContext {
     track_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct ShuffleState {
     enabled: bool,
@@ -84,7 +94,8 @@ impl Default for ShuffleState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSnapshot {
     context: PlaybackContext,
@@ -93,6 +104,7 @@ pub struct PlaybackSnapshot {
     error: Option<PlaybackFailure>,
     history: Vec<PlaybackSelection>,
     muted: bool,
+    persistence_warning: bool,
     position_ms: u64,
     queue: Vec<QueueEntry>,
     repeat_mode: RepeatMode,
@@ -113,6 +125,7 @@ impl Default for PlaybackSnapshot {
             error: None,
             history: Vec::new(),
             muted: false,
+            persistence_warning: false,
             position_ms: 0,
             queue: Vec::new(),
             repeat_mode: RepeatMode::Off,
@@ -262,12 +275,86 @@ struct PlaybackMachine {
     snapshot: PlaybackSnapshot,
 }
 
-#[derive(Default)]
 pub struct PlaybackState {
+    checkpoint: Mutex<Option<Instant>>,
     machine: Mutex<PlaybackMachine>,
+    repository: Option<PlaybackRepository>,
+    restored: OnceCell<()>,
+}
+
+impl Default for PlaybackState {
+    fn default() -> Self {
+        Self {
+            checkpoint: Mutex::new(None),
+            machine: Mutex::new(PlaybackMachine::default()),
+            repository: None,
+            restored: OnceCell::new(),
+        }
+    }
 }
 
 impl PlaybackState {
+    pub fn new(pool: sqlx::SqlitePool) -> Self {
+        Self {
+            checkpoint: Mutex::new(None),
+            machine: Mutex::new(PlaybackMachine::default()),
+            repository: Some(PlaybackRepository::new(pool)),
+            restored: OnceCell::new(),
+        }
+    }
+
+    async fn ensure_restored(&self) {
+        self.restored
+            .get_or_init(|| async {
+                let Some(repository) = &self.repository else {
+                    return;
+                };
+                let restored = repository.load().await;
+                if restored
+                    .as_ref()
+                    .is_err_and(|error| error.code == "invalid_playback_session")
+                {
+                    let _ = repository.discard().await;
+                }
+                let Ok(mut machine) = self.machine.lock() else {
+                    return;
+                };
+                match restored {
+                    Ok(Some(snapshot)) => machine.snapshot = snapshot,
+                    Ok(None) => {}
+                    Err(_) => machine.snapshot.persistence_warning = true,
+                }
+            })
+            .await;
+    }
+
+    async fn persist(&self, snapshot: PlaybackSnapshot) {
+        let Some(repository) = &self.repository else {
+            return;
+        };
+        let revision = snapshot.revision;
+        let failed = repository.save(&snapshot).await.is_err();
+        if let Ok(mut machine) = self.machine.lock() {
+            if machine.snapshot.revision == revision {
+                machine.snapshot.persistence_warning = failed;
+            }
+        }
+    }
+
+    fn checkpoint_due(&self) -> bool {
+        let Ok(mut checkpoint) = self.checkpoint.lock() else {
+            return false;
+        };
+        let now = Instant::now();
+        if checkpoint.is_some_and(|previous| {
+            now.saturating_duration_since(previous) < POSITION_CHECKPOINT_INTERVAL
+        }) {
+            return false;
+        }
+        *checkpoint = Some(now);
+        true
+    }
+
     fn snapshot(&self) -> Result<PlaybackSnapshot, PlaybackCommandError> {
         self.machine
             .lock()
@@ -389,29 +476,328 @@ impl PlaybackMachine {
 }
 
 #[tauri::command]
-pub fn get_playback_snapshot(
+pub async fn get_playback_snapshot(
+    library: State<'_, LibraryState>,
     state: State<'_, PlaybackState>,
 ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
+    library
+        .ensure_initialized()
+        .await
+        .map_err(|_| PlaybackCommandError::unavailable())?;
+    state.ensure_restored().await;
     state.snapshot()
 }
 
 #[tauri::command]
-pub fn dispatch_playback_command(
+pub async fn dispatch_playback_command(
+    library: State<'_, LibraryState>,
     state: State<'_, PlaybackState>,
     request: PlaybackCommandRequest,
 ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
-    state.dispatch(request)
+    library
+        .ensure_initialized()
+        .await
+        .map_err(|_| PlaybackCommandError::unavailable())?;
+    state.ensure_restored().await;
+    let expected_revision = request.expected_revision;
+    let persist_immediately = request.command.persists_immediately();
+    let snapshot = state.dispatch(request)?;
+    if persist_immediately && snapshot.revision > expected_revision && !snapshot.transition_pending
+    {
+        state.persist(snapshot).await;
+        return state.snapshot();
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]
-pub fn observe_playback_position(
+pub async fn observe_playback_position(
+    library: State<'_, LibraryState>,
     state: State<'_, PlaybackState>,
     observation: PlaybackPositionObservation,
 ) -> Result<PlaybackPositionState, PlaybackCommandError> {
-    state.observe_position(observation)
+    library
+        .ensure_initialized()
+        .await
+        .map_err(|_| PlaybackCommandError::unavailable())?;
+    state.ensure_restored().await;
+    let expected_revision = observation.expected_revision;
+    let position = state.observe_position(observation)?;
+    if position.revision > expected_revision && state.checkpoint_due() {
+        state.persist(state.snapshot()?).await;
+    }
+    Ok(position)
 }
 
 impl PlaybackSnapshot {
+    pub(super) fn committed_for_persistence(&self) -> Result<Self, &'static str> {
+        self.validate_persisted()?;
+        let mut snapshot = self.clone();
+        snapshot.error = None;
+        snapshot.persistence_warning = false;
+        Ok(snapshot)
+    }
+
+    pub(super) fn restored_from_persistence(
+        mut self,
+        available: &HashSet<String>,
+    ) -> Result<Self, &'static str> {
+        self.validate_persisted()?;
+        self.revision = u64::try_from(
+            self.persistence_revision()?
+                .checked_add(1)
+                .ok_or("The playback revision is too large to restore.")?,
+        )
+        .map_err(|_| "The playback revision is too large to restore.")?;
+        let pruned = self.retain_available(available);
+        self.status = if self.current.is_some() {
+            PlaybackStatus::Paused
+        } else {
+            PlaybackStatus::Stopped
+        };
+        self.persistence_warning = pruned;
+        self.validate_persisted()?;
+        Ok(self)
+    }
+
+    pub(super) fn referenced_track_ids(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        self.context
+            .track_ids
+            .iter()
+            .chain(self.queue.iter().map(|entry| &entry.track_id))
+            .chain(self.history.iter().map(|entry| &entry.track_id))
+            .chain(self.current.iter().map(|current| &current.track_id))
+            .filter(|track_id| seen.insert(track_id.as_str()))
+            .cloned()
+            .collect()
+    }
+
+    pub(super) fn needs_recovery_checkpoint(&self) -> bool {
+        self.persistence_warning
+    }
+
+    fn retain_available(&mut self, available: &HashSet<String>) -> bool {
+        let original_context = self.context.clone();
+        let original_current = self.current.clone();
+        let original_queue_len = self.queue.len();
+        let original_history_len = self.history.len();
+        let mut index_map = vec![None; original_context.track_ids.len()];
+        let mut track_ids = Vec::with_capacity(original_context.track_ids.len());
+        for (old_index, track_id) in original_context.track_ids.iter().enumerate() {
+            if available.contains(track_id) {
+                index_map[old_index] = Some(track_ids.len());
+                track_ids.push(track_id.clone());
+            }
+        }
+        let order = original_context
+            .order
+            .iter()
+            .filter_map(|old_index| index_map.get(*old_index).copied().flatten())
+            .collect::<Vec<_>>();
+        let cursor_for_old_index = |old_index: usize| {
+            index_map
+                .get(old_index)
+                .copied()
+                .flatten()
+                .and_then(|new_index| order.iter().position(|candidate| *candidate == new_index))
+        };
+        let nearest_cursor = |old_cursor: Option<usize>| {
+            old_cursor
+                .and_then(|cursor| {
+                    original_context
+                        .order
+                        .iter()
+                        .skip(cursor)
+                        .find_map(|old_index| cursor_for_old_index(*old_index))
+                })
+                .or_else(|| (!order.is_empty()).then_some(0))
+        };
+
+        self.context.track_ids = track_ids;
+        self.context.order = order.clone();
+        self.queue
+            .retain(|entry| available.contains(&entry.track_id));
+        self.history
+            .retain(|selection| available.contains(&selection.track_id));
+        for selection in &mut self.history {
+            selection.context_index = selection
+                .context_index
+                .and_then(|old_index| index_map.get(old_index).copied().flatten());
+            selection.resume_context_index = selection
+                .resume_context_index
+                .and_then(|old_index| index_map.get(old_index).copied().flatten());
+        }
+
+        let current_was_missing = original_current
+            .as_ref()
+            .is_some_and(|selection| !available.contains(&selection.track_id));
+        if let Some(mut current) = self
+            .current
+            .take()
+            .filter(|selection| available.contains(&selection.track_id))
+        {
+            current.context_index = current
+                .context_index
+                .and_then(|old_index| index_map.get(old_index).copied().flatten());
+            current.resume_context_index = current
+                .resume_context_index
+                .and_then(|old_index| index_map.get(old_index).copied().flatten());
+            self.context.cursor = current
+                .context_index
+                .or(current.resume_context_index)
+                .and_then(|new_index| {
+                    self.context
+                        .order
+                        .iter()
+                        .position(|candidate| *candidate == new_index)
+                })
+                .or_else(|| nearest_cursor(original_context.cursor));
+            self.current = Some(current);
+        } else if current_was_missing {
+            self.context.cursor = nearest_cursor(original_context.cursor);
+            self.current = self.queue.first().cloned().map(|entry| {
+                self.queue.remove(0);
+                PlaybackSelection {
+                    context_index: None,
+                    queue_entry_id: Some(entry.entry_id),
+                    resume_context_index: self.context_current_index(),
+                    track_id: entry.track_id,
+                }
+            });
+            if self.current.is_none() {
+                self.current = self.context_selection();
+            }
+            self.position_ms = 0;
+            self.duration_ms = 0;
+        } else {
+            self.context.cursor = nearest_cursor(original_context.cursor);
+            self.current = None;
+        }
+
+        let pruned = self.context != original_context
+            || self.current != original_current
+            || self.queue.len() != original_queue_len
+            || self.history.len() != original_history_len;
+        if pruned {
+            self.error = Some(PlaybackFailure {
+                code: PlaybackErrorCode::Unavailable,
+                recoverable: true,
+            });
+        }
+        pruned
+    }
+
+    pub(super) fn persistence_revision(&self) -> Result<i64, &'static str> {
+        i64::try_from(self.revision).map_err(|_| "The playback revision is too large to persist.")
+    }
+
+    fn validate_persisted(&self) -> Result<(), &'static str> {
+        if self.schema_version != SNAPSHOT_VERSION {
+            return Err("The playback snapshot version is unsupported.");
+        }
+        self.persistence_revision()?;
+        if self.transition_pending {
+            return Err("A pending playback transition cannot be persisted.");
+        }
+        if self.context.track_ids.len() > MAX_CONTEXT_TRACKS
+            || self.context.order.len() != self.context.track_ids.len()
+        {
+            return Err("The persisted playback context is invalid.");
+        }
+        if self.queue.len() > MAX_QUEUE_ENTRIES || self.history.len() > MAX_HISTORY_ENTRIES {
+            return Err("The persisted playback collections are too large.");
+        }
+        if self.volume_percent > 100 || self.position_ms > self.duration_ms {
+            return Err("The persisted playback values are out of range.");
+        }
+        if self
+            .context
+            .track_ids
+            .iter()
+            .any(|track_id| !is_valid_id(track_id))
+        {
+            return Err("The persisted playback context contains an invalid identifier.");
+        }
+
+        let mut seen_order = vec![false; self.context.track_ids.len()];
+        for index in &self.context.order {
+            let Some(seen) = seen_order.get_mut(*index) else {
+                return Err("The persisted playback order is invalid.");
+            };
+            if *seen {
+                return Err("The persisted playback order contains duplicates.");
+            }
+            *seen = true;
+        }
+        if self
+            .context
+            .cursor
+            .is_some_and(|cursor| cursor >= self.context.order.len())
+        {
+            return Err("The persisted playback cursor is invalid.");
+        }
+
+        let mut queue_ids = HashSet::with_capacity(self.queue.len());
+        for entry in &self.queue {
+            if !is_valid_id(&entry.entry_id)
+                || !is_valid_id(&entry.track_id)
+                || !queue_ids.insert(entry.entry_id.as_str())
+            {
+                return Err("The persisted playback queue is invalid.");
+            }
+        }
+        if let Some(current) = &self.current {
+            self.validate_selection(current)?;
+            if current.context_index.is_some()
+                && current.context_index != self.context_current_index()
+            {
+                return Err("The persisted current selection does not match its context cursor.");
+            }
+            if current.queue_entry_id.is_some()
+                && current.resume_context_index != self.context_current_index()
+            {
+                return Err("The persisted queued selection has an invalid context anchor.");
+            }
+            if current
+                .queue_entry_id
+                .as_deref()
+                .is_some_and(|entry_id| queue_ids.contains(entry_id))
+            {
+                return Err("The current queue entry is still present in the upcoming queue.");
+            }
+        }
+        for selection in &self.history {
+            self.validate_selection(selection)?;
+        }
+        Ok(())
+    }
+
+    fn validate_selection(&self, selection: &PlaybackSelection) -> Result<(), &'static str> {
+        if !is_valid_id(&selection.track_id) {
+            return Err("A persisted playback selection has an invalid track identifier.");
+        }
+        match (
+            selection.context_index,
+            selection.queue_entry_id.as_deref(),
+            selection.resume_context_index,
+        ) {
+            (Some(context_index), None, None)
+                if self.context.track_ids.get(context_index) == Some(&selection.track_id) =>
+            {
+                Ok(())
+            }
+            (None, Some(entry_id), resume_context_index)
+                if is_valid_id(entry_id)
+                    && resume_context_index
+                        .is_none_or(|index| index < self.context.track_ids.len()) =>
+            {
+                Ok(())
+            }
+            _ => Err("A persisted playback selection is structurally invalid."),
+        }
+    }
+
     fn apply(&mut self, command: PlaybackCommand) -> Result<bool, PlaybackCommandError> {
         match command {
             PlaybackCommand::ReplaceContext {
@@ -878,6 +1264,27 @@ impl PlaybackSnapshot {
 }
 
 impl PlaybackCommand {
+    fn persists_immediately(&self) -> bool {
+        matches!(
+            self,
+            Self::ReplaceContext { .. }
+                | Self::Enqueue { .. }
+                | Self::RemoveQueueEntry { .. }
+                | Self::MoveQueueEntry { .. }
+                | Self::ClearUpcoming
+                | Self::Play
+                | Self::Pause
+                | Self::Next
+                | Self::Previous
+                | Self::Ended
+                | Self::SetRepeat { .. }
+                | Self::SetShuffle { .. }
+                | Self::MarkUnavailable { .. }
+                | Self::CommitTransition
+                | Self::SetVolume { .. }
+        )
+    }
+
     fn requires_transition_confirmation(&self) -> bool {
         match self {
             Self::ReplaceContext { autoplay, .. } => *autoplay,
@@ -901,18 +1308,21 @@ fn validate_ids(ids: &[String], maximum: usize, revision: u64) -> Result<(), Pla
 }
 
 fn validate_id(id: &str, revision: u64) -> Result<(), PlaybackCommandError> {
-    if id.is_empty()
-        || id.len() > MAX_IDENTIFIER_LENGTH
-        || !id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-    {
+    if !is_valid_id(id) {
         return Err(PlaybackCommandError::invalid(
             revision,
             "Playback identifiers must be opaque, present, and bounded.",
         ));
     }
     Ok(())
+}
+
+fn is_valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= MAX_IDENTIFIER_LENGTH
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn playback_order(length: usize, shuffle: bool, seed: u64) -> Vec<usize> {
@@ -1451,5 +1861,72 @@ mod tests {
         assert_eq!(json["current"]["trackId"], "one");
         assert_eq!(json["volumePercent"], 100);
         assert!(json.get("schema_version").is_none());
+    }
+
+    #[test]
+    fn position_checkpoints_are_coalesced() {
+        let state = PlaybackState::default();
+        assert!(state.checkpoint_due());
+        assert!(!state.checkpoint_due());
+    }
+
+    #[test]
+    fn persistence_failure_sets_a_recoverable_warning_without_changing_revision() {
+        tauri::async_runtime::block_on(async {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open persistence failure fixture");
+            let state = PlaybackState::new(pool);
+            state.persist(PlaybackSnapshot::default()).await;
+            let snapshot = state.snapshot().expect("read warning snapshot");
+            assert!(snapshot.persistence_warning);
+            assert_eq!(snapshot.revision, 0);
+        });
+    }
+
+    #[test]
+    fn invalid_saved_session_is_discarded_before_future_recovery_writes() {
+        tauri::async_runtime::block_on(async {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open invalid session fixture");
+            sqlx::raw_sql(crate::database::PLAYBACK_SESSION_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("create playback session table");
+            sqlx::raw_sql(
+                "CREATE TABLE songs (
+                   id TEXT PRIMARY KEY,
+                   availability TEXT NOT NULL
+                 );
+                 INSERT INTO playback_session (
+                   id, schema_version, snapshot_revision, snapshot_json
+                 ) VALUES (1, 1, 999, '{}');",
+            )
+            .execute(&pool)
+            .await
+            .expect("insert invalid saved session");
+            let state = PlaybackState::new(pool.clone());
+
+            state.ensure_restored().await;
+
+            assert!(
+                state
+                    .snapshot()
+                    .expect("read recovered snapshot")
+                    .persistence_warning
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM playback_session")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count saved sessions"),
+                0
+            );
+        });
     }
 }

@@ -3,6 +3,7 @@ use super::query::{
 };
 use serde::Serialize;
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -249,6 +250,38 @@ impl LibraryRepository {
             revision,
             total,
         })
+    }
+
+    pub(crate) async fn tracks_by_ids(
+        &self,
+        track_ids: &[String],
+    ) -> Result<Vec<TrackSummary>, LibraryError> {
+        let mut tracks = HashMap::with_capacity(track_ids.len());
+        for chunk in track_ids.chunks(500) {
+            let mut builder = QueryBuilder::<Sqlite>::new(
+                "SELECT id, path, file, title, album, artist, date, trackNumber, codec, duration, \
+                 sampleRate, side, startTime, favorRating, dateAdded, visualsPath
+                 FROM songs WHERE availability = 'available' AND id IN (",
+            );
+            let mut separated = builder.separated(", ");
+            for track_id in chunk {
+                separated.push_bind(track_id);
+            }
+            separated.push_unseparated(")");
+            let rows = builder
+                .build()
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|_| LibraryError::database())?;
+            for row in &rows {
+                let track = track_from_row(row)?;
+                tracks.insert(track.id.clone(), track);
+            }
+        }
+        Ok(track_ids
+            .iter()
+            .filter_map(|track_id| tracks.remove(track_id))
+            .collect())
     }
 }
 
@@ -510,6 +543,10 @@ mod tests {
             .await
             .expect("insert repository fixture song");
         }
+        sqlx::raw_sql(crate::database::LIBRARY_SCAN_SCHEMA)
+            .execute(&pool)
+            .await
+            .expect("apply library availability schema");
         LibraryRepository::new(pool)
     }
 
@@ -561,6 +598,34 @@ mod tests {
             assert_eq!(page.items[0].artist, "Björk");
             assert_eq!(page.total, 1);
             assert_eq!(page.next_cursor, None);
+        });
+    }
+
+    #[test]
+    fn playback_track_resolution_is_bounded_to_requested_available_ids_and_preserves_order() {
+        run_async(async {
+            let repository = repository().await;
+            sqlx::query("UPDATE songs SET availability = 'unavailable' WHERE id = 'song-01'")
+                .execute(&repository.pool())
+                .await
+                .expect("mark fixture track unavailable");
+            let tracks = repository
+                .tracks_by_ids(&[
+                    "song-02".to_owned(),
+                    "song-01".to_owned(),
+                    "missing".to_owned(),
+                    "song-00".to_owned(),
+                ])
+                .await
+                .expect("resolve playback tracks");
+
+            assert_eq!(
+                tracks
+                    .iter()
+                    .map(|track| track.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["song-02", "song-00"]
+            );
         });
     }
 

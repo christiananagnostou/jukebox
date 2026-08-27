@@ -104,6 +104,11 @@ function toSong(track: NativeTrackSummary): Song {
   }
 }
 
+export async function resolvePlaybackTracks(trackIds: string[]): Promise<Song[]> {
+  const tracks = await invoke<NativeTrackSummary[]>('resolve_playback_tracks', { trackIds })
+  return tracks.map(toSong)
+}
+
 export async function queryTracks(query: TrackQuery): Promise<TrackPage> {
   const page = await invoke<NativeTrackPage>('query_tracks', { query })
   return { ...page, items: page.items.map(toSong) }
