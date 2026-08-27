@@ -3,11 +3,5 @@
   "identifier": "main-capability",
   "description": "Default capability for the main window",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "dialog:default",
-    "fs:default",
-    "fs:allow-home-read-recursive",
-    "fs:allow-home-meta-recursive"
-  ]
+  "permissions": ["core:default", "dialog:allow-message", "dialog:allow-open"]
 }

@@ -1,1 +1,1 @@
-{"main-capability":{"identifier":"main-capability","description":"Default capability for the main window","local":true,"windows":["main"],"permissions":["core:default","dialog:default","fs:default","fs:allow-home-read-recursive","fs:allow-home-meta-recursive"]}}
+{"main-capability":{"identifier":"main-capability","description":"Default capability for the main window","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-message","dialog:allow-open"]}}

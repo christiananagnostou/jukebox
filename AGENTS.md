@@ -112,7 +112,7 @@ Rust only:
 ## Tauri v2 Notes
 
 - JS core: @tauri-apps/api/core, path, event, webviewWindow.
-- Dialog/FS/SQL are plugins (@tauri-apps/plugin-\*).
+- Dialog/SQL are plugins (@tauri-apps/plugin-\*).
 - Rust path APIs: tauri::Manager::path.
 - Asset protocol is enabled in src-tauri/tauri.conf.json.
 - convertFileSrc requires asset protocol scope to include the path.
@@ -120,7 +120,6 @@ Rust only:
 ## Tauri Plugins Used
 
 - tauri-plugin-dialog
-- tauri-plugin-fs
 - tauri-plugin-sql (sqlite)
 
 ## Rust Conventions
