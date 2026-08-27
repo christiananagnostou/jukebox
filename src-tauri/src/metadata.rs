@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::fs::{self, File};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use crate::artwork::ArtworkCache;
 use serde::Serialize;
 use symphonia::core::{
     formats::{FormatOptions, FormatReader},
@@ -10,7 +11,6 @@ use symphonia::core::{
     probe::Hint,
     units::TimeBase,
 };
-use tauri::Manager;
 
 #[derive(Debug, Serialize)]
 pub struct Metadata {
@@ -27,7 +27,7 @@ impl Metadata {
         let path = PathBuf::from(&file_path);
         let id = hash_string(&file_path);
         let extracted = extract_metadata(&path)?;
-        let visual_info = extracted.cache_visual(app_handle, &id)?;
+        let visual_info = extracted.cache_visual(app_handle)?;
 
         Ok(Self {
             id,
@@ -50,14 +50,10 @@ pub(crate) struct ExtractedMetadata {
 }
 
 impl ExtractedMetadata {
-    fn cache_visual(
-        &self,
-        app_handle: &tauri::AppHandle,
-        song_id: &str,
-    ) -> Result<VisualInfo, String> {
+    fn cache_visual(&self, app_handle: &tauri::AppHandle) -> Result<VisualInfo, String> {
         self.visual
             .as_ref()
-            .map(|visual| cache_visual(app_handle, song_id, &self.meta_tags, visual))
+            .map(|visual| cache_visual(app_handle, visual))
             .transpose()
             .map(|visual| visual.unwrap_or_default())
     }
@@ -65,9 +61,8 @@ impl ExtractedMetadata {
     pub(crate) fn cache_visual_path(
         &self,
         app_handle: &tauri::AppHandle,
-        song_id: &str,
     ) -> Result<String, String> {
-        self.cache_visual(app_handle, song_id)
+        self.cache_visual(app_handle)
             .map(|visual| visual.image_path)
     }
 }
@@ -105,50 +100,13 @@ pub(crate) fn extract_metadata(path: &Path) -> Result<ExtractedMetadata, String>
 
 fn cache_visual(
     app_handle: &tauri::AppHandle,
-    song_id: &str,
-    meta_tags: &HashMap<String, String>,
     visual: &ExtractedVisual,
 ) -> Result<VisualInfo, String> {
-    let artist = hash_string(
-        meta_tags
-            .get("Artist")
-            .map(String::as_str)
-            .unwrap_or("unknown"),
-    );
-    let album = hash_string(
-        meta_tags
-            .get("Album")
-            .map(String::as_str)
-            .unwrap_or("unknown"),
-    );
-    let album_dir = app_handle
-        .path()
-        .app_local_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("Jukebox")
-        .join("art")
-        .join(artist)
-        .join(album);
-
-    fs::create_dir_all(&album_dir).map_err(|error| error.to_string())?;
-
-    let extension = visual
-        .media_type
-        .rsplit('/')
-        .next()
-        .filter(|value| {
-            !value.is_empty()
-                && value
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric())
-        })
-        .unwrap_or("bin");
-    let image_path = album_dir.join(format!("{song_id}.{extension}"));
-
-    if !image_path.exists() {
-        fs::write(&image_path, &visual.media_data).map_err(|error| error.to_string())?;
-    }
-
+    let Some(image_path) =
+        ArtworkCache::from_app(app_handle)?.cache(&visual.media_type, &visual.media_data)?
+    else {
+        return Ok(VisualInfo::default());
+    };
     Ok(VisualInfo {
         media_type: visual.media_type.clone(),
         image_path: image_path.to_string_lossy().into_owned(),

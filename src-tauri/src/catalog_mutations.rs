@@ -50,18 +50,24 @@ impl LibraryState {
         if songs.is_empty() {
             return Ok(());
         }
-        upsert_songs_in_pool(&self.catalog_mutation_pool().await?, songs, |_| Ok(())).await
+        upsert_songs_in_pool(&self.catalog_mutation_pool().await?, songs, |_| Ok(())).await?;
+        self.collect_artwork_cache().await;
+        Ok(())
     }
 
     async fn delete_catalog_songs(&self, ids: &[String]) -> Result<(), String> {
         if ids.is_empty() {
             return Ok(());
         }
-        delete_songs_in_pool(&self.catalog_mutation_pool().await?, ids, |_| Ok(())).await
+        delete_songs_in_pool(&self.catalog_mutation_pool().await?, ids, |_| Ok(())).await?;
+        self.collect_artwork_cache().await;
+        Ok(())
     }
 
     async fn clear_catalog_songs(&self) -> Result<(), String> {
-        clear_songs_in_pool(&self.catalog_mutation_pool().await?).await
+        clear_songs_in_pool(&self.catalog_mutation_pool().await?).await?;
+        self.collect_artwork_cache().await;
+        Ok(())
     }
 
     async fn set_favorite_rating(&self, id: &str, rating: i64) -> Result<(), String> {
@@ -467,13 +473,26 @@ mod tests {
     fn managed_library_state_runs_every_catalog_mutation() {
         run_async(async {
             let (pool, root) = test_pool("managed-mutations").await;
-            let library = LibraryState::from_pool(pool.clone());
-            let songs = vec![song(1), song(2)];
+            let artwork_root = root.join("art");
+            let cache = crate::artwork::ArtworkCache::from_root(artwork_root.clone());
+            let referenced_artwork = cache
+                .cache("image/png", b"referenced")
+                .expect("cache referenced artwork")
+                .expect("referenced artwork path");
+            let abandoned_artwork = cache
+                .cache("image/png", b"abandoned")
+                .expect("cache abandoned artwork")
+                .expect("abandoned artwork path");
+            let library = LibraryState::from_pool_with_artwork_root(pool.clone(), artwork_root);
+            let mut songs = vec![song(1), song(2)];
+            songs[0].visuals_path = referenced_artwork.to_string_lossy().into_owned();
 
             library
                 .upsert_catalog_songs(&songs)
                 .await
                 .expect("upsert through managed state");
+            assert!(referenced_artwork.is_file());
+            assert!(!abandoned_artwork.exists());
             library
                 .set_favorite_rating("song-1", 2)
                 .await
@@ -495,6 +514,7 @@ mod tests {
                 .await
                 .expect("clear through managed state");
             assert_eq!(song_count(&pool).await, 0);
+            assert!(!referenced_artwork.exists());
 
             close_test_pool(pool, root).await;
         });

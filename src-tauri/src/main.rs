@@ -25,6 +25,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::RunEvent;
 use tauri::{Manager, WindowEvent};
 
+mod artwork;
 mod catalog_mutations;
 mod database;
 mod library;

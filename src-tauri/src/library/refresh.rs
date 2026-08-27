@@ -161,6 +161,7 @@ impl LibraryState {
             self.reconciliation.settle_cancelled(scan_id).await?;
         } else {
             self.reconciliation.apply(scan_id).await?;
+            self.collect_artwork_cache().await;
         }
         self.emit_refresh(&app, scan_id).await;
         self.get_library_refresh(scan_id).await
