@@ -1,4 +1,4 @@
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 10;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 11;
 
 #[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
@@ -28,6 +28,8 @@ pub(crate) const PLAYBACK_SESSION_SCHEMA: &str =
 #[cfg(test)]
 pub(crate) const LIBRARY_FILTERS_SCHEMA: &str =
     include_str!("../migrations/0010_library_filters_facets.sql");
+#[cfg(test)]
+pub(crate) const PLAYLIST_SCHEMA: &str = include_str!("../migrations/0011_playlists.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[cfg(test)]
@@ -227,7 +229,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                10
+                11
             );
             assert_eq!(
                 sqlx::query_scalar::<_, i64>(
@@ -333,6 +335,90 @@ mod tests {
                 .await
                 .expect("inspect reconciliation fingerprint index"),
                 1
+            );
+        });
+    }
+
+    #[test]
+    fn playlist_schema_preserves_collection_intent_without_a_song_foreign_key() {
+        run_async(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open playlist migration database");
+            sqlx::query("PRAGMA foreign_keys = ON")
+                .execute(&pool)
+                .await
+                .expect("enable playlist foreign keys");
+            sqlx::raw_sql(INITIAL_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply initial playlist schema");
+            sqlx::raw_sql(PLAYLIST_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply playlist schema");
+            sqlx::raw_sql(
+                "INSERT INTO songs VALUES
+                  ('song', '/Music/song.flac', 'song.flac', 'Song', 'Album', 'Artist', '', 0, 0,
+                   '2026', '', 1, 1, 'flac', '0:03:00.000', '44100', 1, 0, 0,
+                   '2026-08-27', '');
+                 INSERT INTO playlists (id, name, name_key) VALUES
+                  ('playlist_0123456789abcdef0123456789abcdef', 'Saved', 'saved');
+                 INSERT INTO playlist_entries (
+                   id, playlist_id, song_id, position, title_snapshot, artist_snapshot,
+                   album_snapshot
+                 ) VALUES (
+                   'entry_0123456789abcdef0123456789abcdef',
+                   'playlist_0123456789abcdef0123456789abcdef', 'song', 0,
+                   'Song', 'Artist', 'Album'
+                 );
+                 DELETE FROM songs WHERE id = 'song';",
+            )
+            .execute(&pool)
+            .await
+            .expect("preserve entry across catalog deletion");
+
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM playlist_entries")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count preserved playlist entry"),
+                1
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM pragma_foreign_key_list('playlist_entries')
+                     WHERE \"table\" = 'playlists' AND \"from\" = 'playlist_id'"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("inspect playlist ownership foreign key"),
+                1
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM pragma_foreign_key_list('playlist_entries')
+                     WHERE \"table\" = 'songs'"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("confirm song foreign key is absent"),
+                0
+            );
+            sqlx::query(
+                "DELETE FROM playlists WHERE id = 'playlist_0123456789abcdef0123456789abcdef'",
+            )
+            .execute(&pool)
+            .await
+            .expect("delete playlist owner");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM playlist_entries")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("confirm playlist cascade"),
+                0
             );
         });
     }
