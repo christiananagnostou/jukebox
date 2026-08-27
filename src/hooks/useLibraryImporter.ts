@@ -1,7 +1,6 @@
 import { $ } from '@builder.io/qwik'
 import { invoke } from '@tauri-apps/api/core'
 import { basename } from '@tauri-apps/api/path'
-import { stat } from '@tauri-apps/plugin-fs'
 
 import type { Metadata, Song, Store } from '~/App'
 import { upsertSongs } from '~/services/library-db'
@@ -19,6 +18,11 @@ interface ImportFile {
 interface ImportResult {
   error?: string
   song?: Song
+}
+
+interface ImportPathPartition {
+  directories: string[]
+  files: string[]
 }
 
 export interface ImportSummary {
@@ -40,20 +44,6 @@ async function collectImportFiles(paths: string[]): Promise<ImportFile[]> {
   }
 
   return files
-}
-
-export async function partitionImportPaths(
-  paths: string[],
-  inspect: (path: string) => Promise<{ isDirectory: boolean; isFile: boolean }> = stat
-): Promise<{ directories: string[]; files: string[] }> {
-  const directories: string[] = []
-  const files: string[] = []
-  for (const path of paths) {
-    const info = await inspect(path)
-    if (info.isDirectory) directories.push(path)
-    else if (info.isFile) files.push(path)
-  }
-  return { directories, files }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -120,7 +110,7 @@ export function useLibraryImporter(store: Store) {
     }
 
     try {
-      const { directories, files: filePaths } = await partitionImportPaths(paths)
+      const { directories, files: filePaths } = await invoke<ImportPathPartition>('classify_import_paths', { paths })
       const rootResults = await Promise.all(
         directories.map(async (path) => {
           try {

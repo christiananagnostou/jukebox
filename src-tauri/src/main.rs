@@ -6,6 +6,7 @@ use crate::catalog_mutations::{
 use crate::diagnostics::{
     copy_diagnostics_summary, get_diagnostics_summary, open_diagnostics_directory, DiagnosticsState,
 };
+use crate::import_paths::classify_import_paths;
 use crate::library::{
     add_library_root, apply_library_reconciliation, cancel_library_reconciliation,
     cancel_library_refresh, cancel_library_scan, get_library_reconciliation, get_library_refresh,
@@ -36,6 +37,7 @@ mod artwork;
 mod catalog_mutations;
 mod database;
 mod diagnostics;
+mod import_paths;
 mod library;
 mod metadata;
 mod playback;
@@ -208,6 +210,7 @@ fn main() {
             get_library_refresh,
             list_library_refreshes,
             get_metadata,
+            classify_import_paths,
             copy_diagnostics_summary,
             get_diagnostics_summary,
             open_diagnostics_directory,
@@ -223,7 +226,6 @@ fn main() {
             stop_tailscale_serve
         ])
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(database::LIBRARY_DB_URL, database::migrations())

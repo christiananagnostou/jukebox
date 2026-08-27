@@ -10,7 +10,7 @@ Make future Jukebox development safe to ship by replacing implicit runtime setup
 - `src/services/library-db.ts` creates the `songs` table at runtime and has no schema version or migration history.
 - Coverage is limited to six utility tests in `src/utils/Files.test.ts` and `src/utils/Songs.test.ts`; there are no Rust tests or tests for import, playback, settings, database failure, or recovery.
 - `src-tauri/tauri.conf.json` has `csp: null`, asset protocol scope `['**']`, an identifier ending in `.app`, a `DeveloperTool` bundle category, and no signing/updater configuration.
-- `src-tauri/capabilities/default.json` grants recursive home-directory read and metadata access to the frontend.
+- Plan 033 removes the filesystem guest binding, direct Rust plugin initialization/dependency, recursive home read/metadata grants, and unused dialog-save permission. User-selected path classification now runs in a bounded native command.
 - CI builds Ubuntu and macOS but not Windows, and does not run `cargo test`, `cargo clippy`, an audit check, or artifact smoke checks.
 - Plan 032 added bounded structured local logs, categorized recent errors, scan-operation evidence, and Settings actions for copying a redacted summary or opening the app-owned log directory.
 - Public source and packaged-bundle portability checks now reject developer home, checkout, toolchain, and temporary paths. Release builds remap those paths before Rust compilation so distributable binaries do not expose the build machine layout.
@@ -60,9 +60,11 @@ Delivered by [plan 032](032-privacy-conscious-diagnostics.md).
 
 ### 4. Tighten the Tauri boundary
 
+Renderer filesystem-plugin removal is delivered by [plan 033](033-native-import-path-inspection.md). CSP and runtime asset-protocol scope work remains.
+
 - Add a non-null CSP in `src-tauri/tauri.conf.json` limited to local assets and the Tauri asset protocol. Verify album art and audio URLs under the production bundle.
 - Replace the global asset protocol `['**']` scope with application-cache and approved library-root scopes. Because library roots are chosen at runtime, extend scope only after explicit folder selection and revoke roots when removed.
-- Remove frontend recursive-home filesystem permission after scan and existence checks move behind commands. Until plan 002 completes, narrow permissions to user-selected roots where Tauri runtime scopes allow it.
+- Keep frontend filesystem permission absent; selected-path classification, scanning, and existence checks stay behind bounded native commands.
 - Review SQL permissions and expose only required statements or move database mutation behind commands as plan 002 proceeds.
 - Add negative tests showing an unapproved path cannot be scanned or exposed through `convertFileSrc`.
 
