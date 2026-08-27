@@ -1,6 +1,6 @@
 # Jukebox implementation plans
 
-Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-031 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
+Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-032 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
 
 The product direction remains local-first: a fast native catalog, dependable playback, durable collections, a compact accessible interface, and private iPhone listening through loopback-only Jukebox HTTP plus Tailscale Serve. Public sharing, mandatory accounts, visualizers, and large decorative animations remain out of scope.
 
@@ -33,14 +33,15 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [029](029-native-playback-parity.md)               | Route browser playback through native state                         | P1       | L      | 028        | DONE   |
 | [030](030-playback-session-persistence.md)         | Restore committed playback sessions and queues                      | P1       | L      | 029        | DONE   |
 | [031](031-native-decoder-feasibility.md)           | Prove bounded native decoder feasibility                            | P1       | M      | 030        | DONE   |
+| [032](032-privacy-conscious-diagnostics.md)        | Add bounded privacy-conscious local diagnostics                     | P1       | M      | 031        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
 ## Strategic roadmap status
 
-| Plan                                              | Outcome                                                         | Status on 2026-08-26                                                                                                                                                                                                                                  |
+| Plan                                              | Outcome                                                         | Status on 2026-08-27                                                                                                                                                                                                                                  |
 | ------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [001](001-quality-security-release-foundation.md) | Migrations, diagnostics, permissions, identity, release quality | IN PROGRESS — migrations, Rust quality gates, source/bundle portability checks, build-path remapping, and renderer SQL narrowing are complete; diagnostics, filesystem permission narrowing, identity migration, Windows, signing, and updater remain |
+| [001](001-quality-security-release-foundation.md) | Migrations, diagnostics, permissions, identity, release quality | IN PROGRESS — migrations, diagnostics, Rust quality gates, source/bundle portability checks, build-path remapping, and renderer SQL narrowing are complete; filesystem permission narrowing, identity migration, Windows, signing, and updater remain |
 | [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-026 delivered the native refresh pipeline, executable 100k-track budgets, bounded routes, renderer-memory cleanup, shared mutation pool ownership, and bounded artwork lifecycle                                              |
 | [003](003-playback-engine-and-os-integration.md)  | Reliable restart-safe playback and OS integration               | IN PROGRESS — plans 009 and 028-031 delivered native authority, browser parity, restart-safe recovery, six-codec decode, exact seek, and sample-boundary evidence; real-device native output remains                                                  |
 | [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | IN PROGRESS — stable native queue entries, desktop parity, and committed session/queue persistence are complete; named playlists and broader collection management remain                                                                             |
@@ -61,7 +62,7 @@ Plans 007-010 are deliberately independent and may be delivered as separate PRs.
 
 - FTS-rich facets remain high-impact plan 002 work; plan 026 addresses content-addressed artwork and post-commit cache collection.
 - A native playback backend and gapless output remain plan 003. Do not choose a decoder/output stack before plan 009's state-machine tests and the existing feasibility gate.
-- Windows packaging, signing, updater support, CSP/runtime scope narrowing, diagnostics, and app-identity migration remain plan 001. Permission narrowing depends on catalog/filesystem ownership moving behind Rust.
+- Windows packaging, signing, updater support, CSP/runtime scope narrowing, and app-identity migration remain plan 001. Permission narrowing depends on catalog/filesystem ownership moving behind Rust.
 - Shared queue state and optional bounded HLS fallback remain later phases of plan 006; mobile artist/album browsing and Media Session transport handlers landed in plan 027.
 - Separate filesystem-discovery and changed-metadata benchmarks remain useful additions to the existing executable 100,000-track query and no-change preparation budgets.
 - Narrowing Symphonia features is deferred until one metadata fixture exists for every supported format; binary-size savings do not justify risking format regressions now.
