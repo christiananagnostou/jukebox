@@ -11,6 +11,7 @@ Provide reliable, gapless, restart-safe playback with first-class media controls
 - Media keys are handled through window `keydown` in `src/hooks/useKeyboardShortcuts.ts`, so they are not a dependable global media-session integration.
 - There is no output-device selection, volume persistence, ReplayGain, shuffle/repeat model, resume position, sleep/wake recovery, or structured playback error state.
 - `symphonia` is already used for metadata parsing and can remain the shared codec foundation for a native playback feasibility spike.
+- Plan 031 proved synthetic MP3, AAC/M4A, FLAC, Ogg/Vorbis, WAV, and ALAC decode, exact PCM seek, bounded 4,096-sample output chunks, and a zero-insertion-free two-track boundary. Real-device output and the supported OS baseline remain open.
 
 ## Scope
 
