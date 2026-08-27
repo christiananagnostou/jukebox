@@ -92,7 +92,7 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         }
         if (key === 'q') {
           const song = librarySongAt(store.libraryCatalog, store.libraryView.cursorIdx)
-          if (song) store.queue.push(song)
+          if (song) void storeActions.enqueueSong(song)
         }
       }
 
@@ -118,13 +118,13 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         }
       }
 
-      if (key === 'n' || code === 'MediaTrackNext') storeActions.nextSong()
-      if (key === 'N' || code === 'MediaTrackPrevious') storeActions.prevSong()
+      if (key === 'n' || code === 'MediaTrackNext') void storeActions.nextSong()
+      if (key === 'N' || code === 'MediaTrackPrevious') void storeActions.prevSong()
       if (key === 'p') {
         if (store.player.isPaused) {
-          storeActions.resumeSong()
+          void storeActions.resumeSong()
         } else {
-          storeActions.pauseSong()
+          void storeActions.pauseSong()
         }
       }
 

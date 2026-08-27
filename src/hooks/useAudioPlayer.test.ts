@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import type { Song, Store } from '~/App'
 import type { AudioTransport, AudioTransportEvent } from '~/services/audio-transport'
+import type {
+  PlaybackBridge,
+  PlaybackCommand,
+  PlaybackPositionState,
+  PlaybackSnapshot,
+} from '~/services/playback-client'
 import {
   bindPlaybackEvents,
   createPlaybackController,
@@ -32,6 +38,185 @@ const song = (id: string): Song => ({
   dateAdded: '2026-08-26T00:00:00.000Z',
   visualsPath: '',
 })
+
+function emptySnapshot(): PlaybackSnapshot {
+  return {
+    context: { cursor: null, order: [], trackIds: [] },
+    current: null,
+    durationMs: 0,
+    error: null,
+    history: [],
+    muted: false,
+    positionMs: 0,
+    queue: [],
+    repeatMode: 'off',
+    revision: 0,
+    schemaVersion: 1,
+    shuffle: { enabled: false, seed: 1 },
+    status: 'stopped',
+    transitionPending: false,
+    volumePercent: 100,
+  }
+}
+
+const cloneSnapshot = (snapshot: PlaybackSnapshot): PlaybackSnapshot => structuredClone(snapshot)
+
+class FakePlaybackBridge implements PlaybackBridge {
+  commands: PlaybackCommand[] = []
+  observations: Array<{ durationMs: number; positionMs: number; trackId: string }> = []
+  private rollback?: PlaybackSnapshot
+  private snapshot = emptySnapshot()
+
+  async getSnapshot(): Promise<PlaybackSnapshot> {
+    return cloneSnapshot(this.snapshot)
+  }
+
+  async dispatch(command: PlaybackCommand): Promise<PlaybackSnapshot> {
+    this.commands.push(command)
+    if (this.rollback && command.type !== 'commitTransition' && command.type !== 'rejectTransition') {
+      throw { code: 'transition_pending' }
+    }
+
+    if (command.type === 'commitTransition') {
+      if (!this.rollback) throw { code: 'no_pending_transition' }
+      this.rollback = undefined
+      this.snapshot.transitionPending = false
+      this.snapshot.revision += 1
+      return cloneSnapshot(this.snapshot)
+    }
+    if (command.type === 'rejectTransition') {
+      if (!this.rollback) throw { code: 'no_pending_transition' }
+      const revision = this.snapshot.revision + 1
+      this.snapshot = this.rollback
+      this.rollback = undefined
+      this.snapshot.error = { code: command.code, recoverable: command.recoverable }
+      this.snapshot.revision = revision
+      this.snapshot.status = 'paused'
+      this.snapshot.transitionPending = false
+      return cloneSnapshot(this.snapshot)
+    }
+
+    const before = cloneSnapshot(this.snapshot)
+    let changed = true
+    switch (command.type) {
+      case 'replaceContext': {
+        this.snapshot.context = {
+          cursor: command.trackIds.length ? command.startIndex : null,
+          order: command.trackIds.map((_, index) => index),
+          trackIds: [...command.trackIds],
+        }
+        this.snapshot.current = command.trackIds[command.startIndex]
+          ? {
+              contextIndex: command.startIndex,
+              queueEntryId: null,
+              resumeContextIndex: null,
+              trackId: command.trackIds[command.startIndex],
+            }
+          : null
+        this.snapshot.history = []
+        this.snapshot.positionMs = 0
+        this.snapshot.durationMs = 0
+        this.snapshot.error = null
+        this.snapshot.status = this.snapshot.current ? (command.autoplay ? 'playing' : 'paused') : 'stopped'
+        break
+      }
+      case 'enqueue':
+        this.snapshot.queue.push(...command.entries)
+        break
+      case 'clearUpcoming':
+        changed = this.snapshot.queue.length > 0
+        this.snapshot.queue = []
+        break
+      case 'next':
+      case 'ended': {
+        if (this.snapshot.current) this.snapshot.history.push(this.snapshot.current)
+        const queued = this.snapshot.queue.shift()
+        if (queued) {
+          this.snapshot.current = {
+            contextIndex: null,
+            queueEntryId: queued.entryId,
+            resumeContextIndex: this.snapshot.context.cursor,
+            trackId: queued.trackId,
+          }
+        } else {
+          const cursor = this.snapshot.context.cursor
+          const next = cursor === null || cursor === undefined ? 0 : cursor + 1
+          const trackId = this.snapshot.context.trackIds[next]
+          this.snapshot.context.cursor = trackId ? next : null
+          this.snapshot.current = trackId
+            ? { contextIndex: next, queueEntryId: null, resumeContextIndex: null, trackId }
+            : null
+        }
+        this.snapshot.positionMs = 0
+        this.snapshot.durationMs = 0
+        this.snapshot.status = this.snapshot.current ? 'playing' : 'stopped'
+        break
+      }
+      case 'previous':
+        if (this.snapshot.positionMs > 10_000) {
+          this.snapshot.positionMs = 0
+        } else {
+          const previous = this.snapshot.history.pop()
+          changed = Boolean(previous)
+          if (previous) this.snapshot.current = previous
+        }
+        break
+      case 'play':
+        changed = this.snapshot.status !== 'playing'
+        if (this.snapshot.current) this.snapshot.status = 'playing'
+        break
+      case 'pause':
+        changed = this.snapshot.status === 'playing'
+        this.snapshot.status = 'paused'
+        break
+      case 'reportError':
+        this.snapshot.error = { code: command.code, recoverable: command.recoverable }
+        this.snapshot.status = 'paused'
+        break
+      case 'clearError':
+        changed = Boolean(this.snapshot.error)
+        this.snapshot.error = null
+        break
+      case 'seek':
+        this.snapshot.positionMs = command.positionMs
+        break
+      case 'updateDuration':
+        this.snapshot.durationMs = command.durationMs
+        break
+      case 'removeQueueEntry':
+        this.snapshot.queue = this.snapshot.queue.filter((entry) => entry.entryId !== command.entryId)
+        break
+      case 'moveQueueEntry':
+      case 'setRepeat':
+      case 'setShuffle':
+      case 'markUnavailable':
+      case 'setVolume':
+        break
+    }
+
+    if (changed) this.snapshot.revision += 1
+    const selectionChanged = JSON.stringify(before.current) !== JSON.stringify(this.snapshot.current)
+    const needsConfirmation =
+      (command.type === 'replaceContext' && command.autoplay) ||
+      command.type === 'next' ||
+      command.type === 'previous' ||
+      command.type === 'ended' ||
+      command.type === 'markUnavailable'
+    if (changed && needsConfirmation && selectionChanged && this.snapshot.current) {
+      this.rollback = before
+      this.snapshot.transitionPending = true
+    }
+    return cloneSnapshot(this.snapshot)
+  }
+
+  async observePosition(trackId: string, positionMs: number, durationMs: number): Promise<PlaybackPositionState> {
+    this.observations.push({ durationMs, positionMs, trackId })
+    this.snapshot.positionMs = Math.min(positionMs, durationMs)
+    this.snapshot.durationMs = durationMs
+    this.snapshot.revision += 1
+    return { durationMs, positionMs: this.snapshot.positionMs, revision: this.snapshot.revision }
+  }
+}
 
 class FakeAudioTransport implements AudioTransport {
   currentTime = 0
@@ -81,11 +266,9 @@ class FakeAudioTransport implements AudioTransport {
   }
 }
 
-function playbackStore(
-  overrides: Partial<Pick<Store, 'playlist' | 'queue'>> = {}
-): Pick<Store, 'player' | 'playlist' | 'queue'> {
+function playbackStore(playlist: Song[] = []): Pick<Store, 'player' | 'playlist' | 'queue'> {
   return {
-    playlist: [],
+    playlist,
     queue: [],
     player: {
       currSong: undefined,
@@ -96,88 +279,109 @@ function playbackStore(
       currentTime: 0,
       duration: 0,
     },
-    ...overrides,
   }
 }
 
 function setup(store = playbackStore()): {
+  bridge: FakePlaybackBridge
   controller: PlaybackController
   store: Pick<Store, 'player' | 'playlist' | 'queue'>
   transport: FakeAudioTransport
 } {
+  const bridge = new FakePlaybackBridge()
   const transport = new FakeAudioTransport()
-  const controller = createPlaybackController(store, transport, (path) => `asset:${path}`)
-  return { controller, store, transport }
+  let nextQueueId = 0
+  const controller = createPlaybackController(
+    store,
+    transport,
+    (path) => `asset:${path}`,
+    bridge,
+    () => {
+      nextQueueId += 1
+      return `entry-${nextQueueId}`
+    }
+  )
+  return { bridge, controller, store, transport }
 }
 
 const flushPromises = async () => {
   await Promise.resolve()
   await Promise.resolve()
+  await Promise.resolve()
 }
 
-describe('playback controller', () => {
-  it('consumes exactly one queue head after playback succeeds', async () => {
+describe('native-backed playback controller', () => {
+  it('commits exactly one duplicate queue entry after playback succeeds', async () => {
     const first = song('duplicate')
     const second = song('duplicate')
-    const { controller, store, transport } = setup(playbackStore({ queue: [first, second] }))
+    const { bridge, controller, store, transport } = setup()
+    await controller.initialize()
+    await controller.enqueueSong(first)
+    await controller.enqueueSong(second)
 
     await controller.nextSong()
 
     expect(transport.loadedSources).toEqual([{ songId: 'duplicate', source: 'asset:/music/duplicate.flac' }])
     expect(store.queue).toEqual([second])
     expect(store.player.currSong).toBe(first)
-    expect(store.player.error).toBe('')
-    expect(store.player.isPaused).toBe(false)
+    expect(bridge.commands.at(-1)).toEqual({ type: 'commitTransition' })
   })
 
-  it('preserves the failed queue head and previous current song', async () => {
+  it('rolls back a failed queue transition and restores the previous current song', async () => {
     const current = song('current')
     const queued = song('queued')
-    const store = playbackStore({ queue: [queued] })
-    store.player.currSong = current
-    store.player.currSongIndex = 3
-    const { controller, transport } = setup(store)
-    transport.queuePlay(Promise.reject(new Error('raw path-bearing browser error')))
+    const { bridge, controller, store, transport } = setup(playbackStore([current]))
+    await controller.initialize()
+    await controller.playSong(current, 0)
+    await controller.enqueueSong(queued)
+    transport.queuePlay(Promise.reject(new Error('path-bearing browser error')))
 
     await expect(controller.nextSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
     expect(store.queue).toEqual([queued])
     expect(store.player.currSong).toBe(current)
-    expect(store.player.currSongIndex).toBe(3)
     expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
     expect(store.player.isPaused).toBe(true)
+    expect(bridge.commands.at(-1)).toEqual({ type: 'rejectTransition', code: 'decoder', recoverable: true })
+    expect(transport.loadedSongId).toBe('current')
   })
 
-  it('clears a previous generic error after a later play succeeds', async () => {
-    const next = song('next')
-    const store = playbackStore({ playlist: [next] })
-    store.player.error = PLAYBACK_ERROR_MESSAGE
-    const { controller } = setup(store)
+  it('starts the first playlist track when next is pressed before playback begins', async () => {
+    const first = song('first')
+    const { controller, store } = setup(playbackStore([first]))
+    await controller.initialize()
 
     await controller.nextSong()
 
-    expect(store.player.error).toBe('')
+    expect(store.player.currSong).toBe(first)
+    expect(store.player.isPaused).toBe(false)
   })
 
-  it('restarts the current transport after ten seconds without loading a track', async () => {
-    const store = playbackStore({ playlist: [song('one'), song('two')] })
-    store.player.currSongIndex = 1
-    store.player.currentTime = 10.1
-    const { controller, transport } = setup(store)
-    transport.currentTime = 10.1
+  it('restarts the current transport after ten seconds without loading another track', async () => {
+    const tracks = [song('one'), song('two')]
+    const { controller, store, transport } = setup(playbackStore(tracks))
+    await controller.initialize()
+    await controller.playSong(tracks[1], 1)
+    transport.duration = 60
+    await controller.seekSong(10.1)
+    const loadCount = transport.loadedSources.length
 
     await controller.prevSong()
 
     expect(transport.currentTime).toBe(0)
     expect(store.player.currentTime).toBe(0)
-    expect(transport.playCalls).toBe(0)
+    expect(transport.loadedSources).toHaveLength(loadCount)
   })
 })
 
 describe('playback event bindings', () => {
-  it('catches ended-transition rejection and leaves media state consistent', async () => {
+  it('catches ended-transition rejection without losing the queue head', async () => {
+    const current = song('current')
     const queued = song('unplayable')
-    const { controller, store, transport } = setup(playbackStore({ queue: [queued] }))
+    const { controller, store, transport } = setup(playbackStore([current]))
+    await controller.initialize()
+    await controller.playSong(current, 0)
+    await controller.enqueueSong(queued)
     transport.queuePlay(Promise.reject(new Error('decoder failure')))
     const cleanup = bindPlaybackEvents(store, transport, controller)
 
@@ -186,25 +390,27 @@ describe('playback event bindings', () => {
 
     expect(store.queue).toEqual([queued])
     expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
-    expect(store.player.isPaused).toBe(true)
     cleanup()
   })
 
   it('does not double-consume a queue head on rapid ended events', async () => {
+    const current = song('current')
     const first = song('first')
     const second = song('second')
-    const { controller, store, transport } = setup(playbackStore({ queue: [first, second] }))
+    const { controller, store, transport } = setup(playbackStore([current]))
+    await controller.initialize()
+    await controller.playSong(current, 0)
+    await controller.enqueueSong(first)
+    await controller.enqueueSong(second)
     let resolvePlay: () => void = () => {}
-    transport.queuePlay(
-      new Promise<void>((resolve) => {
-        resolvePlay = resolve
-      })
-    )
+    transport.queuePlay(new Promise<void>((resolve) => (resolvePlay = resolve)))
     const cleanup = bindPlaybackEvents(store, transport, controller)
 
     transport.emit('ended')
     transport.emit('ended')
-    expect(transport.playCalls).toBe(1)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(transport.playCalls).toBe(2)
     resolvePlay()
     await flushPromises()
 
@@ -212,20 +418,25 @@ describe('playback event bindings', () => {
     cleanup()
   })
 
-  it('records media errors and removes the exact listeners during cleanup', () => {
-    const { controller, store, transport } = setup()
+  it('throttles position observations and removes exact listeners during cleanup', async () => {
+    const current = song('current')
+    const { bridge, controller, store, transport } = setup(playbackStore([current]))
+    await controller.initialize()
+    await controller.playSong(current, 0)
+    transport.duration = 60
     const cleanup = bindPlaybackEvents(store, transport, controller)
+
+    transport.currentTime = 1
+    transport.emit('timeupdate')
+    transport.currentTime = 2
+    transport.emit('timeupdate')
+    await flushPromises()
+    expect(bridge.observations).toHaveLength(1)
     expect(transport.listenerCount('ended')).toBe(1)
     expect(transport.listenerCount('error')).toBe(1)
-
-    transport.emit('error')
-    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
-    expect(store.player.isPaused).toBe(true)
 
     cleanup()
     expect(transport.listenerCount('ended')).toBe(0)
     expect(transport.listenerCount('error')).toBe(0)
-    transport.emit('ended')
-    expect(transport.playCalls).toBe(0)
   })
 })

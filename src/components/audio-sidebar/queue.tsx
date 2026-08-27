@@ -11,8 +11,8 @@ export default component$(() => {
       <span class="text-gray-400 text-xs pb-1 block">Queue</span>
 
       <ol>
-        {(store.queue.length ? store.queue : upcomingSongs).map((song) => (
-          <li class="pt-1 pb-2" key={'queued-song-' + song.id}>
+        {(store.queue.length ? store.queue : upcomingSongs).map((song, index) => (
+          <li class="pt-1 pb-2" key={`queued-song-${song.id}-${index}`}>
             <span class="block truncate">{song.title}</span>
             <span class="text-xs truncate text-gray-400">{song.artist}</span>
           </li>

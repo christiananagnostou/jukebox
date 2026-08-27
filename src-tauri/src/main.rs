@@ -11,7 +11,9 @@ use crate::library::{
     start_library_refresh, start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
-use crate::playback::{dispatch_playback_command, get_playback_snapshot, PlaybackState};
+use crate::playback::{
+    dispatch_playback_command, get_playback_snapshot, observe_playback_position, PlaybackState,
+};
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
 };
@@ -168,6 +170,7 @@ fn main() {
             get_metadata,
             get_playback_snapshot,
             dispatch_playback_command,
+            observe_playback_position,
             get_settings,
             set_settings,
             get_remote_access_status,

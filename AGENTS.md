@@ -136,6 +136,8 @@ Rust only:
 
 - Generated schemas live in src-tauri/gen/ and are committed.
 - Do not edit generated schema files manually.
+- Treat every tracked file as public distribution material. Never commit developer usernames, home-directory paths, LAN or tailnet hostnames, or names of unrelated applications.
+- Machine-specific paths and URLs may exist only as runtime-selected user data. Canonical repository URLs and clearly synthetic test fixtures are allowed.
 
 ## PR / Commit Expectations
 

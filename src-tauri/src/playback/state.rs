@@ -100,6 +100,7 @@ pub struct PlaybackSnapshot {
     schema_version: u32,
     shuffle: ShuffleState,
     status: PlaybackStatus,
+    transition_pending: bool,
     volume_percent: u8,
 }
 
@@ -119,6 +120,7 @@ impl Default for PlaybackSnapshot {
             schema_version: SNAPSHOT_VERSION,
             shuffle: ShuffleState::default(),
             status: PlaybackStatus::Stopped,
+            transition_pending: false,
             volume_percent: 100,
         }
     }
@@ -129,6 +131,23 @@ impl Default for PlaybackSnapshot {
 pub struct PlaybackCommandRequest {
     command: PlaybackCommand,
     expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackPositionObservation {
+    duration_ms: u64,
+    expected_revision: u64,
+    position_ms: u64,
+    track_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackPositionState {
+    duration_ms: u64,
+    position_ms: u64,
+    revision: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -175,6 +194,11 @@ pub enum PlaybackCommand {
         code: PlaybackErrorCode,
         recoverable: bool,
     },
+    CommitTransition,
+    RejectTransition {
+        code: PlaybackErrorCode,
+        recoverable: bool,
+    },
     ClearError,
     SetVolume {
         muted: bool,
@@ -214,18 +238,40 @@ impl PlaybackCommandError {
             message: "Playback state is temporarily unavailable.",
         }
     }
+
+    fn transition_pending(current_revision: u64) -> Self {
+        Self {
+            code: "transition_pending",
+            current_revision,
+            message: "Finish the pending playback transition before changing state.",
+        }
+    }
+
+    fn no_transition(current_revision: u64) -> Self {
+        Self {
+            code: "no_pending_transition",
+            current_revision,
+            message: "There is no playback transition to finish.",
+        }
+    }
+}
+
+#[derive(Default)]
+struct PlaybackMachine {
+    rollback: Option<PlaybackSnapshot>,
+    snapshot: PlaybackSnapshot,
 }
 
 #[derive(Default)]
 pub struct PlaybackState {
-    snapshot: Mutex<PlaybackSnapshot>,
+    machine: Mutex<PlaybackMachine>,
 }
 
 impl PlaybackState {
     fn snapshot(&self) -> Result<PlaybackSnapshot, PlaybackCommandError> {
-        self.snapshot
+        self.machine
             .lock()
-            .map(|snapshot| snapshot.clone())
+            .map(|machine| machine.snapshot.clone())
             .map_err(|_| PlaybackCommandError::unavailable())
     }
 
@@ -233,21 +279,112 @@ impl PlaybackState {
         &self,
         request: PlaybackCommandRequest,
     ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
-        let mut snapshot = self
-            .snapshot
+        let mut machine = self
+            .machine
             .lock()
             .map_err(|_| PlaybackCommandError::unavailable())?;
-        if request.expected_revision != snapshot.revision {
-            return Err(PlaybackCommandError::stale(snapshot.revision));
+        if request.expected_revision != machine.snapshot.revision {
+            return Err(PlaybackCommandError::stale(machine.snapshot.revision));
         }
 
-        let mut next = snapshot.clone();
+        match request.command {
+            PlaybackCommand::CommitTransition => return machine.commit_transition(),
+            PlaybackCommand::RejectTransition { code, recoverable } => {
+                return machine.reject_transition(code, recoverable)
+            }
+            _ if machine.rollback.is_some() => {
+                return Err(PlaybackCommandError::transition_pending(
+                    machine.snapshot.revision,
+                ))
+            }
+            _ => {}
+        }
+
+        let previous = machine.snapshot.clone();
+        let previous_current = previous.current.clone();
+        let requires_confirmation = request.command.requires_transition_confirmation();
+        let mut next = previous.clone();
         let changed = next.apply(request.command)?;
         if changed {
             next.revision = next.revision.saturating_add(1);
-            *snapshot = next;
+            if requires_confirmation && next.current.is_some() && next.current != previous_current {
+                next.transition_pending = true;
+                machine.rollback = Some(previous);
+            }
+            machine.snapshot = next;
         }
-        Ok(snapshot.clone())
+        Ok(machine.snapshot.clone())
+    }
+
+    fn observe_position(
+        &self,
+        observation: PlaybackPositionObservation,
+    ) -> Result<PlaybackPositionState, PlaybackCommandError> {
+        let mut machine = self
+            .machine
+            .lock()
+            .map_err(|_| PlaybackCommandError::unavailable())?;
+        if observation.expected_revision != machine.snapshot.revision {
+            return Err(PlaybackCommandError::stale(machine.snapshot.revision));
+        }
+        if machine.rollback.is_some() {
+            return Err(PlaybackCommandError::transition_pending(
+                machine.snapshot.revision,
+            ));
+        }
+        validate_id(&observation.track_id, machine.snapshot.revision)?;
+        if machine
+            .snapshot
+            .current
+            .as_ref()
+            .is_none_or(|current| current.track_id != observation.track_id)
+        {
+            return Err(PlaybackCommandError::invalid(
+                machine.snapshot.revision,
+                "The position observation does not match the current track.",
+            ));
+        }
+
+        let position_ms = observation.position_ms.min(observation.duration_ms);
+        if machine.snapshot.duration_ms != observation.duration_ms
+            || machine.snapshot.position_ms != position_ms
+        {
+            machine.snapshot.duration_ms = observation.duration_ms;
+            machine.snapshot.position_ms = position_ms;
+            machine.snapshot.revision = machine.snapshot.revision.saturating_add(1);
+        }
+        Ok(PlaybackPositionState {
+            duration_ms: machine.snapshot.duration_ms,
+            position_ms: machine.snapshot.position_ms,
+            revision: machine.snapshot.revision,
+        })
+    }
+}
+
+impl PlaybackMachine {
+    fn commit_transition(&mut self) -> Result<PlaybackSnapshot, PlaybackCommandError> {
+        if self.rollback.take().is_none() {
+            return Err(PlaybackCommandError::no_transition(self.snapshot.revision));
+        }
+        self.snapshot.transition_pending = false;
+        self.snapshot.revision = self.snapshot.revision.saturating_add(1);
+        Ok(self.snapshot.clone())
+    }
+
+    fn reject_transition(
+        &mut self,
+        code: PlaybackErrorCode,
+        recoverable: bool,
+    ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
+        let Some(mut rollback) = self.rollback.take() else {
+            return Err(PlaybackCommandError::no_transition(self.snapshot.revision));
+        };
+        rollback.revision = self.snapshot.revision.saturating_add(1);
+        rollback.error = Some(PlaybackFailure { code, recoverable });
+        rollback.status = PlaybackStatus::Paused;
+        rollback.transition_pending = false;
+        self.snapshot = rollback;
+        Ok(self.snapshot.clone())
     }
 }
 
@@ -264,6 +401,14 @@ pub fn dispatch_playback_command(
     request: PlaybackCommandRequest,
 ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
     state.dispatch(request)
+}
+
+#[tauri::command]
+pub fn observe_playback_position(
+    state: State<'_, PlaybackState>,
+    observation: PlaybackPositionObservation,
+) -> Result<PlaybackPositionState, PlaybackCommandError> {
+    state.observe_position(observation)
 }
 
 impl PlaybackSnapshot {
@@ -351,6 +496,9 @@ impl PlaybackSnapshot {
                         true
                     },
                 )
+            }
+            PlaybackCommand::CommitTransition | PlaybackCommand::RejectTransition { .. } => {
+                unreachable!("transition commands are handled by PlaybackMachine")
             }
             PlaybackCommand::ClearError => Ok(self.error.take().is_some()),
             PlaybackCommand::SetVolume {
@@ -729,6 +877,16 @@ impl PlaybackSnapshot {
     }
 }
 
+impl PlaybackCommand {
+    fn requires_transition_confirmation(&self) -> bool {
+        match self {
+            Self::ReplaceContext { autoplay, .. } => *autoplay,
+            Self::Next | Self::Previous | Self::Ended | Self::MarkUnavailable { .. } => true,
+            _ => false,
+        }
+    }
+}
+
 fn validate_ids(ids: &[String], maximum: usize, revision: u64) -> Result<(), PlaybackCommandError> {
     if ids.len() > maximum {
         return Err(PlaybackCommandError::invalid(
@@ -806,13 +964,28 @@ mod tests {
             .map(|current| current.track_id.as_str())
     }
 
+    fn dispatch_committed(state: &PlaybackState, command: PlaybackCommand) -> PlaybackSnapshot {
+        let revision = state.snapshot().expect("snapshot").revision;
+        let snapshot = state
+            .dispatch(request(revision, command))
+            .expect("dispatch command");
+        if snapshot.transition_pending {
+            state
+                .dispatch(request(
+                    snapshot.revision,
+                    PlaybackCommand::CommitTransition,
+                ))
+                .expect("commit transition")
+        } else {
+            snapshot
+        }
+    }
+
     #[test]
     fn revision_conflicts_and_invalid_commands_do_not_mutate_state() {
         let state = PlaybackState::default();
-        let first = state
-            .dispatch(request(0, replace(&["one"], 0)))
-            .expect("replace");
-        assert_eq!(first.revision, 1);
+        let first = dispatch_committed(&state, replace(&["one"], 0));
+        assert_eq!(first.revision, 2);
 
         let stale = state
             .dispatch(request(0, PlaybackCommand::Pause))
@@ -822,7 +995,7 @@ mod tests {
 
         let invalid = state
             .dispatch(request(
-                1,
+                first.revision,
                 PlaybackCommand::SetVolume {
                     muted: false,
                     volume_percent: 101,
@@ -836,21 +1009,15 @@ mod tests {
     #[test]
     fn queue_entries_preserve_duplicates_and_take_precedence() {
         let state = PlaybackState::default();
-        state
-            .dispatch(request(0, replace(&["one", "two"], 0)))
-            .expect("replace");
-        state
-            .dispatch(request(
-                1,
-                PlaybackCommand::Enqueue {
-                    entries: vec![queue("q1", "bonus"), queue("q2", "bonus")],
-                },
-            ))
-            .expect("enqueue");
+        dispatch_committed(&state, replace(&["one", "two"], 0));
+        dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("q1", "bonus"), queue("q2", "bonus")],
+            },
+        );
 
-        let first = state
-            .dispatch(request(2, PlaybackCommand::Next))
-            .expect("next");
+        let first = dispatch_committed(&state, PlaybackCommand::Next);
         assert_eq!(current(&first), Some("bonus"));
         assert_eq!(
             first
@@ -861,9 +1028,7 @@ mod tests {
         );
         assert_eq!(first.queue, vec![queue("q2", "bonus")]);
 
-        let second = state
-            .dispatch(request(3, PlaybackCommand::Ended))
-            .expect("ended");
+        let second = dispatch_committed(&state, PlaybackCommand::Ended);
         assert_eq!(
             second
                 .current
@@ -873,185 +1038,129 @@ mod tests {
         );
         assert!(second.queue.is_empty());
 
-        let context = state
-            .dispatch(request(4, PlaybackCommand::Ended))
-            .expect("ended");
+        let context = dispatch_committed(&state, PlaybackCommand::Ended);
         assert_eq!(current(&context), Some("two"));
     }
 
     #[test]
     fn repeat_modes_apply_only_at_ended_boundaries() {
         let state = PlaybackState::default();
-        state
-            .dispatch(request(0, replace(&["one", "two"], 1)))
-            .expect("replace");
-        state
-            .dispatch(request(
-                1,
-                PlaybackCommand::SetRepeat {
-                    repeat_mode: RepeatMode::One,
-                },
-            ))
-            .expect("repeat one");
-        let same = state
-            .dispatch(request(2, PlaybackCommand::Ended))
-            .expect("repeat");
+        dispatch_committed(&state, replace(&["one", "two"], 1));
+        dispatch_committed(
+            &state,
+            PlaybackCommand::SetRepeat {
+                repeat_mode: RepeatMode::One,
+            },
+        );
+        let same = dispatch_committed(&state, PlaybackCommand::Ended);
         assert_eq!(current(&same), Some("two"));
 
-        let stopped = state
-            .dispatch(request(3, PlaybackCommand::Next))
-            .expect("manual next");
+        let stopped = dispatch_committed(&state, PlaybackCommand::Next);
         assert_eq!(current(&stopped), None);
         assert_eq!(stopped.status, PlaybackStatus::Stopped);
 
-        state
-            .dispatch(request(4, replace(&["one", "two"], 1)))
-            .expect("replace");
-        state
-            .dispatch(request(
-                5,
-                PlaybackCommand::SetRepeat {
-                    repeat_mode: RepeatMode::All,
-                },
-            ))
-            .expect("repeat all");
-        let wrapped = state
-            .dispatch(request(6, PlaybackCommand::Next))
-            .expect("wrap");
+        dispatch_committed(&state, replace(&["one", "two"], 1));
+        dispatch_committed(
+            &state,
+            PlaybackCommand::SetRepeat {
+                repeat_mode: RepeatMode::All,
+            },
+        );
+        let wrapped = dispatch_committed(&state, PlaybackCommand::Next);
         assert_eq!(current(&wrapped), Some("one"));
     }
 
     #[test]
     fn shuffle_is_deterministic_and_preserves_the_current_track() {
         let state = PlaybackState::default();
-        state
-            .dispatch(request(0, replace(&["a", "b", "c", "d"], 2)))
-            .expect("replace");
-        let shuffled = state
-            .dispatch(request(
-                1,
-                PlaybackCommand::SetShuffle {
-                    enabled: true,
-                    seed: 42,
-                },
-            ))
-            .expect("shuffle");
+        dispatch_committed(&state, replace(&["a", "b", "c", "d"], 2));
+        let shuffled = dispatch_committed(
+            &state,
+            PlaybackCommand::SetShuffle {
+                enabled: true,
+                seed: 42,
+            },
+        );
         assert_eq!(current(&shuffled), Some("c"));
         assert_eq!(shuffled.context.order, playback_order(4, true, 42));
         assert_ne!(shuffled.context.order, vec![0, 1, 2, 3]);
 
         let other = PlaybackState::default();
-        other
-            .dispatch(request(0, replace(&["a", "b", "c", "d"], 2)))
-            .expect("replace");
-        let same = other
-            .dispatch(request(
-                1,
-                PlaybackCommand::SetShuffle {
-                    enabled: true,
-                    seed: 42,
-                },
-            ))
-            .expect("shuffle");
+        dispatch_committed(&other, replace(&["a", "b", "c", "d"], 2));
+        let same = dispatch_committed(
+            &other,
+            PlaybackCommand::SetShuffle {
+                enabled: true,
+                seed: 42,
+            },
+        );
         assert_eq!(shuffled.context.order, same.context.order);
     }
 
     #[test]
     fn previous_restarts_then_walks_actual_history() {
         let state = PlaybackState::default();
-        state
-            .dispatch(request(0, replace(&["one", "two"], 0)))
-            .expect("replace");
-        state
-            .dispatch(request(1, PlaybackCommand::Next))
-            .expect("next");
-        state
-            .dispatch(request(
-                2,
-                PlaybackCommand::UpdateDuration {
-                    duration_ms: 60_000,
-                },
-            ))
-            .expect("duration");
-        state
-            .dispatch(request(
-                3,
-                PlaybackCommand::Seek {
-                    position_ms: 11_000,
-                },
-            ))
-            .expect("seek");
+        dispatch_committed(&state, replace(&["one", "two"], 0));
+        dispatch_committed(&state, PlaybackCommand::Next);
+        dispatch_committed(
+            &state,
+            PlaybackCommand::UpdateDuration {
+                duration_ms: 60_000,
+            },
+        );
+        dispatch_committed(
+            &state,
+            PlaybackCommand::Seek {
+                position_ms: 11_000,
+            },
+        );
 
-        let restarted = state
-            .dispatch(request(4, PlaybackCommand::Previous))
-            .expect("restart");
+        let restarted = dispatch_committed(&state, PlaybackCommand::Previous);
         assert_eq!(current(&restarted), Some("two"));
         assert_eq!(restarted.position_ms, 0);
-        let previous = state
-            .dispatch(request(5, PlaybackCommand::Previous))
-            .expect("previous");
+        let previous = dispatch_committed(&state, PlaybackCommand::Previous);
         assert_eq!(current(&previous), Some("one"));
     }
 
     #[test]
     fn previous_and_next_do_not_lose_consumed_queue_entries() {
         let state = PlaybackState::default();
-        state
-            .dispatch(request(0, replace(&["one", "two"], 0)))
-            .expect("replace");
-        state
-            .dispatch(request(
-                1,
-                PlaybackCommand::Enqueue {
-                    entries: vec![queue("q1", "bonus-one"), queue("q2", "bonus-two")],
-                },
-            ))
-            .expect("enqueue");
-        state
-            .dispatch(request(2, PlaybackCommand::Next))
-            .expect("first queue entry");
-        state
-            .dispatch(request(3, PlaybackCommand::Ended))
-            .expect("second queue entry");
+        dispatch_committed(&state, replace(&["one", "two"], 0));
+        dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("q1", "bonus-one"), queue("q2", "bonus-two")],
+            },
+        );
+        dispatch_committed(&state, PlaybackCommand::Next);
+        dispatch_committed(&state, PlaybackCommand::Ended);
 
-        let previous = state
-            .dispatch(request(4, PlaybackCommand::Previous))
-            .expect("previous queue entry");
+        let previous = dispatch_committed(&state, PlaybackCommand::Previous);
         assert_eq!(current(&previous), Some("bonus-one"));
         assert_eq!(previous.queue, vec![queue("q2", "bonus-two")]);
 
-        let replayed = state
-            .dispatch(request(5, PlaybackCommand::Next))
-            .expect("replay second queue entry");
+        let replayed = dispatch_committed(&state, PlaybackCommand::Next);
         assert_eq!(current(&replayed), Some("bonus-two"));
-        let context = state
-            .dispatch(request(6, PlaybackCommand::Ended))
-            .expect("resume context");
+        let context = dispatch_committed(&state, PlaybackCommand::Ended);
         assert_eq!(current(&context), Some("two"));
     }
 
     #[test]
     fn unavailable_current_track_skips_without_exposing_a_path() {
         let state = PlaybackState::default();
-        state
-            .dispatch(request(0, replace(&["one", "two"], 0)))
-            .expect("replace");
-        state
-            .dispatch(request(
-                1,
-                PlaybackCommand::Enqueue {
-                    entries: vec![queue("q1", "one"), queue("q2", "bonus")],
-                },
-            ))
-            .expect("enqueue");
-        let snapshot = state
-            .dispatch(request(
-                2,
-                PlaybackCommand::MarkUnavailable {
-                    track_id: "one".to_string(),
-                },
-            ))
-            .expect("unavailable");
+        dispatch_committed(&state, replace(&["one", "two"], 0));
+        dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("q1", "one"), queue("q2", "bonus")],
+            },
+        );
+        let snapshot = dispatch_committed(
+            &state,
+            PlaybackCommand::MarkUnavailable {
+                track_id: "one".to_string(),
+            },
+        );
         assert_eq!(current(&snapshot), Some("bonus"));
         assert!(snapshot.queue.is_empty());
         assert_eq!(
@@ -1062,9 +1171,7 @@ mod tests {
             .expect("serialize")
             .contains('/'));
 
-        let next = state
-            .dispatch(request(snapshot.revision, PlaybackCommand::Ended))
-            .expect("continue context");
+        let next = dispatch_committed(&state, PlaybackCommand::Ended);
         assert_eq!(current(&next), Some("two"));
         assert_eq!(next.context.track_ids, vec!["two"]);
     }
@@ -1126,6 +1233,136 @@ mod tests {
     }
 
     #[test]
+    fn rejected_transition_restores_queue_context_history_and_current() {
+        let state = PlaybackState::default();
+        dispatch_committed(&state, replace(&["one", "two"], 0));
+        let before = dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("q1", "bonus")],
+            },
+        );
+
+        let prepared = state
+            .dispatch(request(before.revision, PlaybackCommand::Next))
+            .expect("prepare next");
+        assert!(prepared.transition_pending);
+        assert_eq!(current(&prepared), Some("bonus"));
+        assert!(prepared.queue.is_empty());
+
+        let rejected = state
+            .dispatch(request(
+                prepared.revision,
+                PlaybackCommand::RejectTransition {
+                    code: PlaybackErrorCode::Decoder,
+                    recoverable: true,
+                },
+            ))
+            .expect("reject transition");
+        assert_eq!(rejected.revision, prepared.revision + 1);
+        assert!(!rejected.transition_pending);
+        assert_eq!(rejected.context, before.context);
+        assert_eq!(rejected.current, before.current);
+        assert_eq!(rejected.history, before.history);
+        assert_eq!(rejected.queue, before.queue);
+        assert_eq!(rejected.status, PlaybackStatus::Paused);
+        assert_eq!(
+            rejected.error,
+            Some(PlaybackFailure {
+                code: PlaybackErrorCode::Decoder,
+                recoverable: true,
+            })
+        );
+    }
+
+    #[test]
+    fn committed_transition_keeps_prepared_queue_consumption() {
+        let state = PlaybackState::default();
+        dispatch_committed(&state, replace(&["one"], 0));
+        let queued = dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("q1", "bonus")],
+            },
+        );
+        let prepared = state
+            .dispatch(request(queued.revision, PlaybackCommand::Next))
+            .expect("prepare next");
+        let committed = state
+            .dispatch(request(
+                prepared.revision,
+                PlaybackCommand::CommitTransition,
+            ))
+            .expect("commit transition");
+
+        assert_eq!(committed.revision, prepared.revision + 1);
+        assert!(!committed.transition_pending);
+        assert_eq!(current(&committed), Some("bonus"));
+        assert!(committed.queue.is_empty());
+    }
+
+    #[test]
+    fn pending_transition_excludes_other_commands_without_mutation() {
+        let state = PlaybackState::default();
+        let first = state
+            .dispatch(request(0, replace(&["one", "two"], 0)))
+            .expect("prepare context");
+        let error = state
+            .dispatch(request(first.revision, PlaybackCommand::Next))
+            .expect_err("pending transition");
+        assert_eq!(error.code, "transition_pending");
+        assert_eq!(state.snapshot().expect("snapshot"), first);
+    }
+
+    #[test]
+    fn position_observation_updates_in_place_for_the_current_track() {
+        let state = PlaybackState::default();
+        let current = dispatch_committed(&state, replace(&["one"], 0));
+        let observed = state
+            .observe_position(PlaybackPositionObservation {
+                duration_ms: 60_000,
+                expected_revision: current.revision,
+                position_ms: 12_500,
+                track_id: "one".to_string(),
+            })
+            .expect("observe position");
+        assert_eq!(observed.revision, current.revision + 1);
+        assert_eq!(observed.position_ms, 12_500);
+        assert_eq!(observed.duration_ms, 60_000);
+
+        let mismatch = state
+            .observe_position(PlaybackPositionObservation {
+                duration_ms: 60_000,
+                expected_revision: observed.revision,
+                position_ms: 13_000,
+                track_id: "other".to_string(),
+            })
+            .expect_err("track mismatch");
+        assert_eq!(mismatch.code, "invalid_command");
+    }
+
+    #[test]
+    fn rejected_context_replacement_restores_previous_selection() {
+        let state = PlaybackState::default();
+        let before = dispatch_committed(&state, replace(&["one", "two"], 1));
+        let prepared = state
+            .dispatch(request(before.revision, replace(&["other"], 0)))
+            .expect("prepare replacement");
+        assert_eq!(current(&prepared), Some("other"));
+        let rejected = state
+            .dispatch(request(
+                prepared.revision,
+                PlaybackCommand::RejectTransition {
+                    code: PlaybackErrorCode::Output,
+                    recoverable: false,
+                },
+            ))
+            .expect("reject replacement");
+        assert_eq!(current(&rejected), Some("two"));
+        assert_eq!(rejected.context, before.context);
+    }
+
+    #[test]
     fn identifiers_and_collection_sizes_are_bounded_before_mutation() {
         let state = PlaybackState::default();
         let path_like = state
@@ -1169,9 +1406,7 @@ mod tests {
     #[test]
     fn concurrent_commands_cannot_both_commit_the_same_revision() {
         let state = Arc::new(PlaybackState::default());
-        state
-            .dispatch(request(0, replace(&["one"], 0)))
-            .expect("replace");
+        let initial = dispatch_committed(&state, replace(&["one"], 0));
         let barrier = Arc::new(Barrier::new(3));
         let handles = (0..2)
             .map(|_| {
@@ -1179,7 +1414,7 @@ mod tests {
                 let barrier = Arc::clone(&barrier);
                 std::thread::spawn(move || {
                     barrier.wait();
-                    state.dispatch(request(1, PlaybackCommand::Pause))
+                    state.dispatch(request(initial.revision, PlaybackCommand::Pause))
                 })
             })
             .collect::<Vec<_>>();
@@ -1198,7 +1433,7 @@ mod tests {
             1
         );
         let snapshot = state.snapshot().expect("snapshot");
-        assert_eq!(snapshot.revision, 2);
+        assert_eq!(snapshot.revision, initial.revision + 1);
         assert_eq!(snapshot.status, PlaybackStatus::Paused);
     }
 
@@ -1212,6 +1447,7 @@ mod tests {
         assert_eq!(json["schemaVersion"], SNAPSHOT_VERSION);
         assert_eq!(json["revision"], 1);
         assert_eq!(json["status"], "playing");
+        assert_eq!(json["transitionPending"], true);
         assert_eq!(json["current"]["trackId"], "one");
         assert_eq!(json["volumePercent"], 100);
         assert!(json.get("schema_version").is_none());
