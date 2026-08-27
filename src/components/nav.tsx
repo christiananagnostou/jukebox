@@ -9,6 +9,7 @@ const Links = [
   { title: 'Artists', url: '/artists/', shortcut: 'A' },
   { title: 'Storage', url: '/storage/', shortcut: 'O' },
   { title: 'Albums', url: '/albums/', shortcut: 'M' },
+  { title: 'Playlists', url: '/playlists/', shortcut: 'P' },
   { title: 'Settings', url: '/settings/', shortcut: 'S' },
 ]
 

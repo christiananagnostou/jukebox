@@ -254,10 +254,26 @@ impl LibraryRepository {
                 tracks.insert(track.id.clone(), track);
             }
         }
-        Ok(track_ids
-            .iter()
-            .filter_map(|track_id| tracks.remove(track_id))
-            .collect())
+        let mut remaining = HashMap::with_capacity(track_ids.len());
+        for track_id in track_ids {
+            *remaining.entry(track_id.as_str()).or_insert(0_usize) += 1;
+        }
+        let mut ordered = Vec::with_capacity(track_ids.len());
+        for track_id in track_ids {
+            let Some(count) = remaining.get_mut(track_id.as_str()) else {
+                continue;
+            };
+            let track = if *count > 1 {
+                tracks.get(track_id).cloned()
+            } else {
+                tracks.remove(track_id)
+            };
+            *count -= 1;
+            if let Some(track) = track {
+                ordered.push(track);
+            }
+        }
+        Ok(ordered)
     }
 }
 
@@ -794,6 +810,7 @@ mod tests {
                     "song-01".to_owned(),
                     "missing".to_owned(),
                     "song-00".to_owned(),
+                    "song-02".to_owned(),
                 ])
                 .await
                 .expect("resolve playback tracks");
@@ -803,7 +820,7 @@ mod tests {
                     .iter()
                     .map(|track| track.id.as_str())
                     .collect::<Vec<_>>(),
-                vec!["song-02", "song-00"]
+                vec!["song-02", "song-00", "song-02"]
             );
         });
     }
