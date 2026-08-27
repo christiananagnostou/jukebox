@@ -17,8 +17,8 @@ pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, Art
 pub use collections::{BuiltInCollectionPage, BuiltInCollectionQuery};
 pub use facets::{FacetPage, FacetQuery};
 pub use playlists::{
-    PlaylistEntryPage, PlaylistEntryQuery, PlaylistMutation, PlaylistPage, PlaylistQuery,
-    PlaylistSummary,
+    PlaylistEntryPage, PlaylistEntryQuery, PlaylistMoveDirection, PlaylistMutation, PlaylistPage,
+    PlaylistQuery, PlaylistSummary,
 };
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
@@ -144,6 +144,15 @@ impl LibraryState {
         playlists::delete_playlist(&self.repository.pool(), playlist_id).await
     }
 
+    pub async fn duplicate_playlist(
+        &self,
+        playlist_id: String,
+        name: String,
+    ) -> Result<PlaylistSummary, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::duplicate_playlist(&self.repository.pool(), playlist_id, name).await
+    }
+
     pub async fn add_playlist_entries(
         &self,
         playlist_id: String,
@@ -169,6 +178,17 @@ impl LibraryState {
     ) -> Result<PlaylistMutation, LibraryError> {
         self.ensure_initialized().await?;
         playlists::remove_playlist_entries(&self.repository.pool(), playlist_id, entry_ids).await
+    }
+
+    pub async fn move_playlist_entry(
+        &self,
+        playlist_id: String,
+        entry_id: String,
+        direction: PlaylistMoveDirection,
+    ) -> Result<PlaylistMutation, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::move_playlist_entry(&self.repository.pool(), playlist_id, entry_id, direction)
+            .await
     }
 
     pub async fn resolve_playback_tracks(
@@ -379,6 +399,15 @@ pub async fn delete_playlist(
 }
 
 #[tauri::command]
+pub async fn duplicate_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    name: String,
+) -> Result<PlaylistSummary, LibraryError> {
+    library.duplicate_playlist(playlist_id, name).await
+}
+
+#[tauri::command]
 pub async fn add_playlist_entries(
     library: tauri::State<'_, LibraryState>,
     playlist_id: String,
@@ -404,6 +433,18 @@ pub async fn remove_playlist_entries(
 ) -> Result<PlaylistMutation, LibraryError> {
     library
         .remove_playlist_entries(playlist_id, entry_ids)
+        .await
+}
+
+#[tauri::command]
+pub async fn move_playlist_entry(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    entry_id: String,
+    direction: PlaylistMoveDirection,
+) -> Result<PlaylistMutation, LibraryError> {
+    library
+        .move_playlist_entry(playlist_id, entry_id, direction)
         .await
 }
 

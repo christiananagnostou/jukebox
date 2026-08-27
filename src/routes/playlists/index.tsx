@@ -20,6 +20,7 @@ import {
   addPlaylistEntries,
   createPlaylist,
   deletePlaylist,
+  duplicatePlaylist,
   playlistAt,
   type PlaylistCatalogState,
   type PlaylistEntry,
@@ -32,6 +33,8 @@ import {
   type PlaylistSummary,
   removePlaylistEntries,
   renamePlaylist,
+  movePlaylistEntry,
+  type PlaylistMoveDirection,
 } from '~/services/playlist-client'
 import { StoreActionsContext, StoreContext } from '../layout'
 
@@ -56,6 +59,8 @@ export default component$(() => {
     action: '',
     confirmDelete: false,
     createName: '',
+    duplicateName: '',
+    duplicating: false,
     editing: false,
     error: '',
     notice: '',
@@ -84,6 +89,7 @@ export default component$(() => {
     const selectedId = track(() => state.selectedId)
     const selectedBuiltIn = track(() => state.selectedBuiltIn)
     state.confirmDelete = false
+    state.duplicating = false
     state.editing = false
     if (selectedBuiltIn) {
       entryPager.value?.clear()
@@ -98,6 +104,7 @@ export default component$(() => {
     state.error = ''
     state.notice = ''
     state.selectedBuiltIn = ''
+    state.duplicating = false
     state.selectedId = playlist.id
     state.selectedName = playlist.name
     state.renameName = playlist.name
@@ -107,6 +114,7 @@ export default component$(() => {
     state.error = ''
     state.notice = ''
     state.selectedBuiltIn = kind
+    state.duplicating = false
     state.selectedId = ''
     state.selectedName = ''
   })
@@ -174,6 +182,28 @@ export default component$(() => {
     }
   })
 
+  const duplicatePlaylistRecord = $(async () => {
+    const name = state.duplicateName.trim()
+    if (!state.selectedId || !name || state.action) return
+    state.action = 'duplicate'
+    state.error = ''
+    state.notice = ''
+    try {
+      const duplicated = await duplicatePlaylist(state.selectedId, name)
+      state.duplicateName = ''
+      state.duplicating = false
+      state.selectedId = duplicated.id
+      state.selectedName = duplicated.name
+      state.renameName = duplicated.name
+      state.notice = `Created ${duplicated.name}.`
+      await playlistPager.value?.reload()
+    } catch (error) {
+      state.error = playlistErrorMessage(error, 'Jukebox could not duplicate that playlist.')
+    } finally {
+      state.action = ''
+    }
+  })
+
   const addCurrentTrack = $(async () => {
     const song = store.player.currSong
     if (!state.selectedId || !song || state.action) return
@@ -202,6 +232,24 @@ export default component$(() => {
       await Promise.all([entryPager.value?.reload(), playlistPager.value?.reload()])
     } catch (error) {
       state.error = playlistErrorMessage(error, 'Jukebox could not remove that playlist entry.')
+    } finally {
+      state.action = ''
+    }
+  })
+
+  const moveEntry = $(async (entry: PlaylistEntry, direction: PlaylistMoveDirection) => {
+    if (!state.selectedId || state.action) return
+    state.action = `move:${entry.id}`
+    state.error = ''
+    state.notice = ''
+    try {
+      const mutation = await movePlaylistEntry(state.selectedId, entry.id, direction)
+      state.notice = mutation.affected
+        ? `Moved ${entry.title} ${direction}.`
+        : `${entry.title} is already at the ${direction === 'up' ? 'top' : 'bottom'}.`
+      if (mutation.affected) await entryPager.value?.reload()
+    } catch (error) {
+      state.error = playlistErrorMessage(error, 'Jukebox could not reorder that playlist entry.')
     } finally {
       state.action = ''
     }
@@ -371,6 +419,7 @@ export default component$(() => {
                     onClick$={() => {
                       state.renameName = state.selectedName
                       state.editing = !state.editing
+                      state.duplicating = false
                       state.confirmDelete = false
                     }}
                     disabled={busy}
@@ -378,10 +427,23 @@ export default component$(() => {
                     Rename
                   </button>
                   <button
+                    class={BUTTON_CLASS}
+                    onClick$={() => {
+                      state.duplicateName = `${state.selectedName} copy`
+                      state.duplicating = !state.duplicating
+                      state.editing = false
+                      state.confirmDelete = false
+                    }}
+                    disabled={busy}
+                  >
+                    Duplicate
+                  </button>
+                  <button
                     class={`${BUTTON_CLASS} border-red-900 text-red-300`}
                     onClick$={() => {
                       state.confirmDelete = !state.confirmDelete
                       state.editing = false
+                      state.duplicating = false
                     }}
                     disabled={busy}
                   >
@@ -408,6 +470,34 @@ export default component$(() => {
                     Save
                   </button>
                   <button class={BUTTON_CLASS} type="button" onClick$={() => (state.editing = false)} disabled={busy}>
+                    Cancel
+                  </button>
+                </form>
+              )}
+
+              {state.duplicating && (
+                <form preventdefault:submit onSubmit$={duplicatePlaylistRecord} class="mt-3 flex max-w-lg gap-2">
+                  <label class="sr-only" for="duplicate-playlist-name">
+                    Duplicate playlist name
+                  </label>
+                  <input
+                    id="duplicate-playlist-name"
+                    class={`${INPUT_CLASS} flex-1`}
+                    value={state.duplicateName}
+                    maxLength={200}
+                    onInput$={(_, input) => (state.duplicateName = input.value)}
+                    onFocus$={() => (store.isTyping = true)}
+                    onBlur$={() => (store.isTyping = false)}
+                  />
+                  <button class={BUTTON_CLASS} type="submit" disabled={!state.duplicateName.trim() || busy}>
+                    Create copy
+                  </button>
+                  <button
+                    class={BUTTON_CLASS}
+                    type="button"
+                    onClick$={() => (state.duplicating = false)}
+                    disabled={busy}
+                  >
                     Cancel
                   </button>
                 </form>
@@ -441,14 +531,14 @@ export default component$(() => {
             </header>
 
             <div
-              class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_108px] border-b border-gray-700 text-xs text-slate-400"
+              class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_200px] border-b border-gray-700 text-xs text-slate-400"
               style={{ minHeight: '30px', paddingRight: 'var(--scrollbar-width)' }}
             >
               <span class="flex items-center px-2">#</span>
               <span class="flex items-center border-l border-gray-700 px-3">Title</span>
               <span class="flex items-center border-l border-gray-700 px-3">Artist</span>
               <span class="flex items-center border-l border-gray-700 px-3">Album</span>
-              <span class="flex items-center border-l border-gray-700 px-3">Status</span>
+              <span class="flex items-center border-l border-gray-700 px-3">Status / actions</span>
             </div>
 
             <div class="relative min-h-0 flex-1">
@@ -471,10 +561,10 @@ export default component$(() => {
                   return (
                     <div
                       key={entry.id}
-                      class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_108px] border-b border-gray-800 text-sm"
+                      class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_200px] border-b border-gray-800 text-sm"
                       style={{ ...style, height: `${ENTRY_ROW_HEIGHT}px` }}
                     >
-                      <span class="flex items-center px-2 tabular-nums text-slate-500">{entry.position + 1}</span>
+                      <span class="flex items-center px-2 tabular-nums text-slate-500">{index + 1}</span>
                       <button
                         class="flex min-w-0 items-center border-l border-gray-800 px-3 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-slate-500"
                         onClick$={() => playEntry(index)}
@@ -497,15 +587,33 @@ export default component$(() => {
                         <span class={available ? 'text-slate-500' : 'text-amber-300'}>
                           {available ? 'Ready' : entry.availability === 'missing' ? 'Missing' : 'Offline'}
                         </span>
-                        <button
-                          class="px-1 py-2 text-xs text-slate-400 hover:text-red-300 disabled:opacity-40"
-                          onClick$={() => removeEntry(entry)}
-                          disabled={busy}
-                          aria-label={`Remove ${entry.title} from ${state.selectedName}`}
-                          title="Remove entry"
-                        >
-                          Remove
-                        </button>
+                        <span class="flex items-center gap-2">
+                          <button
+                            class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
+                            onClick$={() => moveEntry(entry, 'up')}
+                            disabled={busy || index === 0}
+                            aria-label={`Move ${entry.title} up`}
+                          >
+                            Up
+                          </button>
+                          <button
+                            class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
+                            onClick$={() => moveEntry(entry, 'down')}
+                            disabled={busy || index === entries.total - 1}
+                            aria-label={`Move ${entry.title} down`}
+                          >
+                            Down
+                          </button>
+                          <button
+                            class="px-1 py-2 text-xs text-slate-400 hover:text-red-300 disabled:opacity-40"
+                            onClick$={() => removeEntry(entry)}
+                            disabled={busy}
+                            aria-label={`Remove ${entry.title} from ${state.selectedName}`}
+                            title="Remove entry"
+                          >
+                            Remove
+                          </button>
+                        </span>
                       </span>
                     </div>
                   )

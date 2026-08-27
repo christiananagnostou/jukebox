@@ -30,6 +30,8 @@ export interface PlaylistMutation {
   affected: number
 }
 
+export type PlaylistMoveDirection = 'up' | 'down'
+
 export interface PlaylistPageQuery {
   limit: number
   offset: number
@@ -68,6 +70,10 @@ export function deletePlaylist(playlistId: string): Promise<PlaylistMutation> {
   return invoke('delete_playlist', { playlistId })
 }
 
+export function duplicatePlaylist(playlistId: string, name: string): Promise<PlaylistSummary> {
+  return invoke('duplicate_playlist', { playlistId, name })
+}
+
 export function addPlaylistEntries(playlistId: string, songIds: string[]): Promise<PlaylistMutation> {
   return invoke('add_playlist_entries', { playlistId, songIds })
 }
@@ -83,10 +89,20 @@ export function removePlaylistEntries(playlistId: string, entryIds: string[]): P
   return invoke('remove_playlist_entries', { playlistId, entryIds })
 }
 
+export function movePlaylistEntry(
+  playlistId: string,
+  entryId: string,
+  direction: PlaylistMoveDirection
+): Promise<PlaylistMutation> {
+  return invoke('move_playlist_entry', { direction, entryId, playlistId })
+}
+
 type ScopedPageFetcher<Item, Scope> = (scope: Scope, query: PlaylistPageQuery) => Promise<PlaylistPage<Item>>
 
 class BoundedPlaylistPager<Item, Scope> {
   private generation = 0
+  private lastEndPage = 0
+  private lastStartPage = 0
   private scope?: Scope
   private scopeKey = ''
   private queue = Promise.resolve()
@@ -101,19 +117,21 @@ class BoundedPlaylistPager<Item, Scope> {
     if (scopeKey === this.scopeKey && this.state.status !== 'error') return this.queue
     this.scope = scope
     this.scopeKey = scopeKey
+    this.lastStartPage = 0
+    this.lastEndPage = 0
     return this.enqueueRange(0, 0, this.beginQuery())
   }
 
   reload(): Promise<void> {
     if (this.scope === undefined) return Promise.resolve()
-    const scopeKey = this.scopeKey
-    this.scopeKey = ''
-    return this.resetScope(this.scope, scopeKey)
+    return this.enqueueRange(this.lastStartPage, this.lastEndPage, this.beginQuery())
   }
 
   clear(): void {
     this.scope = undefined
     this.scopeKey = ''
+    this.lastStartPage = 0
+    this.lastEndPage = 0
     this.beginQuery()
   }
 
@@ -121,6 +139,8 @@ class BoundedPlaylistPager<Item, Scope> {
     if (this.state.status === 'error' || endIndex < 0) return Promise.resolve()
     const startPage = Math.max(0, Math.floor(startIndex / this.pageSize))
     const endPage = Math.max(startPage, Math.floor(endIndex / this.pageSize))
+    this.lastStartPage = startPage
+    this.lastEndPage = endPage
     return this.enqueueRange(startPage, endPage, this.generation)
   }
 
