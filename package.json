@@ -10,6 +10,7 @@
     "build.client": "vite build",
     "build.server": "vite build -c adapters/static/vite.config.ts",
     "build.types": "tsc --incremental --noEmit",
+    "check:public-source": "node scripts/check-public-source.mjs",
     "dev": "vite --mode ssr",
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",

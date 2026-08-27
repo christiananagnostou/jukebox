@@ -6,32 +6,32 @@ The product direction remains local-first: a fast native catalog, dependable pla
 
 ## Execution order and status
 
-| Plan                                               | Title                                                               | Priority | Effort | Depends on | Status      |
-| -------------------------------------------------- | ------------------------------------------------------------------- | -------- | ------ | ---------- | ----------- |
-| [007](007-private-listening-contract-tests.md)     | Harden Tailscale discovery and private-listening boundaries         | P1       | M      | —          | DONE        |
-| [008](008-library-mutation-safety.md)              | Make library cleanup and chunked mutations failure-safe             | P1       | M      | —          | DONE        |
-| [009](009-playback-transition-characterization.md) | Characterize playback transitions and preserve failed queue entries | P1       | M      | —          | DONE        |
-| [010](010-settings-and-bootstrap-durability.md)    | Make settings persistence atomic and bootstrap failures visible     | P1       | M      | —          | DONE        |
-| [011](011-native-catalog-query-foundation.md)      | Establish a paged native catalog query service                      | P1       | L      | 007, 008   | DONE        |
-| [012](012-native-scan-state-foundation.md)         | Persist roots, scan generations, and incremental file state         | P1       | M      | 011        | DONE        |
-| [013](013-native-scan-discovery.md)                | Discover and stage files through a bounded native pipeline          | P1       | L      | 012        | DONE        |
-| [014](014-scan-metadata-staging.md)                | Prepare changed metadata without changing the visible catalog       | P1       | L      | 013        | DONE        |
-| [015](015-atomic-scan-reconciliation.md)           | Apply one scan snapshot through a failure-safe catalog transaction  | P1       | L      | 014        | DONE        |
-| [016](016-native-library-refresh.md)               | Compose scan, preparation, and apply into one cancellable operation | P1       | M      | 015        | DONE        |
-| [017](017-library-watchers.md)                     | Schedule recoverable full refreshes from bounded filesystem hints   | P1       | M      | 016        | DONE        |
-| [018](018-native-library-settings.md)              | Adopt native roots, refreshes, and watcher health in Settings       | P1       | L      | 017        | DONE        |
-| [019](019-library-performance-budgets.md)          | Establish deterministic large-library performance budgets           | P1       | M      | 018        | DONE        |
-| [020](020-native-album-artist-aggregates.md)       | Add bounded native album and artist aggregate contracts             | P1       | M      | 019        | DONE        |
-| [021](021-native-album-artist-routes.md)           | Migrate album and artist routes to bounded native pages             | P1       | L      | 020        | DONE        |
-| [022](022-native-storage-query.md)                 | Add a bounded native storage hierarchy contract                     | P1       | M      | 021        | DONE        |
-| [023](023-native-storage-route.md)                 | Migrate Storage to bounded native pages                             | P1       | M      | 022        | DONE        |
-| [024](024-remove-legacy-catalog.md)                | Remove renderer full-catalog compatibility                          | P1       | M      | 023        | DONE        |
-| [025](025-shared-catalog-mutation-pool.md)         | Reuse the managed catalog pool for mutations                        | P1       | S      | 024        | DONE        |
-| [026](026-artwork-cache-lifecycle.md)              | Deduplicate and safely collect cached artwork                       | P1       | M      | 025        | DONE        |
-| [027](027-mobile-library-browsing.md)              | Add bounded artist and album browsing to the private PWA            | P1       | M      | 026        | DONE        |
-| [028](028-playback-state-foundation.md)            | Establish the authoritative playback state                          | P1       | M      | 027        | DONE        |
-| [029](029-native-playback-parity.md)               | Route browser playback through native state                         | P1       | L      | 028        | DONE        |
-| [030](030-playback-session-persistence.md)         | Restore committed playback sessions and queues                      | P1       | L      | 029        | DONE        |
+| Plan                                               | Title                                                               | Priority | Effort | Depends on | Status |
+| -------------------------------------------------- | ------------------------------------------------------------------- | -------- | ------ | ---------- | ------ |
+| [007](007-private-listening-contract-tests.md)     | Harden Tailscale discovery and private-listening boundaries         | P1       | M      | —          | DONE   |
+| [008](008-library-mutation-safety.md)              | Make library cleanup and chunked mutations failure-safe             | P1       | M      | —          | DONE   |
+| [009](009-playback-transition-characterization.md) | Characterize playback transitions and preserve failed queue entries | P1       | M      | —          | DONE   |
+| [010](010-settings-and-bootstrap-durability.md)    | Make settings persistence atomic and bootstrap failures visible     | P1       | M      | —          | DONE   |
+| [011](011-native-catalog-query-foundation.md)      | Establish a paged native catalog query service                      | P1       | L      | 007, 008   | DONE   |
+| [012](012-native-scan-state-foundation.md)         | Persist roots, scan generations, and incremental file state         | P1       | M      | 011        | DONE   |
+| [013](013-native-scan-discovery.md)                | Discover and stage files through a bounded native pipeline          | P1       | L      | 012        | DONE   |
+| [014](014-scan-metadata-staging.md)                | Prepare changed metadata without changing the visible catalog       | P1       | L      | 013        | DONE   |
+| [015](015-atomic-scan-reconciliation.md)           | Apply one scan snapshot through a failure-safe catalog transaction  | P1       | L      | 014        | DONE   |
+| [016](016-native-library-refresh.md)               | Compose scan, preparation, and apply into one cancellable operation | P1       | M      | 015        | DONE   |
+| [017](017-library-watchers.md)                     | Schedule recoverable full refreshes from bounded filesystem hints   | P1       | M      | 016        | DONE   |
+| [018](018-native-library-settings.md)              | Adopt native roots, refreshes, and watcher health in Settings       | P1       | L      | 017        | DONE   |
+| [019](019-library-performance-budgets.md)          | Establish deterministic large-library performance budgets           | P1       | M      | 018        | DONE   |
+| [020](020-native-album-artist-aggregates.md)       | Add bounded native album and artist aggregate contracts             | P1       | M      | 019        | DONE   |
+| [021](021-native-album-artist-routes.md)           | Migrate album and artist routes to bounded native pages             | P1       | L      | 020        | DONE   |
+| [022](022-native-storage-query.md)                 | Add a bounded native storage hierarchy contract                     | P1       | M      | 021        | DONE   |
+| [023](023-native-storage-route.md)                 | Migrate Storage to bounded native pages                             | P1       | M      | 022        | DONE   |
+| [024](024-remove-legacy-catalog.md)                | Remove renderer full-catalog compatibility                          | P1       | M      | 023        | DONE   |
+| [025](025-shared-catalog-mutation-pool.md)         | Reuse the managed catalog pool for mutations                        | P1       | S      | 024        | DONE   |
+| [026](026-artwork-cache-lifecycle.md)              | Deduplicate and safely collect cached artwork                       | P1       | M      | 025        | DONE   |
+| [027](027-mobile-library-browsing.md)              | Add bounded artist and album browsing to the private PWA            | P1       | M      | 026        | DONE   |
+| [028](028-playback-state-foundation.md)            | Establish the authoritative playback state                          | P1       | M      | 027        | DONE   |
+| [029](029-native-playback-parity.md)               | Route browser playback through native state                         | P1       | L      | 028        | DONE   |
+| [030](030-playback-session-persistence.md)         | Restore committed playback sessions and queues                      | P1       | L      | 029        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
@@ -42,7 +42,7 @@ Plans 007-010 are deliberately independent and may be delivered as separate PRs.
 | [001](001-quality-security-release-foundation.md) | Migrations, diagnostics, permissions, identity, release quality | IN PROGRESS — migrations plus Rust fmt/test/Clippy CI landed in PR #48 and renderer SQL permission narrowing landed in plan 024; diagnostics, filesystem permission narrowing, identity migration, Windows, signing, and updater remain |
 | [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-026 delivered the native refresh pipeline, executable 100k-track budgets, bounded routes, renderer-memory cleanup, shared mutation pool ownership, and bounded artwork lifecycle                                |
 | [003](003-playback-engine-and-os-integration.md)  | Reliable restart-safe playback and OS integration               | IN PROGRESS — plans 009 and 028-030 delivered characterized transitions, revisioned native authority, transactional browser parity, and restart-safe session recovery; native output feasibility remains                                |
-| [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | IN PROGRESS — stable native queue entries, desktop parity, and committed session/queue persistence are complete; named playlists and broader collection management remain                                                              |
+| [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | IN PROGRESS — stable native queue entries, desktop parity, and committed session/queue persistence are complete; named playlists and broader collection management remain                                                               |
 | [005](005-fast-accessible-interface.md)           | Compact, keyboard-complete, motion-light UI                     | TODO — small accessibility fixes may land continuously; structural work follows stable APIs                                                                                                                                             |
 | [006](006-private-remote-listening.md)            | Private iPhone browsing and playback                            | IN PROGRESS — loopback streaming, one-click Tailscale controls, port coexistence, installable PWA shell, bounded artist/album drill-down, native-root authorization, continuation, and lock-screen transport are complete               |
 
