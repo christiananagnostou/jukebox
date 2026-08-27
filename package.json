@@ -14,10 +14,12 @@
     "check:bundle-portability": "node scripts/check-bundle-portability.mjs",
     "check:desktop-security": "node scripts/check-desktop-security.mjs",
     "check:public-source": "node scripts/check-public-source.mjs",
+    "check:rust": "cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check && cargo test --locked --manifest-path src-tauri/Cargo.toml && cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "dev": "vite --mode ssr",
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",
     "lint": "eslint \"src/**/*.ts*\"",
+    "pre-push": "npm run fmt.check && npm run check:public-source && npm run check:app-identity && npm run check:desktop-security && npm test && npm run build && npm run check:rust",
     "test": "vitest run",
     "tauri": "node scripts/run-tauri.mjs"
   },

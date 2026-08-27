@@ -46,6 +46,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [042](042-built-in-collection-workspace.md)        | Surface built-in collections in the compact playlist workspace      | P1       | M      | 041        | ACTIVE |
 | [043](043-reversible-queue-edits.md)               | Add authoritative one-step undo for structural queue edits          | P1       | S      | 042        | ACTIVE |
 | [044](044-manual-playlist-workflows.md)            | Add bounded playlist duplication and keyboard entry reordering      | P1       | M      | 043        | ACTIVE |
+| [045](045-local-pre-push-quality-gate.md)          | Add one executable local frontend and Rust pre-push quality gate    | P1       | S      | 044        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
