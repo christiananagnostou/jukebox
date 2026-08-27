@@ -49,6 +49,38 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--navbar-width) minmax(0, 1fr) 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell[data-player-open='true'] {
+  grid-template-columns: var(--navbar-width) minmax(0, 1fr) var(--audio-sidebar-width);
+}
+
+.app-navigation {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.app-main {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.app-audio-sidebar {
+  grid-column: 3;
+  grid-row: 1;
+  visibility: hidden;
+}
+
+.app-audio-sidebar[data-open='true'] {
+  visibility: visible;
+}
+
 *::-webkit-scrollbar {
   width: var(--scrollbar-width);
 }

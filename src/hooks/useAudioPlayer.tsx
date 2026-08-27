@@ -1,9 +1,10 @@
 import { $, noSerialize, useSignal, useVisibleTask$, type NoSerialize } from '@builder.io/qwik'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 
 import type { Song, Store } from '~/App'
 import { BrowserAudioTransport, type AudioTransport } from '~/services/audio-transport'
 import { resolvePlaybackTracks } from '~/services/library-client'
+import { authorizePlaybackSource } from '~/services/media-source'
 import {
   NativePlaybackBridge,
   type PlaybackBridge,
@@ -18,9 +19,18 @@ export const PLAYBACK_PERSISTENCE_WARNING_MESSAGE = 'Playback progress may not b
 const POSITION_OBSERVATION_INTERVAL_MS = 250
 let queueSequence = 0
 
+type PlaybackClientEvent =
+  | 'activation_requested'
+  | 'controller_unavailable'
+  | 'initialization_failed'
+  | 'initializing'
+  | 'media_play_failed'
+  | 'ready'
+  | 'source_authorization_failed'
+
 type PlaybackStore = Pick<Store, 'player' | 'playlist' | 'queue'>
 type QueueIdFactory = () => string
-type SourceResolver = (path: string) => string
+type SourceResolver = (song: Song) => Promise<string>
 type TrackResolver = (trackIds: string[]) => Promise<Song[]>
 
 export interface PlaybackController {
@@ -52,6 +62,10 @@ function recordPlaybackFailure(store: PlaybackStore): void {
   store.player.isPaused = true
 }
 
+function recordPlaybackClientEvent(event: PlaybackClientEvent): void {
+  void invoke('record_playback_client_event', { event }).catch(() => undefined)
+}
+
 export function createPlaybackController(
   store: PlaybackStore,
   transport: AudioTransport,
@@ -63,8 +77,8 @@ export function createPlaybackController(
   const queuedSongs = new Map<string, Song>()
   let transitionTask: Promise<void> | undefined
 
-  const loadSong = (song: Song) => {
-    transport.load(resolveSource(song.path), song.id)
+  const loadSong = async (song: Song) => {
+    transport.load(await resolveSource(song), song.id)
   }
 
   const songForSelection = (selection?: PlaybackSelection | null): Song | undefined => {
@@ -121,7 +135,7 @@ export function createPlaybackController(
     const rejected = await bridge.dispatch({ type: 'rejectTransition', code, recoverable: true })
     mirrorSnapshot(rejected)
     const restored = songForSelection(rejected.current)
-    if (restored) loadSong(restored)
+    if (restored) await loadSong(restored)
     return rejected
   }
 
@@ -136,7 +150,19 @@ export function createPlaybackController(
       await rejectPreparedTransition(snapshot, 'unavailable')
       throw new Error(PLAYBACK_ERROR_MESSAGE)
     }
-    if (transport.loadedSongId !== song.id) loadSong(song)
+    if (transport.loadedSongId !== song.id) {
+      try {
+        await loadSong(song)
+      } catch {
+        recordPlaybackClientEvent('source_authorization_failed')
+        try {
+          await rejectPreparedTransition(snapshot, 'unavailable')
+        } catch {
+          recordPlaybackFailure(store)
+        }
+        throw new Error(PLAYBACK_ERROR_MESSAGE)
+      }
+    }
 
     try {
       await transport.play()
@@ -145,6 +171,7 @@ export function createPlaybackController(
         : await bridge.dispatch({ type: 'play' })
       mirrorSnapshot(committed)
     } catch {
+      recordPlaybackClientEvent('media_play_failed')
       try {
         await rejectPreparedTransition(snapshot, 'decoder')
       } catch {
@@ -218,7 +245,7 @@ export function createPlaybackController(
     mirrorSnapshot(snapshot)
     const current = songForSelection(snapshot.current)
     if (current) {
-      loadSong(current)
+      await loadSong(current)
       transport.currentTime = snapshot.positionMs / 1000
     }
   }
@@ -374,7 +401,14 @@ export const AudioPlayerState = {
 export function useAudioPlayer(store: Store) {
   const controller = useSignal<NoSerialize<PlaybackController>>()
 
-  const playSong = $(async (song: Song, index: number) => controller.value?.playSong(song, index))
+  const playSong = $(async (song: Song, index: number) => {
+    if (!controller.value) {
+      recordPlaybackClientEvent('controller_unavailable')
+      recordPlaybackFailure(store)
+      throw new Error(PLAYBACK_ERROR_MESSAGE)
+    }
+    return controller.value.playSong(song, index)
+  })
   const pauseSong = $(async () => controller.value?.pauseSong())
   const resumeSong = $(async () => controller.value?.resumeSong())
   const nextSong = $(async () => controller.value?.nextSong())
@@ -386,9 +420,16 @@ export function useAudioPlayer(store: Store) {
   useVisibleTask$(({ cleanup }) => {
     if (store.player.audioElem) return
 
+    recordPlaybackClientEvent('initializing')
+
     const audioElement = new Audio()
     const transport = new BrowserAudioTransport(audioElement)
-    const playbackController = createPlaybackController(store, transport, convertFileSrc, new NativePlaybackBridge())
+    const playbackController = createPlaybackController(
+      store,
+      transport,
+      authorizePlaybackSource,
+      new NativePlaybackBridge()
+    )
     let disposed = false
     let unbindEvents = () => {}
 
@@ -399,9 +440,13 @@ export function useAudioPlayer(store: Store) {
         unbindEvents = bindPlaybackEvents(store, transport, playbackController)
         controller.value = noSerialize(playbackController)
         store.player.audioElem = audioElement
+        recordPlaybackClientEvent('ready')
       })
       .catch(() => {
-        if (!disposed) recordPlaybackFailure(store)
+        if (!disposed) {
+          recordPlaybackClientEvent('initialization_failed')
+          recordPlaybackFailure(store)
+        }
       })
 
     cleanup(() => {

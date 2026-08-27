@@ -115,22 +115,17 @@ export default component$(() => {
   })
 
   return (
-    <>
+    <div class="app-shell" data-player-open={store.player.currSong ? 'true' : 'false'}>
       <Nav />
 
-      <main
-        class="h-screen max-h-screen w-full flex flex-col relative"
-        style={{
-          marginLeft: 'var(--navbar-width)',
-          marginRight: store.player.currSong ? 'var(--audio-sidebar-width)' : '0',
-        }}
-      >
-        <AudioSidebar />
+      <main class="app-main h-screen max-h-screen min-w-0 flex flex-col relative">
         <div class="min-h-0 w-full flex flex-col flex-1">
           <Slot />
         </div>
         <Footer />
       </main>
-    </>
+
+      <AudioSidebar />
+    </div>
   )
 })

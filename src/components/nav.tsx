@@ -23,10 +23,7 @@ export default component$(() => {
 
   return (
     <>
-      <nav
-        class="border-r border-gray-700 fixed top-0 left-0 h-screen flex z-20 flex-col text-sm"
-        style={{ width: 'var(--navbar-width)' }}
-      >
+      <nav class="app-navigation border-r border-gray-700 h-screen min-w-0 flex z-20 flex-col text-sm">
         <div class="flex-1 mt-[29px] border-t border-gray-700">
           {Links.map((link) => (
             <Link

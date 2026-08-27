@@ -1,10 +1,11 @@
 import { $, component$, useContext, useOnWindow, useVisibleTask$ } from '@builder.io/qwik'
 import type { Event } from '@tauri-apps/api/event'
 import { listen } from '@tauri-apps/api/event'
-import { message, open } from '@tauri-apps/plugin-dialog'
+import { message } from '@tauri-apps/plugin-dialog'
 
 import { useLibraryImporter } from '~/hooks/useLibraryImporter'
 import { StoreContext } from '~/routes/layout'
+import { pickMusicFolders } from '~/services/dialog-client'
 import { getErrorMessage } from '~/utils/Errors'
 
 export default component$(({ styles }: { styles: { button: string; icon: string } }) => {
@@ -26,13 +27,12 @@ export default component$(({ styles }: { styles: { button: string; icon: string 
   })
 
   const openDirectoryPicker = $(async () => {
-    const selected = await open({
-      directory: true,
+    const selected = await pickMusicFolders({
       multiple: true,
       defaultPath: store.settings.musicFolder || undefined,
     })
 
-    if (selected) await importAndReport(Array.isArray(selected) ? selected : [selected])
+    if (selected.length) await importAndReport(selected)
   })
 
   useVisibleTask$(async () => {

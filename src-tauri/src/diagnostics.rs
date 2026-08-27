@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -34,6 +34,41 @@ pub struct DiagnosticsSummary {
     operating_system: String,
     recent_errors: Vec<DiagnosticEvent>,
     schema_version: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaybackClientEvent {
+    ActivationFailed,
+    ActivationRequested,
+    ControllerUnavailable,
+    InitializationFailed,
+    Initializing,
+    MediaPlayFailed,
+    Ready,
+    SourceAuthorizationFailed,
+}
+
+impl PlaybackClientEvent {
+    fn code(self) -> &'static str {
+        match self {
+            Self::ActivationFailed => "activation_failed",
+            Self::ActivationRequested => "activation_requested",
+            Self::ControllerUnavailable => "controller_unavailable",
+            Self::InitializationFailed => "initialization_failed",
+            Self::Initializing => "initializing",
+            Self::MediaPlayFailed => "media_play_failed",
+            Self::Ready => "ready",
+            Self::SourceAuthorizationFailed => "source_authorization_failed",
+        }
+    }
+
+    fn is_error(self) -> bool {
+        !matches!(
+            self,
+            Self::ActivationRequested | Self::Initializing | Self::Ready
+        )
+    }
 }
 
 #[derive(Default)]
@@ -372,9 +407,40 @@ pub fn open_diagnostics_directory(
     diagnostics.open_directory()
 }
 
+#[tauri::command]
+pub fn record_playback_client_event(
+    diagnostics: tauri::State<'_, DiagnosticsState>,
+    event: PlaybackClientEvent,
+) {
+    if event.is_error() {
+        diagnostics.record_error("playback_client", event.code(), "");
+    } else {
+        diagnostics.record_info("playback_client", event.code(), "");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playback_client_events_have_fixed_path_free_codes() {
+        let events = [
+            PlaybackClientEvent::ActivationFailed,
+            PlaybackClientEvent::ActivationRequested,
+            PlaybackClientEvent::ControllerUnavailable,
+            PlaybackClientEvent::InitializationFailed,
+            PlaybackClientEvent::Initializing,
+            PlaybackClientEvent::MediaPlayFailed,
+            PlaybackClientEvent::Ready,
+            PlaybackClientEvent::SourceAuthorizationFailed,
+        ];
+        for event in events {
+            assert!(!event.code().is_empty());
+            assert!(!event.code().contains('/'));
+            assert!(!event.code().contains('\\'));
+        }
+    }
 
     #[test]
     fn details_with_path_separators_are_redacted() {

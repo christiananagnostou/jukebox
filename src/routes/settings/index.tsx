@@ -2,9 +2,9 @@ import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.i
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { audioDir } from '@tauri-apps/api/path'
-import { open } from '@tauri-apps/plugin-dialog'
 
 import type { RemoteAccessStatus, Settings, SettingsSnapshot, TailscaleStatus } from '~/App'
+import { pickMusicFolders } from '~/services/dialog-client'
 import { clearLibrarySongs } from '~/services/library-db'
 import {
   addLibraryRoot,
@@ -126,13 +126,12 @@ export default component$(() => {
   })
 
   const chooseMusicFolder = $(async () => {
-    const selected = await open({
-      directory: true,
+    const [selected] = await pickMusicFolders({
       multiple: false,
       defaultPath: store.settings.musicFolder || undefined,
     })
 
-    if (selected && !Array.isArray(selected)) {
+    if (selected) {
       try {
         if (!(await saveSettings({ ...store.settings, musicFolder: selected }))) return
         const root = await addLibraryRoot(selected)
