@@ -1,6 +1,7 @@
 mod aggregates;
 mod collections;
 mod facets;
+mod m3u;
 #[cfg(test)]
 mod performance;
 mod playlists;
@@ -17,6 +18,9 @@ mod watcher;
 pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, ArtistPage};
 pub use collections::{BuiltInCollectionPage, BuiltInCollectionQuery};
 pub use facets::{FacetPage, FacetQuery};
+pub use m3u::{
+    M3uExportResult, M3uImportPreview, M3uImportResult, M3uIssuePage, M3uIssueQuery, M3uState,
+};
 pub use playlists::{
     PlaylistEntryPage, PlaylistEntryQuery, PlaylistMoveDirection, PlaylistMutation, PlaylistPage,
     PlaylistQuery, PlaylistSummary,
@@ -243,6 +247,34 @@ impl LibraryState {
     ) -> Result<SmartPlaylistPage, LibraryError> {
         self.ensure_initialized().await?;
         smart_playlists::query_smart_playlist(&self.repository.pool(), playlist_id, query).await
+    }
+
+    pub async fn pick_m3u_import(
+        &self,
+        app: tauri::AppHandle,
+        state: M3uState,
+    ) -> Result<Option<M3uImportPreview>, LibraryError> {
+        self.ensure_initialized().await?;
+        m3u::pick_m3u_import(app, self.repository.pool(), state).await
+    }
+
+    pub async fn apply_m3u_import(
+        &self,
+        state: &M3uState,
+        token: String,
+        name: String,
+    ) -> Result<M3uImportResult, LibraryError> {
+        self.ensure_initialized().await?;
+        m3u::apply_m3u_import(&self.repository.pool(), state, token, name).await
+    }
+
+    pub async fn pick_m3u_export(
+        &self,
+        app: tauri::AppHandle,
+        playlist_id: String,
+    ) -> Result<Option<M3uExportResult>, LibraryError> {
+        self.ensure_initialized().await?;
+        m3u::pick_m3u_export(app, self.repository.pool(), playlist_id).await
     }
 
     pub async fn resolve_playback_tracks(
@@ -546,6 +578,51 @@ pub async fn query_smart_playlist(
     query: SmartPlaylistQuery,
 ) -> Result<SmartPlaylistPage, LibraryError> {
     library.query_smart_playlist(playlist_id, query).await
+}
+
+#[tauri::command]
+pub async fn pick_m3u_import(
+    app: tauri::AppHandle,
+    library: tauri::State<'_, LibraryState>,
+    imports: tauri::State<'_, M3uState>,
+) -> Result<Option<M3uImportPreview>, LibraryError> {
+    library.pick_m3u_import(app, imports.inner().clone()).await
+}
+
+#[tauri::command]
+pub fn list_m3u_import_issues(
+    imports: tauri::State<'_, M3uState>,
+    token: String,
+    query: M3uIssueQuery,
+) -> Result<M3uIssuePage, LibraryError> {
+    m3u::list_m3u_import_issues(imports.inner(), token, query)
+}
+
+#[tauri::command]
+pub async fn apply_m3u_import(
+    library: tauri::State<'_, LibraryState>,
+    imports: tauri::State<'_, M3uState>,
+    token: String,
+    name: String,
+) -> Result<M3uImportResult, LibraryError> {
+    library.apply_m3u_import(imports.inner(), token, name).await
+}
+
+#[tauri::command]
+pub fn discard_m3u_import(
+    imports: tauri::State<'_, M3uState>,
+    token: String,
+) -> Result<bool, LibraryError> {
+    m3u::discard_m3u_import(imports.inner(), token)
+}
+
+#[tauri::command]
+pub async fn pick_m3u_export(
+    app: tauri::AppHandle,
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+) -> Result<Option<M3uExportResult>, LibraryError> {
+    library.pick_m3u_export(app, playlist_id).await
 }
 
 #[tauri::command]

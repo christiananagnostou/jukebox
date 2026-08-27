@@ -1,4 +1,4 @@
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 15;
 
 #[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
@@ -39,6 +39,9 @@ pub(crate) const HISTORY_COLLECTION_SCHEMA: &str =
 #[cfg(test)]
 pub(crate) const SMART_PLAYLIST_SCHEMA: &str =
     include_str!("../migrations/0014_smart_playlists.sql");
+#[cfg(test)]
+pub(crate) const PLAYLIST_PATH_LOOKUP_SCHEMA: &str =
+    include_str!("../migrations/0015_playlist_path_lookup.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[cfg(test)]
@@ -821,6 +824,42 @@ mod tests {
                     .expect("confirm deleted fts row"),
                 0
             );
+        });
+    }
+
+    #[test]
+    fn playlist_path_lookup_schema_adds_exact_and_case_insensitive_indexes() {
+        run_async(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open in-memory database");
+            sqlx::raw_sql(INITIAL_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply initial schema");
+            sqlx::raw_sql(CATALOG_QUERY_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply catalog query schema");
+            sqlx::raw_sql(LIBRARY_SCAN_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply library scan schema");
+            sqlx::raw_sql(PLAYLIST_PATH_LOOKUP_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply playlist path lookup schema");
+
+            let index_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_songs_path_lookup', 'idx_songs_path_lookup_nocase')",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("inspect playlist path lookup indexes");
+
+            assert_eq!(index_count, 2);
         });
     }
 }
