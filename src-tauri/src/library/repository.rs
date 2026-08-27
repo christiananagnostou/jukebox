@@ -532,7 +532,7 @@ fn push_cursor_bind(builder: &mut QueryBuilder<'_, Sqlite>, value: &CursorValue)
     }
 }
 
-fn track_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<TrackSummary, LibraryError> {
+pub(super) fn track_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<TrackSummary, LibraryError> {
     Ok(TrackSummary {
         album: row.try_get("album").map_err(|_| LibraryError::database())?,
         artist: row

@@ -1,3 +1,4 @@
+use super::collections::{BuiltInCollectionKind, BuiltInCollectionQuery};
 use super::facets::{FacetQuery, TrackFacet};
 use super::query::TrackAvailability;
 use super::{AggregateQuery, LibraryState, StorageQuery, TrackQuery};
@@ -72,6 +73,12 @@ fn reference_100k_library_performance() {
                 },
             )
             .await,
+            measure_collection_query(&library, "recently_played", BuiltInCollectionKind::Recent)
+                .await,
+            measure_collection_query(&library, "most_played", BuiltInCollectionKind::Frequent)
+                .await,
+            measure_collection_query(&library, "never_played", BuiltInCollectionKind::Unplayed)
+                .await,
         ];
         for budget in &query_budgets {
             assert!(
@@ -257,6 +264,37 @@ async fn measure_storage_query(
     }
 }
 
+async fn measure_collection_query(
+    library: &LibraryState,
+    name: &'static str,
+    kind: BuiltInCollectionKind,
+) -> QueryBudget {
+    let query = BuiltInCollectionQuery {
+        kind,
+        limit: 100,
+        offset: 0,
+    };
+    library
+        .query_built_in_collection(query.clone())
+        .await
+        .expect("warm reference built-in collection query");
+    let mut samples = Vec::with_capacity(QUERY_SAMPLES);
+    for _ in 0..QUERY_SAMPLES {
+        let started = Instant::now();
+        let page = library
+            .query_built_in_collection(query.clone())
+            .await
+            .expect("run reference built-in collection query");
+        samples.push(started.elapsed());
+        black_box(page.items.len());
+    }
+    samples.sort_unstable();
+    QueryBudget {
+        name,
+        p95: samples[(QUERY_SAMPLES * 95).div_ceil(100) - 1],
+    }
+}
+
 async fn measure_query(
     library: &LibraryState,
     name: &'static str,
@@ -402,6 +440,51 @@ async fn reference_fixture() -> (tempfile::TempDir, SqlitePool, i64) {
         .commit()
         .await
         .expect("commit reference fixture");
+    let mut transaction = pool.begin().await.expect("begin reference history fixture");
+    for start in (0..10_000_i64).step_by(INSERT_BATCH_SIZE as usize) {
+        let end = (start + INSERT_BATCH_SIZE).min(10_000);
+        let mut history = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO play_history (
+               track_id, title_snapshot, artist_snapshot, album_snapshot, source_kind,
+               started_at, ended_at, updated_at, listened_ms, position_ms, duration_ms,
+               completed, open_slot
+             ) ",
+        );
+        history.push_values(start..end, |mut row, index| {
+            let track_index = index % 2_000;
+            let completed = i64::from(index % 4 != 0);
+            row.push_bind(format!("song-{track_index:06}"))
+                .push_bind(format!("Track {track_index:06}"))
+                .push_bind(format!("Artist {:04}", track_index % 2_000))
+                .push_bind(format!("Album {:05}", track_index % 10_000))
+                .push_bind("context")
+                .push_bind("2026-08-27T00:00:00.000Z")
+                .push_bind("2026-08-27T00:01:00.000Z")
+                .push_bind("2026-08-27T00:01:00.000Z")
+                .push_bind(if completed == 1 {
+                    90_000_i64
+                } else {
+                    10_000_i64
+                })
+                .push_bind(if completed == 1 {
+                    90_000_i64
+                } else {
+                    10_000_i64
+                })
+                .push_bind(180_000_i64)
+                .push_bind(completed)
+                .push_bind(Option::<i64>::None);
+        });
+        history
+            .build()
+            .execute(&mut *transaction)
+            .await
+            .expect("insert reference history");
+    }
+    transaction
+        .commit()
+        .await
+        .expect("commit reference history fixture");
     let mut transaction = pool.begin().await.expect("begin storage index build");
     super::storage::rebuild_storage_index(&mut transaction, root_id)
         .await

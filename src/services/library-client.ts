@@ -113,6 +113,27 @@ export interface TrackPage {
   total: number
 }
 
+export type BuiltInCollectionKind = 'recently_played' | 'most_played' | 'never_played'
+
+export interface BuiltInCollectionQuery {
+  kind: BuiltInCollectionKind
+  limit: number
+  offset: number
+}
+
+export interface BuiltInCollectionItem {
+  lastPlayedAt?: string | null
+  listenedMs: number
+  playCount: number
+  track: Song
+}
+
+export interface BuiltInCollectionPage {
+  items: BuiltInCollectionItem[]
+  revision: string
+  total: number
+}
+
 export type TrackPageFetcher = (query: TrackQuery) => Promise<TrackPage>
 export type AggregatePageFetcher<Item> = (query: AggregateQuery) => Promise<AggregatePage<Item>>
 export type StoragePageFetcher = (query: StorageQuery) => Promise<AggregatePage<StorageNode>>
@@ -129,6 +150,10 @@ export async function resolvePlaybackTracks(trackIds: string[]): Promise<Song[]>
 export async function queryTracks(query: TrackQuery): Promise<TrackPage> {
   const page = await invoke<NativeTrackPage>('query_tracks', { query })
   return { ...page, items: page.items.map(toSong) }
+}
+
+export function queryBuiltInCollection(query: BuiltInCollectionQuery): Promise<BuiltInCollectionPage> {
+  return invoke('query_built_in_collection', { query })
 }
 
 export function queryFacets(query: FacetQuery): Promise<AggregatePage<FacetItem>> {

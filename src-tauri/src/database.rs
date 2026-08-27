@@ -1,4 +1,4 @@
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 12;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
 
 #[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
@@ -33,6 +33,9 @@ pub(crate) const PLAYLIST_SCHEMA: &str = include_str!("../migrations/0011_playli
 #[cfg(test)]
 pub(crate) const PLAY_HISTORY_SCHEMA: &str =
     include_str!("../migrations/0012_listening_history.sql");
+#[cfg(test)]
+pub(crate) const HISTORY_COLLECTION_SCHEMA: &str =
+    include_str!("../migrations/0013_history_collection_index.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[cfg(test)]
@@ -232,7 +235,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                12
+                13
             );
             assert_eq!(
                 sqlx::query_scalar::<_, i64>(
@@ -503,6 +506,39 @@ mod tests {
                 .expect("confirm history has no catalog foreign key"),
                 0
             );
+        });
+    }
+
+    #[test]
+    fn history_collection_index_covers_completed_plays_by_track() {
+        run_async(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open history collection migration database");
+            sqlx::raw_sql(INITIAL_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply initial history collection schema");
+            sqlx::raw_sql(PLAY_HISTORY_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply history schema");
+            sqlx::raw_sql(HISTORY_COLLECTION_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply history collection schema");
+
+            let definition: String = sqlx::query_scalar(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_play_history_completed_track'",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("inspect completed history index");
+            assert!(definition.contains("track_id, started_at DESC, id DESC"));
+            assert!(definition.contains("WHERE completed = 1"));
         });
     }
 
