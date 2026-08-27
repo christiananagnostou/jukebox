@@ -5,18 +5,24 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'))
 const targets = process.argv.slice(2).map((target) => resolve(target))
+const temporaryRoot = resolve(tmpdir())
 
 if (!targets.length) {
   console.error('Usage: npm run check:bundle-portability -- <file-or-directory> [...]')
   process.exit(2)
 }
 
+const normalizedTemporaryRoot = temporaryRoot.replaceAll('\\', '/').replace(/\/$/, '')
+const isGenericTemporaryRoot =
+  ['/tmp', '/private/tmp', '/var/tmp'].includes(normalizedTemporaryRoot) ||
+  /^[a-z]:\/(?:windows\/)?temp$/i.test(normalizedTemporaryRoot)
+
 const forbiddenRoots = [
   ['builder home directory', homedir()],
   ['project checkout', projectRoot],
   ['Cargo home directory', process.env.CARGO_HOME],
   ['Rustup home directory', process.env.RUSTUP_HOME],
-  ['temporary build directory', tmpdir()],
+  ['temporary build directory', isGenericTemporaryRoot ? undefined : temporaryRoot],
 ]
   .filter(([, path]) => path)
   .flatMap(([label, path]) => {
