@@ -1,10 +1,13 @@
+use crate::library::LibraryState;
 use serde::Deserialize;
+#[cfg(test)]
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use std::collections::BTreeSet;
+#[cfg(test)]
 use std::path::PathBuf;
+#[cfg(test)]
 use std::time::Duration;
-use tauri::Manager;
 
 const UPSERT_CHUNK_SIZE: usize = 100;
 const DELETE_CHUNK_SIZE: usize = 200;
@@ -35,71 +38,71 @@ pub struct CatalogSongInput {
     visuals_path: String,
 }
 
+impl LibraryState {
+    async fn catalog_mutation_pool(&self) -> Result<SqlitePool, String> {
+        self.ensure_initialized()
+            .await
+            .map_err(|error| error.message)?;
+        Ok(self.pool())
+    }
+
+    async fn upsert_catalog_songs(&self, songs: &[CatalogSongInput]) -> Result<(), String> {
+        if songs.is_empty() {
+            return Ok(());
+        }
+        upsert_songs_in_pool(&self.catalog_mutation_pool().await?, songs, |_| Ok(())).await
+    }
+
+    async fn delete_catalog_songs(&self, ids: &[String]) -> Result<(), String> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        delete_songs_in_pool(&self.catalog_mutation_pool().await?, ids, |_| Ok(())).await
+    }
+
+    async fn clear_catalog_songs(&self) -> Result<(), String> {
+        clear_songs_in_pool(&self.catalog_mutation_pool().await?).await
+    }
+
+    async fn set_favorite_rating(&self, id: &str, rating: i64) -> Result<(), String> {
+        if !(0..=2).contains(&rating) {
+            return Err("Favorite rating must be between 0 and 2.".to_string());
+        }
+        update_favorite_rating_in_pool(&self.catalog_mutation_pool().await?, id, rating).await
+    }
+}
+
 #[tauri::command]
 pub async fn upsert_songs(
-    app_handle: tauri::AppHandle,
+    library: tauri::State<'_, LibraryState>,
     songs: Vec<CatalogSongInput>,
 ) -> Result<(), String> {
-    if songs.is_empty() {
-        return Ok(());
-    }
-
-    let pool = production_pool(&app_handle).await?;
-    let result = upsert_songs_in_pool(&pool, &songs, |_| Ok(())).await;
-    pool.close().await;
-    result
+    library.upsert_catalog_songs(&songs).await
 }
 
 #[tauri::command]
-pub async fn delete_songs(app_handle: tauri::AppHandle, ids: Vec<String>) -> Result<(), String> {
-    if ids.is_empty() {
-        return Ok(());
-    }
-
-    let pool = production_pool(&app_handle).await?;
-    let result = delete_songs_in_pool(&pool, &ids, |_| Ok(())).await;
-    pool.close().await;
-    result
+pub async fn delete_songs(
+    library: tauri::State<'_, LibraryState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    library.delete_catalog_songs(&ids).await
 }
 
 #[tauri::command]
-pub async fn clear_library_songs(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let pool = production_pool(&app_handle).await?;
-    let result = clear_songs_in_pool(&pool).await;
-    pool.close().await;
-    result
+pub async fn clear_library_songs(library: tauri::State<'_, LibraryState>) -> Result<(), String> {
+    library.clear_catalog_songs().await
 }
 
 #[tauri::command]
 pub async fn update_favorite_rating(
-    app_handle: tauri::AppHandle,
+    library: tauri::State<'_, LibraryState>,
     id: String,
     rating: i64,
 ) -> Result<(), String> {
-    if !(0..=2).contains(&rating) {
-        return Err("Favorite rating must be between 0 and 2.".to_string());
-    }
-
-    let pool = production_pool(&app_handle).await?;
-    let result = update_favorite_rating_in_pool(&pool, &id, rating).await;
-    pool.close().await;
-    result
+    library.set_favorite_rating(&id, rating).await
 }
 
-fn production_database_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app_handle
-        .path()
-        .app_config_dir()
-        .map(|directory| directory.join("library.db"))
-        .map_err(|error| format!("Library database path is unavailable: {error}"))
-}
-
-async fn production_pool(app_handle: &tauri::AppHandle) -> Result<SqlitePool, String> {
-    open_pool(production_database_path(app_handle)?, false)
-        .await
-        .map_err(|error| format!("Library database is unavailable: {error}"))
-}
-
+#[cfg(test)]
 async fn open_pool(path: PathBuf, create_if_missing: bool) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::new()
         .filename(path)
@@ -455,6 +458,43 @@ mod tests {
                 .await
                 .expect_err("missing song should fail")
                 .contains("no longer in the library"));
+
+            close_test_pool(pool, root).await;
+        });
+    }
+
+    #[test]
+    fn managed_library_state_runs_every_catalog_mutation() {
+        run_async(async {
+            let (pool, root) = test_pool("managed-mutations").await;
+            let library = LibraryState::from_pool(pool.clone());
+            let songs = vec![song(1), song(2)];
+
+            library
+                .upsert_catalog_songs(&songs)
+                .await
+                .expect("upsert through managed state");
+            library
+                .set_favorite_rating("song-1", 2)
+                .await
+                .expect("update favorite through managed state");
+            library
+                .delete_catalog_songs(&["song-2".to_string()])
+                .await
+                .expect("delete through managed state");
+
+            let row: (i64, i64) =
+                sqlx::query_as("SELECT COUNT(*), MAX(favorRating) FROM songs WHERE id = 'song-1'")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read managed mutation result");
+            assert_eq!(row, (1, 2));
+
+            library
+                .clear_catalog_songs()
+                .await
+                .expect("clear through managed state");
+            assert_eq!(song_count(&pool).await, 0);
 
             close_test_pool(pool, root).await;
         });
