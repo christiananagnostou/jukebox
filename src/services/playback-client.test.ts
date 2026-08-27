@@ -19,6 +19,7 @@ function snapshot(revision: number): PlaybackSnapshot {
     error: null,
     history: [],
     muted: false,
+    persistenceWarning: false,
     positionMs: 0,
     queue: [],
     repeatMode: 'off',

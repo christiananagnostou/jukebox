@@ -26,6 +26,7 @@ export interface PlaybackSnapshot {
   error?: { code: PlaybackErrorCode; recoverable: boolean } | null
   history: PlaybackSelection[]
   muted: boolean
+  persistenceWarning: boolean
   positionMs: number
   queue: NativeQueueEntry[]
   repeatMode: 'off' | 'one' | 'all'

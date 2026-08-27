@@ -20,6 +20,7 @@ import {
   queryArtists,
   queryStorage,
   queryTracks,
+  resolvePlaybackTracks,
   storageNodeAt,
   StoragePager,
   type TrackPageFetcher,
@@ -100,6 +101,15 @@ describe('native library commands', () => {
     await queryTracks(query)
 
     expect(invokeMock).toHaveBeenCalledWith('query_tracks', { query })
+  })
+
+  it('resolves only the requested playback track IDs through the bounded command', async () => {
+    invokeMock.mockResolvedValue([song(2), song(1)])
+
+    const resolved = await resolvePlaybackTracks(['2', '1'])
+
+    expect(invokeMock).toHaveBeenCalledWith('resolve_playback_tracks', { trackIds: ['2', '1'] })
+    expect(resolved.map((track) => track.id)).toEqual(['2', '1'])
   })
 
   it('uses bounded aggregate query payloads for artist and album pages', async () => {

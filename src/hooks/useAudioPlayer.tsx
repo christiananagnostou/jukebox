@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { Song, Store } from '~/App'
 import { BrowserAudioTransport, type AudioTransport } from '~/services/audio-transport'
+import { resolvePlaybackTracks } from '~/services/library-client'
 import {
   NativePlaybackBridge,
   type PlaybackBridge,
@@ -12,6 +13,7 @@ import {
 } from '~/services/playback-client'
 
 export const PLAYBACK_ERROR_MESSAGE = 'This track could not be played'
+export const PLAYBACK_PERSISTENCE_WARNING_MESSAGE = 'Playback progress may not be saved'
 
 const POSITION_OBSERVATION_INTERVAL_MS = 250
 let queueSequence = 0
@@ -19,6 +21,7 @@ let queueSequence = 0
 type PlaybackStore = Pick<Store, 'player' | 'playlist' | 'queue'>
 type QueueIdFactory = () => string
 type SourceResolver = (path: string) => string
+type TrackResolver = (trackIds: string[]) => Promise<Song[]>
 
 export interface PlaybackController {
   clearPlayback(): Promise<void>
@@ -54,7 +57,8 @@ export function createPlaybackController(
   transport: AudioTransport,
   resolveSource: SourceResolver,
   bridge: PlaybackBridge,
-  createQueueId: QueueIdFactory = defaultQueueId
+  createQueueId: QueueIdFactory = defaultQueueId,
+  resolveTracks: TrackResolver = resolvePlaybackTracks
 ): PlaybackController {
   const queuedSongs = new Map<string, Song>()
   let transitionTask: Promise<void> | undefined
@@ -90,7 +94,11 @@ export function createPlaybackController(
     }
     store.player.currentTime = snapshot.positionMs / 1000
     store.player.duration = snapshot.durationMs / 1000
-    store.player.error = snapshot.error ? PLAYBACK_ERROR_MESSAGE : ''
+    store.player.error = snapshot.error
+      ? PLAYBACK_ERROR_MESSAGE
+      : snapshot.persistenceWarning
+        ? PLAYBACK_PERSISTENCE_WARNING_MESSAGE
+        : ''
     store.player.isPaused = snapshot.status !== 'playing'
     store.queue = snapshot.queue.flatMap((entry) => {
       const song = queuedSongs.get(entry.entryId)
@@ -188,7 +196,31 @@ export function createPlaybackController(
     if (snapshot.transitionPending) {
       snapshot = await bridge.dispatch({ type: 'rejectTransition', code: 'unknown', recoverable: true })
     }
+    const trackIds = [
+      ...snapshot.context.trackIds,
+      ...snapshot.queue.map((entry) => entry.trackId),
+      ...(snapshot.current ? [snapshot.current.trackId] : []),
+    ].filter((trackId, index, all) => all.indexOf(trackId) === index)
+    if (trackIds.length) {
+      const resolved = await resolveTracks(trackIds)
+      const byId = new Map(resolved.map((track) => [track.id, track]))
+      const context = snapshot.context.trackIds.map((trackId) => byId.get(trackId))
+      if (context.every((track): track is Song => Boolean(track))) store.playlist = context
+      for (const entry of snapshot.queue) {
+        const track = byId.get(entry.trackId)
+        if (track) queuedSongs.set(entry.entryId, track)
+      }
+      if (snapshot.current?.queueEntryId) {
+        const track = byId.get(snapshot.current.trackId)
+        if (track) queuedSongs.set(snapshot.current.queueEntryId, track)
+      }
+    }
     mirrorSnapshot(snapshot)
+    const current = songForSelection(snapshot.current)
+    if (current) {
+      loadSong(current)
+      transport.currentTime = snapshot.positionMs / 1000
+    }
   }
 
   const playSong = async (song: Song, index: number) => {

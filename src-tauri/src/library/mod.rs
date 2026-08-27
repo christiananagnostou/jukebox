@@ -30,6 +30,9 @@ use tokio::sync::OnceCell;
 
 use crate::artwork::ArtworkCache;
 
+const MAX_PLAYBACK_TRACKS: usize = 10_000;
+const MAX_PLAYBACK_TRACK_ID_LENGTH: usize = 128;
+
 #[derive(Clone)]
 pub struct LibraryState {
     initialized: Arc<OnceCell<Result<(), LibraryError>>>,
@@ -90,6 +93,27 @@ impl LibraryState {
     pub async fn query_tracks(&self, query: TrackQuery) -> Result<TrackPage, LibraryError> {
         self.ensure_initialized().await?;
         self.repository.query_tracks(query).await
+    }
+
+    pub async fn resolve_playback_tracks(
+        &self,
+        track_ids: Vec<String>,
+    ) -> Result<Vec<TrackSummary>, LibraryError> {
+        if track_ids.len() > MAX_PLAYBACK_TRACKS
+            || track_ids.iter().any(|track_id| {
+                track_id.is_empty()
+                    || track_id.len() > MAX_PLAYBACK_TRACK_ID_LENGTH
+                    || !track_id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            })
+        {
+            return Err(LibraryError::invalid_query(
+                "Playback track identifiers must be opaque, present, and bounded.",
+            ));
+        }
+        self.ensure_initialized().await?;
+        self.repository.tracks_by_ids(&track_ids).await
     }
 
     pub async fn query_artists(&self, query: AggregateQuery) -> Result<ArtistPage, LibraryError> {
@@ -227,6 +251,14 @@ pub async fn query_tracks(
     query: TrackQuery,
 ) -> Result<TrackPage, LibraryError> {
     library.query_tracks(query).await
+}
+
+#[tauri::command]
+pub async fn resolve_playback_tracks(
+    library: tauri::State<'_, LibraryState>,
+    track_ids: Vec<String>,
+) -> Result<Vec<TrackSummary>, LibraryError> {
+    library.resolve_playback_tracks(track_ids).await
 }
 
 #[tauri::command]

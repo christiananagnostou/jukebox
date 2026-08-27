@@ -16,6 +16,8 @@ pub(crate) const LIBRARY_REFRESH_SCHEMA: &str =
     include_str!("../migrations/0007_library_refresh_runs.sql");
 pub(crate) const LIBRARY_STORAGE_SCHEMA: &str =
     include_str!("../migrations/0008_library_storage_nodes.sql");
+pub(crate) const PLAYBACK_SESSION_SCHEMA: &str =
+    include_str!("../migrations/0009_playback_session.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub fn migrations() -> Vec<Migration> {
@@ -66,6 +68,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 8,
             description: "add indexed native storage nodes",
             sql: LIBRARY_STORAGE_SCHEMA,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 9,
+            description: "persist the committed playback session",
+            sql: PLAYBACK_SESSION_SCHEMA,
             kind: MigrationKind::Up,
         },
     ]
@@ -261,7 +269,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                8
+                9
             );
             let scan_columns: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name IN (
@@ -288,6 +296,16 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("inspect discovery staging table"),
+                1
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'table' AND name = 'playback_session'",
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("inspect playback session table"),
                 1
             );
             assert_eq!(

@@ -12,6 +12,7 @@ import {
   bindPlaybackEvents,
   createPlaybackController,
   PLAYBACK_ERROR_MESSAGE,
+  PLAYBACK_PERSISTENCE_WARNING_MESSAGE,
   type PlaybackController,
 } from './useAudioPlayer'
 
@@ -47,6 +48,7 @@ function emptySnapshot(): PlaybackSnapshot {
     error: null,
     history: [],
     muted: false,
+    persistenceWarning: false,
     positionMs: 0,
     queue: [],
     repeatMode: 'off',
@@ -65,7 +67,11 @@ class FakePlaybackBridge implements PlaybackBridge {
   commands: PlaybackCommand[] = []
   observations: Array<{ durationMs: number; positionMs: number; trackId: string }> = []
   private rollback?: PlaybackSnapshot
-  private snapshot = emptySnapshot()
+  private snapshot: PlaybackSnapshot
+
+  constructor(snapshot: PlaybackSnapshot = emptySnapshot()) {
+    this.snapshot = cloneSnapshot(snapshot)
+  }
 
   async getSnapshot(): Promise<PlaybackSnapshot> {
     return cloneSnapshot(this.snapshot)
@@ -311,6 +317,67 @@ const flushPromises = async () => {
 }
 
 describe('native-backed playback controller', () => {
+  it('hydrates a restored context and queue without autoplay', async () => {
+    const snapshot = emptySnapshot()
+    snapshot.context = { cursor: 1, order: [0, 1], trackIds: ['one', 'two'] }
+    snapshot.current = {
+      contextIndex: 1,
+      queueEntryId: null,
+      resumeContextIndex: null,
+      trackId: 'two',
+    }
+    snapshot.durationMs = 180_000
+    snapshot.positionMs = 42_000
+    snapshot.queue = [{ entryId: 'queued-bonus', trackId: 'bonus' }]
+    snapshot.revision = 7
+    snapshot.status = 'paused'
+    const store = playbackStore()
+    const bridge = new FakePlaybackBridge(snapshot)
+    const transport = new FakeAudioTransport()
+    const resolvedIds: string[][] = []
+    const controller = createPlaybackController(
+      store,
+      transport,
+      (path) => `asset:${path}`,
+      bridge,
+      undefined,
+      async (trackIds) => {
+        resolvedIds.push(trackIds)
+        return trackIds.map(song)
+      }
+    )
+
+    await controller.initialize()
+
+    expect(resolvedIds).toEqual([['one', 'two', 'bonus']])
+    expect(store.playlist.map((track) => track.id)).toEqual(['one', 'two'])
+    expect(store.queue.map((track) => track.id)).toEqual(['bonus'])
+    expect(store.player.currSong?.id).toBe('two')
+    expect(store.player.currentTime).toBe(42)
+    expect(store.player.isPaused).toBe(true)
+    expect(transport.loadedSongId).toBe('two')
+    expect(transport.currentTime).toBe(42)
+    expect(transport.playCalls).toBe(0)
+  })
+
+  it('surfaces a generic warning when playback durability is degraded', async () => {
+    const snapshot = emptySnapshot()
+    snapshot.persistenceWarning = true
+    const store = playbackStore()
+    const controller = createPlaybackController(
+      store,
+      new FakeAudioTransport(),
+      (path) => path,
+      new FakePlaybackBridge(snapshot),
+      undefined,
+      async () => []
+    )
+
+    await controller.initialize()
+
+    expect(store.player.error).toBe(PLAYBACK_PERSISTENCE_WARNING_MESSAGE)
+  })
+
   it('commits exactly one duplicate queue entry after playback succeeds', async () => {
     const first = song('duplicate')
     const second = song('duplicate')
