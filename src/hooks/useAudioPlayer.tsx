@@ -35,17 +35,20 @@ type SourceResolver = (song: Song) => Promise<string>
 type TrackResolver = (trackIds: string[]) => Promise<Song[]>
 
 export interface PlaybackController {
+  clearUpcoming(): Promise<void>
   clearPlayback(): Promise<void>
   enqueueSong(song: Song): Promise<void>
   handleEnded(): Promise<void>
   handleMediaError(): Promise<void>
   initialize(): Promise<void>
+  moveQueuedSong(entryId: string, beforeEntryId?: string | null): Promise<void>
   nextSong(): Promise<void>
   observePosition(): Promise<void>
   pauseSong(): Promise<void>
   playSong(song: Song, index: number): Promise<void>
   prevSong(): Promise<void>
   resumeSong(): Promise<void>
+  removeQueuedSong(entryId: string): Promise<void>
   seekSong(positionSeconds: number): Promise<void>
 }
 
@@ -123,7 +126,7 @@ export function createPlaybackController(
     store.player.isPaused = snapshot.status !== 'playing'
     store.queue = snapshot.queue.flatMap((entry) => {
       const song = queuedSongs.get(entry.entryId)
-      return song ? [song] : []
+      return song ? [{ entryId: entry.entryId, song }] : []
     })
 
     const retainedEntryIds = new Set(
@@ -297,6 +300,10 @@ export function createPlaybackController(
   }
 
   return {
+    clearUpcoming: async () => {
+      await waitForTransition()
+      mirrorSnapshot(await bridge.dispatch({ type: 'clearUpcoming' }))
+    },
     clearPlayback: async () => {
       await waitForTransition()
       transport.clear()
@@ -327,6 +334,10 @@ export function createPlaybackController(
       }
     },
     initialize,
+    moveQueuedSong: async (entryId, beforeEntryId) => {
+      await waitForTransition()
+      mirrorSnapshot(await bridge.dispatch({ type: 'moveQueueEntry', entryId, beforeEntryId }))
+    },
     nextSong: () => {
       const first = store.playlist[0]
       return !store.player.currSong && first ? playSong(first, 0) : runTransition({ type: 'next' })
@@ -353,6 +364,10 @@ export function createPlaybackController(
       return !store.player.currSong && last ? playSong(last, lastIndex) : runTransition({ type: 'previous' })
     },
     resumeSong,
+    removeQueuedSong: async (entryId) => {
+      await waitForTransition()
+      mirrorSnapshot(await bridge.dispatch({ type: 'removeQueueEntry', entryId }))
+    },
     seekSong: async (positionSeconds) => {
       await waitForTransition()
       transport.currentTime = positionSeconds
@@ -433,6 +448,11 @@ export function useAudioPlayer(store: Store) {
   const nextSong = $(async () => controller.value?.nextSong())
   const prevSong = $(async () => controller.value?.prevSong())
   const enqueueSong = $(async (song: Song) => controller.value?.enqueueSong(song))
+  const removeQueuedSong = $(async (entryId: string) => controller.value?.removeQueuedSong(entryId))
+  const moveQueuedSong = $(async (entryId: string, beforeEntryId?: string | null) =>
+    controller.value?.moveQueuedSong(entryId, beforeEntryId)
+  )
+  const clearUpcoming = $(async () => controller.value?.clearUpcoming())
   const clearPlayback = $(async () => controller.value?.clearPlayback())
   const seekSong = $(async (positionSeconds: number) => controller.value?.seekSong(positionSeconds))
 
@@ -478,13 +498,16 @@ export function useAudioPlayer(store: Store) {
   })
 
   return {
+    clearUpcoming,
     clearPlayback,
     enqueueSong,
+    moveQueuedSong,
     nextSong,
     pauseSong,
     playSong,
     prevSong,
     resumeSong,
+    removeQueuedSong,
     seekSong,
   }
 }

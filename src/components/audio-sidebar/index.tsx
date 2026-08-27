@@ -9,7 +9,7 @@ export default component$(() => {
   return (
     <aside
       class="app-audio-sidebar border-l border-gray-700 h-screen min-w-0 flex z-20 flex-col text-sm overflow-y-auto overflow-x-hidden"
-      data-open={store.player.currSong ? 'true' : 'false'}
+      data-open={store.player.currSong || store.queue.length ? 'true' : 'false'}
     >
       <div class="mt-[29px] border-t border-gray-700 flex flex-col h-full">
         <Player />

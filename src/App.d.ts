@@ -53,7 +53,7 @@ export interface Store {
 
   isTyping: boolean
   showKeyShortcuts: boolean
-  queue: Song[]
+  queue: QueuedSong[]
 
   player: {
     currSong?: Song
@@ -176,6 +176,11 @@ export interface Song {
   visualsPath: string
 }
 
+export interface QueuedSong {
+  entryId: string
+  song: Song
+}
+
 export interface Metadata {
   id: string
   codec: string
@@ -200,8 +205,10 @@ export type ListItemStyle = {
 }
 
 export interface StoreActions {
+  clearUpcoming: QRL<() => Promise<void>>
   clearPlayback: QRL<() => Promise<void>>
   enqueueSong: QRL<(song: Song) => Promise<void>>
+  moveQueuedSong: QRL<(entryId: string, beforeEntryId?: string | null) => Promise<void>>
   playSong: QRL<(song: Song, index: number) => Promise<void> | undefined>
   pauseSong: QRL<() => Promise<void> | undefined>
   resumeSong: QRL<() => Promise<void> | undefined>
@@ -210,6 +217,7 @@ export interface StoreActions {
   seekSong: QRL<(positionSeconds: number) => Promise<void> | undefined>
   reloadLibrary: QRL<() => Promise<void>>
   requestLibraryRange: QRL<(startIndex: number, endIndex: number) => Promise<void>>
+  removeQueuedSong: QRL<(entryId: string) => Promise<void>>
 }
 
 export interface StorageNode {
