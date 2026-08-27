@@ -1,4 +1,4 @@
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 11;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 12;
 
 #[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
@@ -30,6 +30,9 @@ pub(crate) const LIBRARY_FILTERS_SCHEMA: &str =
     include_str!("../migrations/0010_library_filters_facets.sql");
 #[cfg(test)]
 pub(crate) const PLAYLIST_SCHEMA: &str = include_str!("../migrations/0011_playlists.sql");
+#[cfg(test)]
+pub(crate) const PLAY_HISTORY_SCHEMA: &str =
+    include_str!("../migrations/0012_listening_history.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[cfg(test)]
@@ -229,7 +232,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                11
+                12
             );
             assert_eq!(
                 sqlx::query_scalar::<_, i64>(
@@ -418,6 +421,86 @@ mod tests {
                     .fetch_one(&pool)
                     .await
                     .expect("confirm playlist cascade"),
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn play_history_schema_preserves_snapshots_and_allows_only_one_open_row() {
+        run_async(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open history migration database");
+            sqlx::raw_sql(INITIAL_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply initial history schema");
+            sqlx::raw_sql(PLAY_HISTORY_SCHEMA)
+                .execute(&pool)
+                .await
+                .expect("apply history schema");
+            sqlx::raw_sql(
+                "INSERT INTO songs VALUES
+                  ('song', '/Music/song.flac', 'song.flac', 'Song', 'Album', 'Artist', '', 0, 0,
+                   '2026', '', 1, 1, 'flac', '0:03:00.000', '44100', 1, 0, 0,
+                   '2026-08-27', '');
+                 INSERT INTO play_history (
+                   track_id, title_snapshot, artist_snapshot, album_snapshot, source_kind
+                 ) VALUES ('song', 'Song', 'Artist', 'Album', 'context');
+                 DELETE FROM songs WHERE id = 'song';",
+            )
+            .execute(&pool)
+            .await
+            .expect("preserve history across catalog deletion");
+
+            assert_eq!(
+                sqlx::query_scalar::<_, String>("SELECT title_snapshot FROM play_history")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("read preserved history snapshot"),
+                "Song"
+            );
+            assert!(sqlx::query(
+                "INSERT INTO play_history (
+                   track_id, title_snapshot, artist_snapshot, album_snapshot, source_kind
+                 ) VALUES ('other', 'Other', '', '', 'queue')"
+            )
+            .execute(&pool)
+            .await
+            .is_err());
+            sqlx::query(
+                "UPDATE play_history
+                 SET ended_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'), open_slot = NULL
+                 WHERE open_slot = 1",
+            )
+            .execute(&pool)
+            .await
+            .expect("close first history row");
+            sqlx::query(
+                "INSERT INTO play_history (
+                   track_id, title_snapshot, artist_snapshot, album_snapshot, source_kind
+                 ) VALUES ('other', 'Other', '', '', 'queue')",
+            )
+            .execute(&pool)
+            .await
+            .expect("insert next open history row");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM play_history")
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count history rows"),
+                2
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM pragma_foreign_key_list('play_history')"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("confirm history has no catalog foreign key"),
                 0
             );
         });

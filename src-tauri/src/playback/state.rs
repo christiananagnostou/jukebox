@@ -1,3 +1,7 @@
+use super::history::{
+    HistorySource, ListeningSample, PlayHistoryError, PlayHistoryMutation, PlayHistoryPage,
+    PlayHistoryQuery, PlayHistoryRecorder,
+};
 use super::persistence::PlaybackRepository;
 use crate::library::LibraryState;
 use serde::{Deserialize, Serialize};
@@ -281,6 +285,7 @@ struct PlaybackMachine {
 
 pub struct PlaybackState {
     checkpoint: Mutex<Option<Instant>>,
+    history: Option<PlayHistoryRecorder>,
     machine: Mutex<PlaybackMachine>,
     repository: Option<PlaybackRepository>,
     restored: OnceCell<()>,
@@ -290,6 +295,7 @@ impl Default for PlaybackState {
     fn default() -> Self {
         Self {
             checkpoint: Mutex::new(None),
+            history: None,
             machine: Mutex::new(PlaybackMachine::default()),
             repository: None,
             restored: OnceCell::new(),
@@ -301,6 +307,7 @@ impl PlaybackState {
     pub fn new(pool: sqlx::SqlitePool) -> Self {
         Self {
             checkpoint: Mutex::new(None),
+            history: Some(PlayHistoryRecorder::new(pool.clone())),
             machine: Mutex::new(PlaybackMachine::default()),
             repository: Some(PlaybackRepository::new(pool)),
             restored: OnceCell::new(),
@@ -366,6 +373,47 @@ impl PlaybackState {
             .map_err(|_| PlaybackCommandError::unavailable())
     }
 
+    fn record_command_history(
+        &self,
+        command: &PlaybackCommand,
+        before: &PlaybackSnapshot,
+        after: &PlaybackSnapshot,
+    ) {
+        let Some(history) = &self.history else {
+            return;
+        };
+        match command {
+            PlaybackCommand::CommitTransition | PlaybackCommand::Play => {
+                if let Some(sample) = after.listening_sample() {
+                    history.started(sample);
+                }
+            }
+            PlaybackCommand::Pause => {
+                if let Some(sample) = after.listening_sample() {
+                    history.observe(sample, true);
+                }
+            }
+            PlaybackCommand::ReplaceContext { .. }
+            | PlaybackCommand::Next
+            | PlaybackCommand::Ended
+            | PlaybackCommand::ReportError { .. } => {
+                history.finish(before.listening_sample());
+            }
+            PlaybackCommand::Previous | PlaybackCommand::MarkUnavailable { .. }
+                if before.current != after.current =>
+            {
+                history.finish(before.listening_sample());
+            }
+            _ => {}
+        }
+    }
+
+    fn record_position_history(&self, snapshot: &PlaybackSnapshot, persist: bool) {
+        if let (Some(history), Some(sample)) = (&self.history, snapshot.listening_sample()) {
+            history.observe(sample, persist);
+        }
+    }
+
     fn dispatch(
         &self,
         request: PlaybackCommandRequest,
@@ -405,6 +453,17 @@ impl PlaybackState {
             machine.snapshot = next;
         }
         Ok(machine.snapshot.clone())
+    }
+
+    fn dispatch_with_history(
+        &self,
+        request: PlaybackCommandRequest,
+    ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
+        let command = request.command.clone();
+        let previous = self.snapshot()?;
+        let snapshot = self.dispatch(request)?;
+        self.record_command_history(&command, &previous, &snapshot);
+        Ok(snapshot)
     }
 
     fn observe_position(
@@ -505,7 +564,7 @@ pub async fn dispatch_playback_command(
     state.ensure_restored().await;
     let expected_revision = request.expected_revision;
     let persist_immediately = request.command.persists_immediately();
-    let snapshot = state.dispatch(request)?;
+    let snapshot = state.dispatch_with_history(request)?;
     if persist_immediately && snapshot.revision > expected_revision && !snapshot.transition_pending
     {
         state.persist(snapshot).await;
@@ -527,13 +586,77 @@ pub async fn observe_playback_position(
     state.ensure_restored().await;
     let expected_revision = observation.expected_revision;
     let position = state.observe_position(observation)?;
-    if position.revision > expected_revision && state.checkpoint_due() {
-        state.persist(state.snapshot()?).await;
+    let checkpoint_due = position.revision > expected_revision && state.checkpoint_due();
+    let snapshot = state.snapshot()?;
+    state.record_position_history(&snapshot, checkpoint_due);
+    if checkpoint_due {
+        state.persist(snapshot).await;
     }
     Ok(position)
 }
 
+#[tauri::command]
+pub async fn list_play_history(
+    library: State<'_, LibraryState>,
+    state: State<'_, PlaybackState>,
+    query: PlayHistoryQuery,
+) -> Result<PlayHistoryPage, PlayHistoryError> {
+    library
+        .ensure_initialized()
+        .await
+        .map_err(|_| PlayHistoryError::unavailable())?;
+    state.ensure_restored().await;
+    state
+        .history
+        .as_ref()
+        .ok_or_else(PlayHistoryError::unavailable)?
+        .page(query)
+        .await
+}
+
+#[tauri::command]
+pub async fn clear_play_history(
+    library: State<'_, LibraryState>,
+    state: State<'_, PlaybackState>,
+) -> Result<PlayHistoryMutation, PlayHistoryError> {
+    library
+        .ensure_initialized()
+        .await
+        .map_err(|_| PlayHistoryError::unavailable())?;
+    state.ensure_restored().await;
+    state
+        .history
+        .as_ref()
+        .ok_or_else(PlayHistoryError::unavailable)?
+        .clear()
+        .await
+}
+
 impl PlaybackSnapshot {
+    fn listening_sample(&self) -> Option<ListeningSample> {
+        let current = self.current.as_ref()?;
+        let (instance_key, source) = if let Some(entry_id) = current.queue_entry_id.as_deref() {
+            (format!("queue:{entry_id}"), HistorySource::Queue)
+        } else {
+            (
+                format!(
+                    "context:{}:{}",
+                    current.context_index.unwrap_or_default(),
+                    current.track_id
+                ),
+                HistorySource::Context,
+            )
+        };
+        Some(ListeningSample {
+            duration_ms: self.duration_ms,
+            instance_key,
+            playing: self.status == PlaybackStatus::Playing,
+            position_ms: self.position_ms,
+            source,
+            track_id: current.track_id.clone(),
+        })
+    }
+
     pub(super) fn committed_for_persistence(&self) -> Result<Self, &'static str> {
         self.validate_persisted()?;
         let mut snapshot = self.clone();
@@ -1889,6 +2012,137 @@ mod tests {
         assert_eq!(json["current"]["trackId"], "one");
         assert_eq!(json["volumePercent"], 100);
         assert!(json.get("schema_version").is_none());
+    }
+
+    #[test]
+    fn listening_history_starts_only_after_commit_and_ignores_rejected_transitions() {
+        tauri::async_runtime::block_on(async {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open playback history fixture");
+            crate::database::NATIVE_MIGRATOR
+                .run(&pool)
+                .await
+                .expect("migrate playback history fixture");
+            for track_id in ["one", "two"] {
+                sqlx::query(
+                    "INSERT INTO songs (
+                       id, path, file, title, album, artist, genre, bpm, compilation, date,
+                       encoder, trackTotal, trackNumber, codec, duration, sampleRate, side,
+                       startTime, favorRating, dateAdded, visualsPath
+                     ) VALUES (?, ?, ?, ?, 'Album', 'Artist', '', 0, 0, '2026', '', 2, 1,
+                               'flac', '0:02:00.000', '44100', 1, 0, 0, '2026-08-27', '')",
+                )
+                .bind(track_id)
+                .bind(format!("/music/{track_id}.flac"))
+                .bind(format!("{track_id}.flac"))
+                .bind(track_id)
+                .execute(&pool)
+                .await
+                .expect("insert playback history track");
+            }
+            let state = PlaybackState::new(pool);
+            let history = state.history.as_ref().expect("history recorder");
+
+            let prepared = state
+                .dispatch_with_history(request(0, replace(&["one"], 0)))
+                .expect("prepare first track");
+            assert!(prepared.transition_pending);
+            assert_eq!(
+                history
+                    .page(PlayHistoryQuery::default())
+                    .await
+                    .expect("page prepared history")
+                    .total,
+                0
+            );
+
+            let committed = state
+                .dispatch_with_history(request(
+                    prepared.revision,
+                    PlaybackCommand::CommitTransition,
+                ))
+                .expect("commit first track");
+            assert_eq!(
+                history
+                    .page(PlayHistoryQuery::default())
+                    .await
+                    .expect("page committed history")
+                    .total,
+                1
+            );
+            let paused = state
+                .dispatch_with_history(request(committed.revision, PlaybackCommand::Pause))
+                .expect("pause first track");
+            let resumed = state
+                .dispatch_with_history(request(paused.revision, PlaybackCommand::Play))
+                .expect("resume first track");
+            assert_eq!(
+                history
+                    .page(PlayHistoryQuery::default())
+                    .await
+                    .expect("page resumed history")
+                    .total,
+                1
+            );
+
+            let second = state
+                .dispatch_with_history(request(resumed.revision, replace(&["two"], 0)))
+                .expect("prepare second track");
+            state
+                .dispatch_with_history(request(
+                    second.revision,
+                    PlaybackCommand::RejectTransition {
+                        code: PlaybackErrorCode::Decoder,
+                        recoverable: true,
+                    },
+                ))
+                .expect("reject second track");
+            let page = history
+                .page(PlayHistoryQuery::default())
+                .await
+                .expect("page rejected history");
+            assert_eq!(page.total, 1);
+            assert!(page.items[0].ended_at.is_some());
+            assert_eq!(page.items[0].track_id, "one");
+        });
+    }
+
+    #[test]
+    fn listening_history_storage_failure_never_blocks_playback_commands() {
+        tauri::async_runtime::block_on(async {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open missing history schema fixture");
+            let state = PlaybackState::new(pool);
+            let prepared = state
+                .dispatch_with_history(request(0, replace(&["one"], 0)))
+                .expect("prepare playback without history schema");
+            let committed = state
+                .dispatch_with_history(request(
+                    prepared.revision,
+                    PlaybackCommand::CommitTransition,
+                ))
+                .expect("commit playback without history schema");
+
+            assert_eq!(committed.status, PlaybackStatus::Playing);
+            assert_eq!(current(&committed), Some("one"));
+            assert_eq!(
+                state
+                    .history
+                    .as_ref()
+                    .expect("history recorder")
+                    .page(PlayHistoryQuery::default())
+                    .await
+                    .expect_err("report missing history schema")
+                    .code,
+                "play_history_unavailable"
+            );
+        });
     }
 
     #[test]

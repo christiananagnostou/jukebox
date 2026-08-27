@@ -1,6 +1,8 @@
+mod history;
 mod persistence;
 mod state;
 
 pub use state::{
-    dispatch_playback_command, get_playback_snapshot, observe_playback_position, PlaybackState,
+    clear_play_history, dispatch_playback_command, get_playback_snapshot, list_play_history,
+    observe_playback_position, PlaybackState,
 };
