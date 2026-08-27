@@ -32,6 +32,10 @@ export interface PlaylistMutation {
 
 export type PlaylistMoveDirection = 'up' | 'down'
 
+export function isManualPlaylistKind(kind: PlaylistSummary['kind'] | ''): kind is 'manual' {
+  return kind === 'manual'
+}
+
 export interface PlaylistPageQuery {
   limit: number
   offset: number

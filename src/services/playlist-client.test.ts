@@ -9,6 +9,7 @@ import {
   createPlaylist,
   deletePlaylist,
   duplicatePlaylist,
+  isManualPlaylistKind,
   listPlaylistEntries,
   listPlaylists,
   MAX_RETAINED_PLAYLIST_PAGES,
@@ -79,6 +80,12 @@ describe('native playlist client', () => {
       playlistId: 'playlist_0123456789abcdef0123456789abcdef',
       name: 'Drive copy',
     })
+  })
+
+  it('keeps manual entry mutations unavailable to smart or empty selections', () => {
+    expect(isManualPlaylistKind('manual')).toBe(true)
+    expect(isManualPlaylistKind('smart')).toBe(false)
+    expect(isManualPlaylistKind('')).toBe(false)
   })
 
   it('addresses duplicate-safe playlist rows by stable entry ID', async () => {
