@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 use tokio::task::JoinSet;
 
-const METADATA_VERSION: i64 = 2;
+pub(super) const METADATA_VERSION: i64 = 2;
 const QUERY_BATCH_SIZE: i64 = 1_000;
 const WRITE_BATCH_SIZE: usize = 100;
 const FINGERPRINT_SAMPLE_SIZE: usize = 64 * 1024;

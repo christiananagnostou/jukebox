@@ -1,5 +1,6 @@
 use super::query::{
-    decode_cursor, encode_cursor, CursorValue, LibraryError, SortDirection, TrackQuery, TrackSort,
+    decode_cursor, encode_cursor, CursorValue, LibraryError, NormalizedTrackQuery, SortDirection,
+    TrackAvailability, TrackQuery, TrackSort,
 };
 use serde::Serialize;
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
@@ -10,12 +11,16 @@ use std::collections::HashMap;
 pub struct TrackSummary {
     pub album: String,
     pub artist: String,
+    pub bpm: i64,
     pub codec: String,
+    pub compilation: i64,
     pub date: String,
     pub date_added: String,
     pub duration: String,
+    pub encoder: String,
     pub favor_rating: i64,
     pub file: String,
+    pub genre: String,
     pub id: String,
     pub path: String,
     pub sample_rate: String,
@@ -23,6 +28,7 @@ pub struct TrackSummary {
     pub start_time: i64,
     pub title: String,
     pub track_number: i64,
+    pub track_total: i64,
     pub visuals_path: String,
 }
 
@@ -141,25 +147,7 @@ impl LibraryRepository {
         let search = fts_expression(&query.q);
 
         let mut count_query = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM songs");
-        let mut has_filter = push_search(&mut count_query, search.as_deref(), false);
-        has_filter = push_exact_filter(
-            &mut count_query,
-            "artist",
-            query.artist.as_deref(),
-            has_filter,
-        );
-        has_filter = push_exact_filter(
-            &mut count_query,
-            "album",
-            query.album.as_deref(),
-            has_filter,
-        );
-        push_storage_filter(
-            &mut count_query,
-            query.root_id,
-            query.path_prefix.as_deref(),
-            has_filter,
-        );
+        push_track_filters(&mut count_query, &query, search.as_deref(), None);
         let total: i64 = count_query
             .build_query_scalar()
             .fetch_one(&mut *transaction)
@@ -167,24 +155,11 @@ impl LibraryRepository {
             .map_err(|_| LibraryError::database())?;
 
         let mut page_query = QueryBuilder::<Sqlite>::new(
-            "SELECT id, path, file, title, album, artist, date, trackNumber, codec, duration, \
-             sampleRate, side, startTime, favorRating, dateAdded, visualsPath FROM songs",
+            "SELECT id, path, file, title, album, artist, genre, bpm, compilation, date, encoder, \
+             trackTotal, trackNumber, codec, duration, sampleRate, side, startTime, favorRating, \
+             dateAdded, visualsPath FROM songs",
         );
-        let mut has_filter = push_search(&mut page_query, search.as_deref(), false);
-        has_filter = push_exact_filter(
-            &mut page_query,
-            "artist",
-            query.artist.as_deref(),
-            has_filter,
-        );
-        has_filter =
-            push_exact_filter(&mut page_query, "album", query.album.as_deref(), has_filter);
-        has_filter = push_storage_filter(
-            &mut page_query,
-            query.root_id,
-            query.path_prefix.as_deref(),
-            has_filter,
-        );
+        let has_filter = push_track_filters(&mut page_query, &query, search.as_deref(), None);
         let terms = sort_terms(query.sort);
         if let Some((values, last_song_id)) = cursor.as_ref() {
             page_query.push(if has_filter { " AND (" } else { " WHERE (" });
@@ -259,8 +234,9 @@ impl LibraryRepository {
         let mut tracks = HashMap::with_capacity(track_ids.len());
         for chunk in track_ids.chunks(500) {
             let mut builder = QueryBuilder::<Sqlite>::new(
-                "SELECT id, path, file, title, album, artist, date, trackNumber, codec, duration, \
-                 sampleRate, side, startTime, favorRating, dateAdded, visualsPath
+                "SELECT id, path, file, title, album, artist, genre, bpm, compilation, date, encoder, \
+                 trackTotal, trackNumber, codec, duration, sampleRate, side, startTime, favorRating, \
+                 dateAdded, visualsPath
                  FROM songs WHERE availability = 'available' AND id IN (",
             );
             let mut separated = builder.separated(", ");
@@ -283,6 +259,48 @@ impl LibraryRepository {
             .filter_map(|track_id| tracks.remove(track_id))
             .collect())
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum FilterExclusion {
+    Codec,
+    Genre,
+    Year,
+}
+
+pub(super) fn push_track_filters(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    query: &NormalizedTrackQuery,
+    search: Option<&str>,
+    excluded: Option<FilterExclusion>,
+) -> bool {
+    let mut has_filter = push_search(builder, search, false);
+    has_filter = push_exact_filter(builder, "artist", query.artist.as_deref(), has_filter);
+    has_filter = push_exact_filter(builder, "album", query.album.as_deref(), has_filter);
+    if excluded != Some(FilterExclusion::Codec) {
+        has_filter = push_nocase_filter(builder, "codec", query.codec.as_deref(), has_filter);
+    }
+    if excluded != Some(FilterExclusion::Genre) {
+        has_filter = push_nocase_filter(builder, "genre", query.genre.as_deref(), has_filter);
+    }
+    has_filter = push_availability_filter(builder, query.availability, has_filter);
+    has_filter = push_minimum_filter(
+        builder,
+        "favorRating",
+        query.min_favorite_rating,
+        has_filter,
+    );
+    if excluded != Some(FilterExclusion::Year) {
+        has_filter =
+            push_exact_integer_filter(builder, "CAST(date AS INTEGER)", query.year, has_filter);
+    }
+    push_storage_filter(
+        builder,
+        query.root_id,
+        query.path_prefix.as_deref(),
+        query.availability == TrackAvailability::Any,
+        has_filter,
+    )
 }
 
 pub(super) fn push_search(
@@ -330,10 +348,82 @@ pub(super) fn push_exact_filter(
     }
 }
 
+fn push_nocase_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    column: &'static str,
+    value: Option<&str>,
+    has_where: bool,
+) -> bool {
+    if let Some(value) = value {
+        builder
+            .push(if has_where { " AND " } else { " WHERE " })
+            .push(column)
+            .push(" COLLATE NOCASE = ")
+            .push_bind(value.to_owned());
+        true
+    } else {
+        has_where
+    }
+}
+
+fn push_availability_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    availability: TrackAvailability,
+    has_where: bool,
+) -> bool {
+    let value = match availability {
+        TrackAvailability::Available => "available",
+        TrackAvailability::Unavailable => "unavailable",
+        TrackAvailability::Any => return has_where,
+    };
+    builder
+        .push(if has_where { " AND " } else { " WHERE " })
+        .push("availability = ")
+        .push_bind(value);
+    true
+}
+
+fn push_minimum_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    expression: &'static str,
+    value: Option<i64>,
+    has_where: bool,
+) -> bool {
+    if let Some(value) = value {
+        builder
+            .push(if has_where { " AND " } else { " WHERE " })
+            .push(expression)
+            .push(" >= ")
+            .push_bind(value);
+        true
+    } else {
+        has_where
+    }
+}
+
+fn push_exact_integer_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    expression: &'static str,
+    value: Option<i64>,
+    has_where: bool,
+) -> bool {
+    if let Some(value) = value {
+        builder
+            .push(if has_where { " AND " } else { " WHERE " })
+            .push(expression)
+            .push(" = ")
+            .push_bind(value);
+        true
+    } else {
+        has_where
+    }
+}
+
 fn push_storage_filter(
     builder: &mut QueryBuilder<'_, Sqlite>,
     root_id: Option<i64>,
     path_prefix: Option<&str>,
+    default_to_available: bool,
     has_where: bool,
 ) -> bool {
     let Some(root_id) = root_id else {
@@ -341,16 +431,19 @@ fn push_storage_filter(
     };
     builder.push(if has_where { " AND " } else { " WHERE " });
     if root_id == 0 {
-        builder.push("root_id IS NULL AND availability = 'available'");
+        builder.push("root_id IS NULL");
+        if default_to_available {
+            builder.push(" AND availability = 'available'");
+        }
         if let Some(song_id) = path_prefix {
             builder.push(" AND id = ").push_bind(song_id.to_owned());
         }
         return true;
     }
-    builder
-        .push("root_id = ")
-        .push_bind(root_id)
-        .push(" AND availability = 'available'");
+    builder.push("root_id = ").push_bind(root_id);
+    if default_to_available {
+        builder.push(" AND availability = 'available'");
+    }
     if let Some(path_prefix) = path_prefix {
         builder
             .push(" AND (normalized_path = ")
@@ -429,7 +522,11 @@ fn track_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<TrackSummary, Library
         artist: row
             .try_get("artist")
             .map_err(|_| LibraryError::database())?,
+        bpm: row.try_get("bpm").map_err(|_| LibraryError::database())?,
         codec: row.try_get("codec").map_err(|_| LibraryError::database())?,
+        compilation: row
+            .try_get("compilation")
+            .map_err(|_| LibraryError::database())?,
         date: row.try_get("date").map_err(|_| LibraryError::database())?,
         date_added: row
             .try_get("dateAdded")
@@ -437,10 +534,14 @@ fn track_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<TrackSummary, Library
         duration: row
             .try_get("duration")
             .map_err(|_| LibraryError::database())?,
+        encoder: row
+            .try_get("encoder")
+            .map_err(|_| LibraryError::database())?,
         favor_rating: row
             .try_get("favorRating")
             .map_err(|_| LibraryError::database())?,
         file: row.try_get("file").map_err(|_| LibraryError::database())?,
+        genre: row.try_get("genre").map_err(|_| LibraryError::database())?,
         id: row.try_get("id").map_err(|_| LibraryError::database())?,
         path: row.try_get("path").map_err(|_| LibraryError::database())?,
         sample_rate: row
@@ -453,6 +554,9 @@ fn track_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<TrackSummary, Library
         title: row.try_get("title").map_err(|_| LibraryError::database())?,
         track_number: row
             .try_get("trackNumber")
+            .map_err(|_| LibraryError::database())?,
+        track_total: row
+            .try_get("trackTotal")
             .map_err(|_| LibraryError::database())?,
         visuals_path: row
             .try_get("visualsPath")
@@ -524,14 +628,14 @@ mod tests {
             .bind(if index < 3 { "Duplicate".to_owned() } else { format!("Song {index:02}") })
             .bind(if index == 22 { "Unicode" } else { "Album" })
             .bind(if index == 22 { "Björk" } else { "Artist" })
-            .bind("")
-            .bind(0_i64)
-            .bind(0_i64)
-            .bind("2026")
-            .bind("")
+            .bind(if index % 2 == 0 { "Ambient" } else { "Jazz" })
+            .bind((80 + index) as i64)
+            .bind((index % 2) as i64)
+            .bind(if index % 3 == 0 { "2025" } else { "2026" })
+            .bind("Fixture encoder")
             .bind(23_i64)
             .bind((index % 5) as i64)
-            .bind("flac")
+            .bind(if index % 2 == 0 { "flac" } else { "mp3" })
             .bind("0:01:00.000")
             .bind("44100")
             .bind((index % 2 + 1) as i64)
@@ -547,6 +651,14 @@ mod tests {
             .execute(&pool)
             .await
             .expect("apply library availability schema");
+        sqlx::query("UPDATE songs SET availability = 'unavailable' WHERE id = 'song-20'")
+            .execute(&pool)
+            .await
+            .expect("mark unavailable repository fixture");
+        sqlx::raw_sql(crate::database::LIBRARY_FILTERS_SCHEMA)
+            .execute(&pool)
+            .await
+            .expect("apply library filter schema");
         LibraryRepository::new(pool)
     }
 
@@ -577,7 +689,7 @@ mod tests {
             let unique = ids.iter().collect::<std::collections::HashSet<_>>();
             assert_eq!(ids.len(), 23);
             assert_eq!(unique.len(), 23);
-            assert!(revisions.iter().all(|revision| *revision == 23));
+            assert!(revisions.iter().all(|revision| *revision == 24));
         });
     }
 
@@ -598,6 +710,73 @@ mod tests {
             assert_eq!(page.items[0].artist, "Björk");
             assert_eq!(page.total, 1);
             assert_eq!(page.next_cursor, None);
+        });
+    }
+
+    #[test]
+    fn metadata_and_indexed_filters_compose_without_renderer_defaults() {
+        run_async(async {
+            let repository = repository().await;
+            let page = repository
+                .query_tracks(TrackQuery {
+                    availability: TrackAvailability::Available,
+                    codec: Some("FLAC".to_owned()),
+                    genre: Some("ambient".to_owned()),
+                    min_favorite_rating: Some(1),
+                    q: "Ambient".to_owned(),
+                    year: Some(2026),
+                    ..TrackQuery::default()
+                })
+                .await
+                .expect("query composed metadata filters");
+
+            assert!(page.total > 0);
+            assert!(page.items.iter().all(|track| {
+                track.codec.eq_ignore_ascii_case("flac")
+                    && track.genre.eq_ignore_ascii_case("ambient")
+                    && track.date == "2026"
+                    && track.favor_rating >= 1
+                    && track.bpm > 0
+                    && track.compilation >= 0
+                    && track.encoder == "Fixture encoder"
+                    && track.track_total == 23
+            }));
+
+            let unavailable = repository
+                .query_tracks(TrackQuery {
+                    availability: TrackAvailability::Unavailable,
+                    ..TrackQuery::default()
+                })
+                .await
+                .expect("query unavailable tracks");
+            assert_eq!(unavailable.total, 1);
+            assert_eq!(unavailable.items[0].id, "song-20");
+
+            let root_id: i64 = sqlx::query_scalar(
+                "INSERT INTO library_roots (path, canonical_path) VALUES ('/music', '/music')
+                 RETURNING id",
+            )
+            .fetch_one(&repository.pool)
+            .await
+            .expect("insert filter fixture root");
+            sqlx::query(
+                "UPDATE songs SET root_id = ?, normalized_path = 'song-20.flac'
+                 WHERE id = 'song-20'",
+            )
+            .bind(root_id)
+            .execute(&repository.pool)
+            .await
+            .expect("attach unavailable track to root");
+            let unavailable_in_root = repository
+                .query_tracks(TrackQuery {
+                    availability: TrackAvailability::Unavailable,
+                    root_id: Some(root_id),
+                    ..TrackQuery::default()
+                })
+                .await
+                .expect("query unavailable track within root");
+            assert_eq!(unavailable_in_root.total, 1);
+            assert_eq!(unavailable_in_root.items[0].id, "song-20");
         });
     }
 
@@ -795,6 +974,45 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
             assert!(search_plan.contains("VIRTUAL TABLE INDEX"));
+
+            for (name, sql, expected_index) in [
+                (
+                    "genre",
+                    "EXPLAIN QUERY PLAN SELECT id FROM songs WHERE genre COLLATE NOCASE = 'Ambient'",
+                    "idx_songs_genre_filter",
+                ),
+                (
+                    "codec",
+                    "EXPLAIN QUERY PLAN SELECT id FROM songs WHERE codec COLLATE NOCASE = 'flac'",
+                    "idx_songs_codec_filter",
+                ),
+                (
+                    "year",
+                    "EXPLAIN QUERY PLAN SELECT id FROM songs WHERE CAST(date AS INTEGER) = 2026",
+                    "idx_songs_year_filter",
+                ),
+                (
+                    "availability",
+                    "EXPLAIN QUERY PLAN SELECT id FROM songs WHERE availability = 'available'",
+                    "idx_songs_availability_filter",
+                ),
+            ] {
+                let plan = sqlx::query(sql)
+                    .fetch_all(&repository.pool)
+                    .await
+                    .unwrap_or_else(|_| panic!("explain indexed {name} filter"))
+                    .into_iter()
+                    .map(|row| {
+                        row.try_get::<String, _>("detail")
+                            .expect("read filter plan detail")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    plan.contains(expected_index),
+                    "{name} filter did not use {expected_index}: {plan}"
+                );
+            }
         });
     }
 }

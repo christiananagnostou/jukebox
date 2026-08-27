@@ -31,6 +31,15 @@ pub enum SortDirection {
     Desc,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackAvailability {
+    Available,
+    Unavailable,
+    #[default]
+    Any,
+}
+
 fn default_page_size() -> u32 {
     DEFAULT_PAGE_SIZE
 }
@@ -40,13 +49,18 @@ fn default_page_size() -> u32 {
 pub struct TrackQuery {
     pub album: Option<String>,
     pub artist: Option<String>,
+    pub availability: TrackAvailability,
+    pub codec: Option<String>,
     pub cursor: Option<String>,
     pub direction: SortDirection,
+    pub genre: Option<String>,
     pub limit: u32,
+    pub min_favorite_rating: Option<i64>,
     pub path_prefix: Option<String>,
     pub q: String,
     pub root_id: Option<i64>,
     pub sort: TrackSort,
+    pub year: Option<i64>,
 }
 
 impl Default for TrackQuery {
@@ -54,13 +68,18 @@ impl Default for TrackQuery {
         Self {
             album: None,
             artist: None,
+            availability: TrackAvailability::default(),
+            codec: None,
             cursor: None,
             direction: SortDirection::default(),
+            genre: None,
             limit: default_page_size(),
+            min_favorite_rating: None,
             path_prefix: None,
             q: String::new(),
             root_id: None,
             sort: TrackSort::default(),
+            year: None,
         }
     }
 }
@@ -69,14 +88,19 @@ impl Default for TrackQuery {
 pub(crate) struct NormalizedTrackQuery {
     pub album: Option<String>,
     pub artist: Option<String>,
+    pub availability: TrackAvailability,
+    pub codec: Option<String>,
     pub cursor: Option<String>,
     pub direction: SortDirection,
     pub fingerprint: String,
+    pub genre: Option<String>,
     pub limit: u32,
+    pub min_favorite_rating: Option<i64>,
     pub path_prefix: Option<String>,
     pub q: String,
     pub root_id: Option<i64>,
     pub sort: TrackSort,
+    pub year: Option<i64>,
 }
 
 impl TrackQuery {
@@ -92,13 +116,31 @@ impl TrackQuery {
             return Err(LibraryError::invalid_query("Track search is too long."));
         }
         let limit = self.limit.min(MAX_PAGE_SIZE);
-        for filter in [self.album.as_deref(), self.artist.as_deref()]
-            .into_iter()
-            .flatten()
+        for filter in [
+            self.album.as_deref(),
+            self.artist.as_deref(),
+            self.codec.as_deref(),
+            self.genre.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
         {
             if filter.chars().count() > 1_024 {
                 return Err(LibraryError::invalid_query("Track filter is too long."));
             }
+        }
+        if self
+            .min_favorite_rating
+            .is_some_and(|rating| !(0..=2).contains(&rating))
+        {
+            return Err(LibraryError::invalid_query(
+                "Minimum favorite rating must be between zero and two.",
+            ));
+        }
+        if self.year.is_some_and(|year| !(1..=9_999).contains(&year)) {
+            return Err(LibraryError::invalid_query(
+                "Track year must be between one and 9999.",
+            ));
         }
         if self.root_id.is_none() && self.path_prefix.is_some() {
             return Err(LibraryError::invalid_query(
@@ -124,26 +166,36 @@ impl TrackQuery {
         let fingerprint_source = serde_json::json!({
             "album": self.album,
             "artist": self.artist,
+            "availability": self.availability,
+            "codec": self.codec,
             "direction": self.direction,
+            "genre": self.genre,
             "limit": limit,
+            "minFavoriteRating": self.min_favorite_rating,
             "pathPrefix": self.path_prefix,
             "q": q.to_lowercase(),
             "rootId": self.root_id,
             "sort": self.sort,
+            "year": self.year,
         });
         let fingerprint = format!("{:x}", md5::compute(fingerprint_source.to_string()));
 
         Ok(NormalizedTrackQuery {
             album: self.album.clone(),
             artist: self.artist.clone(),
+            availability: self.availability,
+            codec: self.codec.clone(),
             cursor: self.cursor.clone(),
             direction: self.direction,
             fingerprint,
+            genre: self.genre.clone(),
             limit,
+            min_favorite_rating: self.min_favorite_rating,
             path_prefix: self.path_prefix.clone(),
             q,
             root_id: self.root_id,
             sort: self.sort,
+            year: self.year,
         })
     }
 }
@@ -400,10 +452,15 @@ mod tests {
         let json = serde_json::to_value(TrackQuery {
             album: Some("Homogenic".to_owned()),
             artist: Some("Björk".to_owned()),
+            availability: TrackAvailability::Available,
+            codec: Some("flac".to_owned()),
             direction: SortDirection::Desc,
+            genre: Some("Electronic".to_owned()),
             limit: 25,
+            min_favorite_rating: Some(1),
             q: "Björk".to_owned(),
             sort: TrackSort::DateAdded,
+            year: Some(1997),
             ..TrackQuery::default()
         })
         .expect("serialize query");
@@ -411,7 +468,12 @@ mod tests {
         assert_eq!(json["direction"], "desc");
         assert_eq!(json["album"], "Homogenic");
         assert_eq!(json["artist"], "Björk");
+        assert_eq!(json["availability"], "available");
+        assert_eq!(json["codec"], "flac");
+        assert_eq!(json["genre"], "Electronic");
+        assert_eq!(json["minFavoriteRating"], 1);
         assert_eq!(json["sort"], "date_added");
+        assert_eq!(json["year"], 1997);
         assert_eq!(json["limit"], 25);
         assert_eq!(json["q"], "Björk");
     }
@@ -506,5 +568,23 @@ mod tests {
             .code,
             "invalid_query"
         );
+        for query in [
+            TrackQuery {
+                min_favorite_rating: Some(3),
+                ..TrackQuery::default()
+            },
+            TrackQuery {
+                year: Some(0),
+                ..TrackQuery::default()
+            },
+        ] {
+            assert_eq!(
+                query
+                    .normalize()
+                    .expect_err("reject invalid numeric filter")
+                    .code,
+                "invalid_query"
+            );
+        }
     }
 }
