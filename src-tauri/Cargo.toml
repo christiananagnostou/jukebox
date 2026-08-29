@@ -17,7 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 axum = "0.8.9"
 arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
-base64 = "0.22.1"
+base64 = "0.23.1"
 serde_json = "1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["macros", "migrate", "runtime-tokio", "sqlite"] }
