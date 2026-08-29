@@ -30,7 +30,7 @@
     "@typescript-eslint/eslint-plugin": "8.68.0",
     "@typescript-eslint/parser": "8.68.0",
     "autoprefixer": "^10.5.4",
-    "eslint": "^9.39.5",
+    "eslint": "^10.9.1",
     "eslint-plugin-qwik": "^1.20.0",
     "postcss": "^8.5.26",
     "prettier": "3.9.6",
