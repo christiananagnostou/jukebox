@@ -19,7 +19,8 @@ use crate::library::{
 };
 use crate::metadata::Metadata;
 use crate::playback::{
-    dispatch_playback_command, get_playback_snapshot, observe_playback_position, PlaybackState,
+    clear_play_history, dispatch_playback_command, get_playback_snapshot, list_play_history,
+    observe_playback_position, PlaybackState,
 };
 use crate::playback_assets::{authorize_playback_asset, PlaybackAssetServer};
 use crate::remote_access::{
@@ -236,6 +237,8 @@ fn main() {
             get_playback_snapshot,
             dispatch_playback_command,
             observe_playback_position,
+            list_play_history,
+            clear_play_history,
             get_settings,
             set_settings,
             get_remote_access_status,

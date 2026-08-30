@@ -5,6 +5,7 @@ import { audioDir } from '@tauri-apps/api/path'
 
 import type { RemoteAccessStatus, Settings, SettingsSnapshot, TailscaleStatus } from '~/App'
 import { pickMusicFolders } from '~/services/dialog-client'
+import { clearPlayHistory } from '~/services/history-client'
 import { clearLibrarySongs } from '~/services/library-db'
 import {
   addLibraryRoot,
@@ -33,6 +34,9 @@ export default component$(() => {
     diagnosticsAction: '' as '' | 'copy' | 'open',
     diagnosticsError: '',
     diagnosticsMessage: '',
+    historyAction: '' as '' | 'confirm' | 'clear',
+    historyError: '',
+    historyMessage: '',
     libraryError: '',
     refreshes: {} as Record<string, LibraryRefresh>,
     roots: [] as LibraryRoot[],
@@ -269,6 +273,23 @@ export default component$(() => {
       state.diagnosticsError = getErrorMessage(error)
     } finally {
       state.diagnosticsAction = ''
+    }
+  })
+
+  const clearHistory = $(async () => {
+    if (state.historyAction !== 'confirm') return
+    state.historyAction = 'clear'
+    state.historyError = ''
+    state.historyMessage = ''
+    try {
+      const result = await clearPlayHistory()
+      state.historyMessage = result.affected
+        ? `Cleared ${result.affected} listening ${result.affected === 1 ? 'entry' : 'entries'}.`
+        : 'Listening history is already empty.'
+    } catch (error) {
+      state.historyError = getErrorMessage(error)
+    } finally {
+      state.historyAction = ''
     }
   })
 
@@ -528,6 +549,50 @@ export default component$(() => {
             </ul>
           ) : (
             <p class="text-xs text-gray-500">No music folders registered.</p>
+          )}
+        </div>
+
+        <div class={SECTION_CLASS}>
+          <div>
+            <h2 class="text-sm font-medium">Listening history</h2>
+            <p class="mt-1 text-xs text-gray-400">
+              Jukebox keeps up to 10,000 plays on this device for useful recent and frequently played collections. Track
+              paths are never stored in history.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            {state.historyAction === 'confirm' ? (
+              <>
+                <button class={`${BUTTON_CLASS} border-red-700 text-red-300`} onClick$={clearHistory}>
+                  Confirm clear history
+                </button>
+                <button class={BUTTON_CLASS} onClick$={() => (state.historyAction = '')}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                class={`${BUTTON_CLASS} border-red-900 text-red-300`}
+                disabled={state.historyAction === 'clear'}
+                onClick$={() => {
+                  state.historyAction = 'confirm'
+                  state.historyError = ''
+                  state.historyMessage = ''
+                }}
+              >
+                {state.historyAction === 'clear' ? 'Clearing…' : 'Clear listening history'}
+              </button>
+            )}
+          </div>
+          {state.historyMessage && (
+            <p class="text-xs text-emerald-300" aria-live="polite">
+              {state.historyMessage}
+            </p>
+          )}
+          {state.historyError && (
+            <p class="text-xs text-red-300" role="alert">
+              {state.historyError}
+            </p>
           )}
         </div>
 
