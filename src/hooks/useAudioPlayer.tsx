@@ -1,7 +1,7 @@
 import { $, noSerialize, useSignal, useVisibleTask$, type NoSerialize } from '@builder.io/qwik'
 import { invoke } from '@tauri-apps/api/core'
 
-import type { Song, Store } from '~/App'
+import type { PlaybackSource, Song, Store } from '~/App'
 import { BrowserAudioTransport, type AudioTransport } from '~/services/audio-transport'
 import { resolvePlaybackTracks } from '~/services/library-client'
 import { authorizePlaybackSource, PlaybackSourceAccessError } from '~/services/media-source'
@@ -50,6 +50,10 @@ export interface PlaybackController {
   resumeSong(): Promise<void>
   removeQueuedSong(entryId: string): Promise<void>
   seekSong(positionSeconds: number): Promise<void>
+  setMuted(muted: boolean): Promise<void>
+  setRepeatMode(repeatMode: PlaybackSnapshot['repeatMode']): Promise<void>
+  setShuffleEnabled(enabled: boolean): Promise<void>
+  setVolumePercent(volumePercent: number): Promise<void>
   undoQueueEdit(): Promise<void>
 }
 
@@ -127,6 +131,13 @@ export function createPlaybackController(
         ? PLAYBACK_PERSISTENCE_WARNING_MESSAGE
         : ''
     store.player.isPaused = snapshot.status !== 'playing'
+    store.player.muted = snapshot.muted
+    store.player.repeatMode = snapshot.repeatMode
+    store.player.shuffleEnabled = snapshot.shuffle.enabled
+    store.player.shuffleSeed = snapshot.shuffle.seed
+    store.player.volumePercent = snapshot.volumePercent
+    transport.muted = snapshot.muted
+    transport.volume = snapshot.volumePercent / 100
     store.queue = snapshot.queue.flatMap((entry) => {
       const song = queuedSongs.get(entry.entryId)
       return song ? [{ entryId: entry.entryId, song }] : []
@@ -406,6 +417,41 @@ export function createPlaybackController(
         await bridge.observePosition(trackId, milliseconds(positionSeconds), milliseconds(transport.duration))
       }
     },
+    setMuted: async (muted) => {
+      await waitForTransition()
+      mirrorSnapshot(
+        await bridge.dispatch({
+          type: 'setVolume',
+          muted,
+          volumePercent: store.player.volumePercent,
+        })
+      )
+    },
+    setRepeatMode: async (repeatMode) => {
+      await waitForTransition()
+      mirrorSnapshot(await bridge.dispatch({ type: 'setRepeat', repeatMode }))
+    },
+    setShuffleEnabled: async (enabled) => {
+      await waitForTransition()
+      mirrorSnapshot(
+        await bridge.dispatch({
+          type: 'setShuffle',
+          enabled,
+          seed: enabled ? Date.now() : store.player.shuffleSeed,
+        })
+      )
+    },
+    setVolumePercent: async (volumePercent) => {
+      await waitForTransition()
+      const boundedVolume = Math.max(0, Math.min(100, Math.round(volumePercent)))
+      mirrorSnapshot(
+        await bridge.dispatch({
+          type: 'setVolume',
+          muted: boundedVolume === 0,
+          volumePercent: boundedVolume,
+        })
+      )
+    },
     undoQueueEdit: async () => {
       await waitForTransition()
       const snapshot = await bridge.dispatch({ type: 'undoQueueEdit' })
@@ -465,18 +511,24 @@ export const AudioPlayerState = {
     isPaused: true,
     currentTime: 0,
     duration: 0,
+    muted: false,
+    repeatMode: 'off' as const,
+    shuffleEnabled: false,
+    shuffleSeed: 1,
+    volumePercent: 100,
   },
 }
 
 export function useAudioPlayer(store: Store) {
   const controller = useSignal<NoSerialize<PlaybackController>>()
 
-  const playSong = $(async (song: Song, index: number) => {
+  const playSong = $(async (song: Song, index: number, source?: PlaybackSource) => {
     if (!controller.value) {
       recordPlaybackClientEvent('controller_unavailable')
       recordPlaybackFailure(store)
       throw new Error(PLAYBACK_ERROR_MESSAGE)
     }
+    store.playbackSource = source
     return controller.value.playSong(song, index)
   })
   const pauseSong = $(async () => controller.value?.pauseSong())
@@ -491,6 +543,12 @@ export function useAudioPlayer(store: Store) {
   const clearUpcoming = $(async () => controller.value?.clearUpcoming())
   const clearPlayback = $(async () => controller.value?.clearPlayback())
   const seekSong = $(async (positionSeconds: number) => controller.value?.seekSong(positionSeconds))
+  const setMuted = $(async (muted: boolean) => controller.value?.setMuted(muted))
+  const setRepeatMode = $(async (repeatMode: PlaybackSnapshot['repeatMode']) =>
+    controller.value?.setRepeatMode(repeatMode)
+  )
+  const setShuffleEnabled = $(async (enabled: boolean) => controller.value?.setShuffleEnabled(enabled))
+  const setVolumePercent = $(async (volumePercent: number) => controller.value?.setVolumePercent(volumePercent))
   const undoQueueEdit = $(async () => controller.value?.undoQueueEdit())
 
   useVisibleTask$(({ cleanup }) => {
@@ -546,6 +604,10 @@ export function useAudioPlayer(store: Store) {
     resumeSong,
     removeQueuedSong,
     seekSong,
+    setMuted,
+    setRepeatMode,
+    setShuffleEnabled,
+    setVolumePercent,
     undoQueueEdit,
   }
 }

@@ -36,6 +36,7 @@ export default component$(() => {
         total: 0,
       },
       playlist: [],
+      playbackSource: undefined,
       queue: [],
       sorting: 'default',
       searchTerm: '',

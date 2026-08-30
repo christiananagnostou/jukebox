@@ -1,6 +1,7 @@
 export interface Store {
   libraryCatalog: LibraryCatalogState
   playlist: Song[]
+  playbackSource?: PlaybackSource
   searchTerm: string
   settings: Settings
   bootstrap: BootstrapState
@@ -64,6 +65,11 @@ export interface Store {
     isPaused: boolean
     currentTime: number
     duration: number
+    muted: boolean
+    repeatMode: 'off' | 'one' | 'all'
+    shuffleEnabled: boolean
+    shuffleSeed: number
+    volumePercent: number
   }
 }
 
@@ -182,6 +188,11 @@ export interface QueuedSong {
   song: Song
 }
 
+export interface PlaybackSource {
+  kind: 'album' | 'artist' | 'collection' | 'folder' | 'library' | 'playlist'
+  label: string
+}
+
 export interface Metadata {
   id: string
   codec: string
@@ -210,7 +221,7 @@ export interface StoreActions {
   clearPlayback: QRL<() => Promise<void>>
   enqueueSong: QRL<(song: Song) => Promise<void>>
   moveQueuedSong: QRL<(entryId: string, beforeEntryId?: string | null) => Promise<void>>
-  playSong: QRL<(song: Song, index: number) => Promise<void> | undefined>
+  playSong: QRL<(song: Song, index: number, source?: PlaybackSource) => Promise<void> | undefined>
   pauseSong: QRL<() => Promise<void> | undefined>
   resumeSong: QRL<() => Promise<void> | undefined>
   nextSong: QRL<() => Promise<void> | undefined>
@@ -219,6 +230,10 @@ export interface StoreActions {
   reloadLibrary: QRL<() => Promise<void>>
   requestLibraryRange: QRL<(startIndex: number, endIndex: number) => Promise<void>>
   removeQueuedSong: QRL<(entryId: string) => Promise<void>>
+  setMuted: QRL<(muted: boolean) => Promise<void>>
+  setRepeatMode: QRL<(repeatMode: 'off' | 'one' | 'all') => Promise<void>>
+  setShuffleEnabled: QRL<(enabled: boolean) => Promise<void>>
+  setVolumePercent: QRL<(volumePercent: number) => Promise<void>>
   undoQueueEdit: QRL<() => Promise<void>>
 }
 

@@ -4,6 +4,8 @@ export interface AudioTransport {
   currentTime: number
   readonly duration: number
   readonly loadedSongId?: string
+  muted: boolean
+  volume: number
   clear(): void
   load(source: string, songId: string): void
   pause(): void
@@ -28,6 +30,22 @@ export class BrowserAudioTransport implements AudioTransport {
 
   get loadedSongId(): string | undefined {
     return this.element.dataset.loadedSongId
+  }
+
+  get muted(): boolean {
+    return this.element.muted
+  }
+
+  set muted(value: boolean) {
+    this.element.muted = value
+  }
+
+  get volume(): number {
+    return this.element.volume
+  }
+
+  set volume(value: number) {
+    this.element.volume = value
   }
 
   load(source: string, songId: string): void {

@@ -27,7 +27,7 @@ export function useStoragePlayNode(store: Store, storeActions: StoreActions) {
       })
       if (!songs.length) return
       store.playlist = songs
-      storeActions.playSong(songs[0], 0)
+      storeActions.playSong(songs[0], 0, { kind: 'folder', label: node.name })
       store.bootstrap.libraryError = ''
     } catch {
       store.bootstrap.libraryError = 'Jukebox could not prepare that storage selection for playback.'

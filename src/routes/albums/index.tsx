@@ -100,7 +100,7 @@ export default component$(() => {
       const firstSong = songs[0]
       if (!firstSong) return
       store.playlist = songs
-      storeActions.playSong(firstSong, 0)
+      storeActions.playSong(firstSong, 0, { kind: 'album', label: album.name })
       store.bootstrap.libraryError = ''
     } catch {
       store.bootstrap.libraryError = 'Jukebox could not prepare that album for playback.'

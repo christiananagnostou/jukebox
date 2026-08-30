@@ -135,7 +135,11 @@ export default component$(() => {
       const playlistIndex = song ? songs.findIndex((item) => item.id === song.id) : 0
       if (playlistIndex < 0 || !songs[playlistIndex]) return
       store.playlist = songs
-      storeActions.playSong(songs[playlistIndex], playlistIndex)
+      const selectedSong = songs[playlistIndex]
+      storeActions.playSong(selectedSong, playlistIndex, {
+        kind: query.album ? 'album' : 'artist',
+        label: query.album ? selectedSong.album : selectedSong.artist,
+      })
       store.bootstrap.libraryError = ''
     } catch {
       store.bootstrap.libraryError = 'Jukebox could not prepare that selection for playback.'
