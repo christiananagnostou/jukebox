@@ -13,10 +13,12 @@ import type { DocumentHead } from '@builder.io/qwik-city'
 
 import type { ListItemStyle } from '~/App'
 import BuiltInCollectionView from '~/components/playlists/BuiltInCollectionView'
+import M3uImportView from '~/components/playlists/M3uImportView'
 import SmartPlaylistView from '~/components/playlists/SmartPlaylistView'
 import { BUILT_IN_COLLECTIONS } from '~/components/playlists/built-in-collections'
 import VirtualList from '~/components/Shared/VirtualList'
 import { type BuiltInCollectionKind, resolvePlaybackTracks } from '~/services/library-client'
+import { pickM3uExport, pickM3uImport, type M3uImportPreview, type M3uImportResult } from '~/services/m3u-client'
 import {
   addPlaylistEntries,
   createPlaylist,
@@ -65,6 +67,7 @@ export default component$(() => {
     duplicating: false,
     editing: false,
     error: '',
+    importPreview: null as M3uImportPreview | null,
     notice: '',
     renameName: '',
     selectedBuiltIn: '' as '' | BuiltInCollectionKind,
@@ -94,10 +97,11 @@ export default component$(() => {
     const selectedBuiltIn = track(() => state.selectedBuiltIn)
     const selectedKind = track(() => state.selectedKind)
     const smartCreating = track(() => state.smartCreating)
+    const importToken = track(() => state.importPreview?.token || '')
     state.confirmDelete = false
     state.duplicating = false
     state.editing = false
-    if (selectedBuiltIn || smartCreating || selectedKind === 'smart') {
+    if (selectedBuiltIn || smartCreating || importToken || selectedKind === 'smart') {
       entryPager.value?.clear()
     } else if (selectedId && isManualPlaylistKind(selectedKind)) {
       void entryPager.value?.reset(selectedId)
@@ -111,6 +115,7 @@ export default component$(() => {
     state.notice = ''
     state.selectedBuiltIn = ''
     state.duplicating = false
+    state.importPreview = null
     state.smartCreating = false
     state.selectedId = playlist.id
     state.selectedKind = playlist.kind
@@ -123,6 +128,7 @@ export default component$(() => {
     state.notice = ''
     state.selectedBuiltIn = kind
     state.duplicating = false
+    state.importPreview = null
     state.smartCreating = false
     state.selectedId = ''
     state.selectedKind = ''
@@ -132,6 +138,7 @@ export default component$(() => {
   const beginSmartPlaylist = $(() => {
     if (state.action) return
     state.error = ''
+    state.importPreview = null
     state.notice = ''
     state.selectedBuiltIn = ''
     state.selectedId = ''
@@ -141,6 +148,7 @@ export default component$(() => {
   })
 
   const smartPlaylistCreated = $(async (playlist: PlaylistSummary) => {
+    state.importPreview = null
     state.smartCreating = false
     state.selectedBuiltIn = ''
     state.selectedId = playlist.id
@@ -165,6 +173,51 @@ export default component$(() => {
     await playlistPager.value?.reload()
   })
 
+  const beginM3uImport = $(async () => {
+    if (state.action) return
+    state.action = 'import-picker'
+    state.error = ''
+    state.notice = ''
+    try {
+      const preview = await pickM3uImport()
+      if (!preview) return
+      state.selectedBuiltIn = ''
+      state.selectedId = ''
+      state.selectedKind = ''
+      state.selectedName = ''
+      state.smartCreating = false
+      state.importPreview = preview
+    } catch (error) {
+      state.error = playlistErrorMessage(error, 'Jukebox could not inspect that playlist file.')
+    } finally {
+      state.action = ''
+    }
+  })
+
+  const m3uImportBusyChanged = $((busy: boolean) => {
+    if (busy) state.action = 'import-review'
+    else if (state.action === 'import-review') state.action = ''
+  })
+
+  const m3uImportApplied = $(async (result: M3uImportResult) => {
+    state.importPreview = null
+    state.selectedBuiltIn = ''
+    state.smartCreating = false
+    state.selectedId = result.playlist.id
+    state.selectedKind = 'manual'
+    state.selectedName = result.playlist.name
+    state.renameName = result.playlist.name
+    state.notice = `Imported ${result.playlist.entryCount} ${result.playlist.entryCount === 1 ? 'track' : 'tracks'}${
+      result.skippedEntries ? ` and skipped ${result.skippedEntries}` : ''
+    }.`
+    await playlistPager.value?.reload()
+  })
+
+  const m3uImportDiscarded = $(() => {
+    state.importPreview = null
+    state.notice = 'Playlist import discarded.'
+  })
+
   const createPlaylistRecord = $(async () => {
     const name = state.createName.trim()
     if (!name || state.action) return
@@ -174,6 +227,7 @@ export default component$(() => {
     try {
       const created = await createPlaylist(name)
       state.createName = ''
+      state.importPreview = null
       state.selectedBuiltIn = ''
       state.smartCreating = false
       state.selectedId = created.id
@@ -338,6 +392,24 @@ export default component$(() => {
     }
   })
 
+  const exportPlaylistRecord = $(async () => {
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || state.action) return
+    state.action = 'export'
+    state.error = ''
+    state.notice = ''
+    try {
+      const result = await pickM3uExport(state.selectedId)
+      if (!result) return
+      state.notice = `Exported ${result.exportedEntries} ${result.exportedEntries === 1 ? 'track' : 'tracks'}${
+        result.skippedUnavailableEntries ? ` and skipped ${result.skippedUnavailableEntries} unavailable` : ''
+      }.`
+    } catch (error) {
+      state.error = playlistErrorMessage(error, 'Jukebox could not export that playlist.')
+    } finally {
+      state.action = ''
+    }
+  })
+
   const busy = Boolean(state.action)
   const selectedStatus = entries.error || state.error
 
@@ -367,7 +439,15 @@ export default component$(() => {
           <button class={`${BUTTON_CLASS} mt-2 w-full`} type="button" onClick$={beginSmartPlaylist} disabled={busy}>
             New smart playlist
           </button>
-          {!state.selectedId && !state.selectedBuiltIn && !state.smartCreating && (
+          <button
+            class={`${BUTTON_CLASS} mt-2 w-full`}
+            type="button"
+            onClick$={beginM3uImport}
+            disabled={busy || Boolean(state.importPreview)}
+          >
+            {state.action === 'import-picker' ? 'Opening…' : 'Import M3U playlist'}
+          </button>
+          {!state.selectedId && !state.selectedBuiltIn && !state.smartCreating && !state.importPreview && (
             <div class="mt-2 min-h-4 text-xs" aria-live="polite">
               {state.error ? (
                 <span role="alert" class="text-red-300">
@@ -441,7 +521,14 @@ export default component$(() => {
       </aside>
 
       <div class="flex min-h-0 min-w-0 flex-col">
-        {state.selectedBuiltIn ? (
+        {state.importPreview ? (
+          <M3uImportView
+            preview={state.importPreview}
+            onApplied$={m3uImportApplied}
+            onBusyChange$={m3uImportBusyChanged}
+            onDiscarded$={m3uImportDiscarded}
+          />
+        ) : state.selectedBuiltIn ? (
           <BuiltInCollectionView kind={state.selectedBuiltIn} />
         ) : state.smartCreating ? (
           <SmartPlaylistView
@@ -481,6 +568,9 @@ export default component$(() => {
                     title={store.player.currSong ? `Add ${store.player.currSong.title}` : 'Play a track first'}
                   >
                     Add current track
+                  </button>
+                  <button class={BUTTON_CLASS} onClick$={exportPlaylistRecord} disabled={busy}>
+                    {state.action === 'export' ? 'Exporting…' : 'Export M3U8'}
                   </button>
                   <button
                     class={BUTTON_CLASS}
