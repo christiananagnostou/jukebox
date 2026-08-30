@@ -1,4 +1,5 @@
 mod aggregates;
+mod collections;
 mod facets;
 #[cfg(test)]
 mod performance;
@@ -13,6 +14,7 @@ pub(crate) mod storage;
 mod watcher;
 
 pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, ArtistPage};
+pub use collections::{BuiltInCollectionPage, BuiltInCollectionQuery};
 pub use facets::{FacetPage, FacetQuery};
 pub use playlists::{
     PlaylistEntryPage, PlaylistEntryQuery, PlaylistMutation, PlaylistPage, PlaylistQuery,
@@ -105,6 +107,14 @@ impl LibraryState {
     pub async fn query_facets(&self, query: FacetQuery) -> Result<FacetPage, LibraryError> {
         self.ensure_initialized().await?;
         facets::load_facet_page(&self.repository.pool(), query).await
+    }
+
+    pub async fn query_built_in_collection(
+        &self,
+        query: BuiltInCollectionQuery,
+    ) -> Result<BuiltInCollectionPage, LibraryError> {
+        self.ensure_initialized().await?;
+        collections::load_built_in_collection(&self.repository.pool(), query).await
     }
 
     pub async fn create_playlist(&self, name: String) -> Result<PlaylistSummary, LibraryError> {
@@ -325,6 +335,14 @@ pub async fn query_facets(
     query: FacetQuery,
 ) -> Result<FacetPage, LibraryError> {
     library.query_facets(query).await
+}
+
+#[tauri::command]
+pub async fn query_built_in_collection(
+    library: tauri::State<'_, LibraryState>,
+    query: BuiltInCollectionQuery,
+) -> Result<BuiltInCollectionPage, LibraryError> {
+    library.query_built_in_collection(query).await
 }
 
 #[tauri::command]

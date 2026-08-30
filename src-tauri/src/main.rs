@@ -13,9 +13,9 @@ use crate::library::{
     cancel_library_reconciliation, cancel_library_refresh, cancel_library_scan, create_playlist,
     delete_playlist, get_library_reconciliation, get_library_refresh, get_library_scan,
     list_library_refreshes, list_library_roots, list_playlist_entries, list_playlists,
-    prepare_library_scan, query_albums, query_artists, query_facets, query_storage, query_tracks,
-    remove_playlist_entries, rename_playlist, resolve_playback_tracks, set_library_root_enabled,
-    start_library_refresh, start_library_scan, LibraryState,
+    prepare_library_scan, query_albums, query_artists, query_built_in_collection, query_facets,
+    query_storage, query_tracks, remove_playlist_entries, rename_playlist, resolve_playback_tracks,
+    set_library_root_enabled, start_library_refresh, start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
 use crate::playback::{
@@ -200,6 +200,7 @@ fn main() {
             clear_library_songs,
             update_favorite_rating,
             query_tracks,
+            query_built_in_collection,
             query_facets,
             create_playlist,
             list_playlists,
