@@ -384,7 +384,7 @@ export default component$(() => {
       const selectedSong = songs[playlistIndex]
       if (!selectedSong) throw new Error('That playlist entry is no longer available.')
       store.playlist = songs
-      await storeActions.playSong(selectedSong, playlistIndex)
+      await storeActions.playSong(selectedSong, playlistIndex, { kind: 'playlist', label: state.selectedName })
     } catch (error) {
       state.error = playlistErrorMessage(error, 'Jukebox could not prepare that playlist page for playback.')
     } finally {

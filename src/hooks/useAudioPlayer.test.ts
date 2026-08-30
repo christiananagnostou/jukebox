@@ -221,9 +221,19 @@ class FakePlaybackBridge implements PlaybackBridge {
         break
       }
       case 'setRepeat':
+        changed = this.snapshot.repeatMode !== command.repeatMode
+        this.snapshot.repeatMode = command.repeatMode
+        break
       case 'setShuffle':
+        changed = this.snapshot.shuffle.enabled !== command.enabled || this.snapshot.shuffle.seed !== command.seed
+        this.snapshot.shuffle = { enabled: command.enabled, seed: command.seed }
+        break
       case 'markUnavailable':
+        break
       case 'setVolume':
+        changed = this.snapshot.muted !== command.muted || this.snapshot.volumePercent !== command.volumePercent
+        this.snapshot.muted = command.muted
+        this.snapshot.volumePercent = command.volumePercent
         break
     }
 
@@ -278,6 +288,8 @@ class FakeAudioTransport implements AudioTransport {
   currentTime = 0
   duration = 0
   loadedSongId?: string
+  muted = false
+  volume = 1
   loadedSources: Array<{ songId: string; source: string }> = []
   pauseCalls = 0
   playCalls = 0
@@ -335,6 +347,11 @@ function playbackStore(playlist: Song[] = []): Pick<Store, 'player' | 'playlist'
       isPaused: true,
       currentTime: 0,
       duration: 0,
+      muted: false,
+      repeatMode: 'off',
+      shuffleEnabled: false,
+      shuffleSeed: 1,
+      volumePercent: 100,
     },
   }
 }
@@ -424,6 +441,66 @@ describe('native-backed playback controller', () => {
     expect(transport.currentTime).toBe(42)
     expect(transport.playCalls).toBe(1)
     expect(store.player.isPaused).toBe(false)
+  })
+
+  it('mirrors persistent playback modes and applies user changes to the transport', async () => {
+    const snapshot = emptySnapshot()
+    snapshot.muted = true
+    snapshot.repeatMode = 'all'
+    snapshot.shuffle = { enabled: true, seed: 42 }
+    snapshot.volumePercent = 37
+    const store = playbackStore()
+    const bridge = new FakePlaybackBridge(snapshot)
+    const transport = new FakeAudioTransport()
+    const controller = createPlaybackController(store, transport, async (track) => track.path, bridge)
+
+    await controller.initialize()
+
+    expect(store.player).toMatchObject({
+      muted: true,
+      repeatMode: 'all',
+      shuffleEnabled: true,
+      shuffleSeed: 42,
+      volumePercent: 37,
+    })
+    expect(transport.muted).toBe(true)
+    expect(transport.volume).toBe(0.37)
+
+    await controller.setMuted(false)
+    await controller.setVolumePercent(64)
+    await controller.setRepeatMode('one')
+    await controller.setShuffleEnabled(false)
+
+    expect(store.player).toMatchObject({
+      muted: false,
+      repeatMode: 'one',
+      shuffleEnabled: false,
+      shuffleSeed: 42,
+      volumePercent: 64,
+    })
+    expect(transport.muted).toBe(false)
+    expect(transport.volume).toBe(0.64)
+    expect(bridge.commands.slice(-4)).toEqual([
+      { type: 'setVolume', muted: false, volumePercent: 37 },
+      { type: 'setVolume', muted: false, volumePercent: 64 },
+      { type: 'setRepeat', repeatMode: 'one' },
+      { type: 'setShuffle', enabled: false, seed: 42 },
+    ])
+  })
+
+  it('mutes at zero volume and unmutes when the volume is raised', async () => {
+    const { controller, store, transport } = setup()
+    await controller.initialize()
+
+    await controller.setVolumePercent(0)
+    expect(store.player.muted).toBe(true)
+    expect(transport.muted).toBe(true)
+    expect(transport.volume).toBe(0)
+
+    await controller.setVolumePercent(25)
+    expect(store.player.muted).toBe(false)
+    expect(transport.muted).toBe(false)
+    expect(transport.volume).toBe(0.25)
   })
 
   it('reports a generic unavailable error when a restored source cannot be authorized', async () => {

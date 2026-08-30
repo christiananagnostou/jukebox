@@ -4,7 +4,7 @@
 :root {
   --secondary: #3f3f59;
   --navbar-width: 200px;
-  --audio-sidebar-width: 250px;
+  --audio-sidebar-width: 320px;
   --body-bg: rgba(23, 23, 31, 0.95);
   --body-bg-solid: rgb(23, 23, 31);
   --modal-background: rgba(0, 0, 0, 0.5);
@@ -79,6 +79,84 @@ body {
 
 .app-audio-sidebar[data-open='true'] {
   visibility: visible;
+}
+
+.playback-range {
+  --range-active: #fcd34d;
+  --range-inactive: #343746;
+  appearance: none;
+  height: 18px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+
+.playback-range[data-muted='true'] {
+  --range-active: #64748b;
+}
+
+.playback-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--range-active) 0,
+    var(--range-active) var(--range-progress, 0%),
+    var(--range-inactive) var(--range-progress, 0%),
+    var(--range-inactive) 100%
+  );
+}
+
+.playback-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border: 2px solid #17171f;
+  border-radius: 999px;
+  background: var(--range-active);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--range-active) 55%, transparent);
+}
+
+.playback-range::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--range-inactive);
+}
+
+.playback-range::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--range-active);
+}
+
+.playback-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #17171f;
+  border-radius: 999px;
+  background: var(--range-active);
+}
+
+.playback-range:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.playback-range:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.app-audio-sidebar summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (max-width: 1050px) {
+  :root {
+    --audio-sidebar-width: 288px;
+    --navbar-width: 176px;
+  }
 }
 
 *::-webkit-scrollbar {

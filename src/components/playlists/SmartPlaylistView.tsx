@@ -232,7 +232,7 @@ export default component$((props: SmartPlaylistViewProps) => {
     state.error = ''
     try {
       store.playlist = playback.playlist
-      await storeActions.playSong(playback.song, playback.playlistIndex)
+      await storeActions.playSong(playback.song, playback.playlistIndex, { kind: 'playlist', label: state.name })
     } catch (error) {
       state.error = getErrorMessage(error)
     } finally {

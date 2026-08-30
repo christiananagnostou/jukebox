@@ -62,7 +62,10 @@ export default component$((props: { kind: BuiltInCollectionKind }) => {
     state.playbackError = ''
     try {
       store.playlist = playback.playlist
-      await storeActions.playSong(playback.song, playback.playlistIndex)
+      await storeActions.playSong(playback.song, playback.playlistIndex, {
+        kind: 'collection',
+        label: definition.label,
+      })
     } catch (error) {
       state.playbackError = getErrorMessage(error)
     } finally {

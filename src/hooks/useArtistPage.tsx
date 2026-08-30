@@ -36,7 +36,7 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
       sort: 'default',
     })
     const firstSong = store.playlist[0]
-    if (firstSong) storeActions.playSong(firstSong, 0)
+    if (firstSong) storeActions.playSong(firstSong, 0, { kind: 'artist', label: artist.name })
   })
 
   const _playShownAlbum = $(async () => {
@@ -49,7 +49,7 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
       q: store.searchTerm,
       sort: 'track',
     })
-    if (store.playlist[0]) storeActions.playSong(store.playlist[0], 0)
+    if (store.playlist[0]) storeActions.playSong(store.playlist[0], 0, { kind: 'album', label: album.name })
   })
 
   const _playTrack = $(async () => {
@@ -65,7 +65,9 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
       sort: 'track',
     })
     const playlistIndex = store.playlist.findIndex((track) => track.id === song.id)
-    if (playlistIndex >= 0) storeActions.playSong(store.playlist[playlistIndex], playlistIndex)
+    if (playlistIndex >= 0) {
+      storeActions.playSong(store.playlist[playlistIndex], playlistIndex, { kind: 'album', label: album.name })
+    }
   })
 
   const playHighlighted = $(async () => {

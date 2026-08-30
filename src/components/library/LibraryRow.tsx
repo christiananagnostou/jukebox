@@ -42,7 +42,7 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
       const playlist = playback.playlist.map((track) => ({ ...track }))
       const selectedSong = playlist[playback.playlistIndex] || { ...playback.song }
       store.playlist = playlist
-      await storeActions.playSong(selectedSong, playback.playlistIndex)
+      await storeActions.playSong(selectedSong, playback.playlistIndex, { kind: 'library', label: 'Library' })
     } catch {
       void invoke('record_playback_client_event', { event: 'activation_failed' }).catch(() => undefined)
       // Playback state exposes the generic, path-free failure to the player UI.
