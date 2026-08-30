@@ -113,12 +113,12 @@ fn normalize_page(limit: u32, offset: u32) -> Result<(u32, u32), LibraryError> {
     Ok((limit.min(MAX_PAGE_SIZE), offset))
 }
 
-struct NormalizedName {
-    display: String,
-    key: String,
+pub(crate) struct NormalizedName {
+    pub(crate) display: String,
+    pub(crate) key: String,
 }
 
-fn normalize_name(name: &str) -> Result<NormalizedName, LibraryError> {
+pub(crate) fn normalize_name(name: &str) -> Result<NormalizedName, LibraryError> {
     let name = name.trim();
     if name.is_empty()
         || name.chars().count() > MAX_NAME_CHARACTERS
@@ -144,6 +144,10 @@ fn bounded_snapshot(value: String) -> String {
     value.chars().take(MAX_SNAPSHOT_CHARACTERS).collect()
 }
 
+pub(crate) fn generated_playlist_id() -> Result<String, LibraryError> {
+    generated_id(PLAYLIST_ID_PREFIX)
+}
+
 fn generated_id(prefix: &str) -> Result<String, LibraryError> {
     let mut bytes = [0_u8; ID_RANDOM_BYTES];
     getrandom::fill(&mut bytes).map_err(|_| LibraryError::database())?;
@@ -163,7 +167,7 @@ fn valid_generated_id(id: &str, prefix: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit())
 }
 
-fn validate_playlist_id(id: &str) -> Result<(), LibraryError> {
+pub(crate) fn validate_playlist_id(id: &str) -> Result<(), LibraryError> {
     if valid_generated_id(id, PLAYLIST_ID_PREFIX) {
         Ok(())
     } else {
@@ -216,7 +220,7 @@ fn ensure_playlist_capacity(existing: i64, additions: usize) -> Result<(), Libra
     Ok(())
 }
 
-fn playlist_conflict(error: sqlx::Error) -> LibraryError {
+pub(crate) fn playlist_conflict(error: sqlx::Error) -> LibraryError {
     if error.as_database_error().is_some_and(|database| {
         database.is_unique_violation()
             && (database.message().contains("playlists.name_key")
@@ -273,7 +277,7 @@ fn entry_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<PlaylistEntry, Librar
     })
 }
 
-async fn summary_by_id(
+pub(crate) async fn summary_by_id(
     executor: impl sqlx::Executor<'_, Database = Sqlite>,
     playlist_id: &str,
 ) -> Result<PlaylistSummary, LibraryError> {
@@ -298,7 +302,7 @@ pub(crate) async fn create_playlist(
     name: String,
 ) -> Result<PlaylistSummary, LibraryError> {
     let name = normalize_name(&name)?;
-    let id = generated_id(PLAYLIST_ID_PREFIX)?;
+    let id = generated_playlist_id()?;
     sqlx::query("INSERT INTO playlists (id, name, name_key, kind) VALUES (?, ?, ?, 'manual')")
         .bind(&id)
         .bind(name.display)
@@ -394,7 +398,7 @@ pub(crate) async fn duplicate_playlist(
 ) -> Result<PlaylistSummary, LibraryError> {
     validate_playlist_id(&playlist_id)?;
     let name = normalize_name(&name)?;
-    let duplicated_id = generated_id(PLAYLIST_ID_PREFIX)?;
+    let duplicated_id = generated_playlist_id()?;
     let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
     ensure_playlist(&mut *transaction, &playlist_id).await?;
     let entry_count: i64 =
