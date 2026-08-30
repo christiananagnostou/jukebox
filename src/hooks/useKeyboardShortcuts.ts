@@ -48,6 +48,7 @@ export const KeyboardCommands = [
       { key: '⇧ A', command: 'Artists' },
       { key: '⇧ O', command: 'Storage' },
       { key: '⇧ M', command: 'Albums' },
+      { key: '⇧ P', command: 'Playlists' },
       { key: '⇧ S', command: 'Settings' },
     ],
   },
@@ -132,6 +133,7 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
       if (key === 'A') nav('/artists')
       if (key === 'O') nav('/storage')
       if (key === 'M') nav('/albums')
+      if (key === 'P') nav('/playlists')
       if (key === 'S') nav('/settings')
       if (key === '?') store.showKeyShortcuts = !store.showKeyShortcuts
       if (key === 'Escape' && store.showKeyShortcuts) store.showKeyShortcuts = false
