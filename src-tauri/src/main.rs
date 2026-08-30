@@ -9,15 +9,16 @@ use crate::diagnostics::{
 };
 use crate::import_paths::{classify_import_paths, pick_import_directories};
 use crate::library::{
-    add_library_root, add_playlist_entries, apply_library_reconciliation,
+    add_library_root, add_playlist_entries, apply_library_reconciliation, apply_m3u_import,
     cancel_library_reconciliation, cancel_library_refresh, cancel_library_scan, create_playlist,
-    create_smart_playlist, delete_playlist, delete_smart_playlist, duplicate_playlist,
-    get_library_reconciliation, get_library_refresh, get_library_scan, get_smart_playlist,
-    list_library_refreshes, list_library_roots, list_playlist_entries, list_playlists,
-    move_playlist_entry, prepare_library_scan, query_albums, query_artists,
-    query_built_in_collection, query_facets, query_smart_playlist, query_storage, query_tracks,
-    remove_playlist_entries, rename_playlist, resolve_playback_tracks, set_library_root_enabled,
-    start_library_refresh, start_library_scan, update_smart_playlist, LibraryState,
+    create_smart_playlist, delete_playlist, delete_smart_playlist, discard_m3u_import,
+    duplicate_playlist, get_library_reconciliation, get_library_refresh, get_library_scan,
+    get_smart_playlist, list_library_refreshes, list_library_roots, list_m3u_import_issues,
+    list_playlist_entries, list_playlists, move_playlist_entry, pick_m3u_export, pick_m3u_import,
+    prepare_library_scan, query_albums, query_artists, query_built_in_collection, query_facets,
+    query_smart_playlist, query_storage, query_tracks, remove_playlist_entries, rename_playlist,
+    resolve_playback_tracks, set_library_root_enabled, start_library_refresh, start_library_scan,
+    update_smart_playlist, LibraryState, M3uState,
 };
 use crate::metadata::Metadata;
 use crate::playback::{
@@ -107,6 +108,7 @@ fn main() {
                 std::io::Error::other(error)
             })?;
             app.manage(library.clone());
+            app.manage(M3uState::default());
             let playback_server = tauri::async_runtime::block_on(PlaybackAssetServer::start(
                 library.pool(),
                 diagnostics.clone(),
@@ -218,6 +220,11 @@ fn main() {
             update_smart_playlist,
             delete_smart_playlist,
             query_smart_playlist,
+            pick_m3u_import,
+            list_m3u_import_issues,
+            apply_m3u_import,
+            discard_m3u_import,
+            pick_m3u_export,
             resolve_playback_tracks,
             query_artists,
             query_albums,

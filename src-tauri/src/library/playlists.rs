@@ -195,6 +195,24 @@ fn validate_song_ids(song_ids: &[String]) -> Result<(), LibraryError> {
     Ok(())
 }
 
+fn validate_import_song_ids(song_ids: &[String]) -> Result<(), LibraryError> {
+    if song_ids.is_empty()
+        || song_ids.len() > MAX_PLAYLIST_ENTRIES as usize
+        || song_ids.iter().any(|id| {
+            id.is_empty()
+                || id.len() > MAX_SONG_ID_BYTES
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        })
+    {
+        return Err(LibraryError::invalid_query(
+            "Imported playlists require between one and 100,000 valid track identifiers.",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_entry_ids(entry_ids: &[String]) -> Result<(), LibraryError> {
     if entry_ids.is_empty()
         || entry_ids.len() > MAX_BATCH_SIZE
@@ -492,35 +510,19 @@ async fn ensure_playlist(
     }
 }
 
-pub(crate) async fn add_playlist_entries(
-    pool: &SqlitePool,
-    playlist_id: String,
-    song_ids: Vec<String>,
-) -> Result<PlaylistMutation, LibraryError> {
-    validate_playlist_id(&playlist_id)?;
-    validate_song_ids(&song_ids)?;
-    let unique_song_ids = song_ids.iter().cloned().collect::<HashSet<_>>();
-    let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
-    ensure_playlist(&mut *transaction, &playlist_id).await?;
-    let existing_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM playlist_entries WHERE playlist_id = ?")
-            .bind(&playlist_id)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(|_| LibraryError::database())?;
-    ensure_playlist_capacity(existing_count, song_ids.len())?;
-    let entry_ids = (0..song_ids.len())
-        .map(|_| generated_id(ENTRY_ID_PREFIX))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let mut snapshots = HashMap::with_capacity(unique_song_ids.len());
-    for chunk in unique_song_ids
-        .iter()
-        .collect::<Vec<_>>()
-        .chunks(MAX_BATCH_SIZE)
-    {
+async fn load_playlist_snapshots(
+    transaction: &mut sqlx::Transaction<'_, Sqlite>,
+    song_ids: &HashSet<String>,
+    available_only: bool,
+) -> Result<HashMap<String, (String, String, String)>, LibraryError> {
+    let mut snapshots = HashMap::with_capacity(song_ids.len());
+    for chunk in song_ids.iter().collect::<Vec<_>>().chunks(MAX_BATCH_SIZE) {
         let mut query =
-            QueryBuilder::<Sqlite>::new("SELECT id, title, artist, album FROM songs WHERE id IN (");
+            QueryBuilder::<Sqlite>::new("SELECT id, title, artist, album FROM songs WHERE ");
+        if available_only {
+            query.push("availability = 'available' AND ");
+        }
+        query.push("id IN (");
         let mut separated = query.separated(", ");
         for song_id in chunk {
             separated.push_bind((*song_id).clone());
@@ -528,7 +530,7 @@ pub(crate) async fn add_playlist_entries(
         separated.push_unseparated(")");
         for row in query
             .build()
-            .fetch_all(&mut *transaction)
+            .fetch_all(&mut **transaction)
             .await
             .map_err(|_| LibraryError::database())?
         {
@@ -552,6 +554,75 @@ pub(crate) async fn add_playlist_entries(
             );
         }
     }
+    Ok(snapshots)
+}
+
+async fn insert_playlist_rows(
+    transaction: &mut sqlx::Transaction<'_, Sqlite>,
+    playlist_id: &str,
+    start: i64,
+    song_ids: &[String],
+    snapshots: &HashMap<String, (String, String, String)>,
+) -> Result<(), LibraryError> {
+    for (chunk_index, chunk) in song_ids.chunks(MAX_BATCH_SIZE).enumerate() {
+        let mut rows = Vec::with_capacity(chunk.len());
+        for (offset, song_id) in chunk.iter().enumerate() {
+            let (title, artist, album) =
+                snapshots.get(song_id).ok_or_else(LibraryError::database)?;
+            rows.push((
+                generated_id(ENTRY_ID_PREFIX)?,
+                song_id.clone(),
+                start + (chunk_index * MAX_BATCH_SIZE + offset) as i64,
+                title.clone(),
+                artist.clone(),
+                album.clone(),
+            ));
+        }
+        let mut insert = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO playlist_entries (
+               id, playlist_id, song_id, position, title_snapshot, artist_snapshot, album_snapshot
+             ) ",
+        );
+        insert.push_values(
+            rows,
+            |mut values, (id, song_id, position, title, artist, album)| {
+                values
+                    .push_bind(id)
+                    .push_bind(playlist_id)
+                    .push_bind(song_id)
+                    .push_bind(position)
+                    .push_bind(title)
+                    .push_bind(artist)
+                    .push_bind(album);
+            },
+        );
+        insert
+            .build()
+            .execute(&mut **transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn add_playlist_entries(
+    pool: &SqlitePool,
+    playlist_id: String,
+    song_ids: Vec<String>,
+) -> Result<PlaylistMutation, LibraryError> {
+    validate_playlist_id(&playlist_id)?;
+    validate_song_ids(&song_ids)?;
+    let unique_song_ids = song_ids.iter().cloned().collect::<HashSet<_>>();
+    let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
+    ensure_playlist(&mut *transaction, &playlist_id).await?;
+    let existing_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM playlist_entries WHERE playlist_id = ?")
+            .bind(&playlist_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+    ensure_playlist_capacity(existing_count, song_ids.len())?;
+    let snapshots = load_playlist_snapshots(&mut transaction, &unique_song_ids, false).await?;
     if snapshots.len() != unique_song_ids.len() {
         return Err(LibraryError::invalid_query(
             "Every playlist track must exist in the catalog when it is added.",
@@ -565,25 +636,7 @@ pub(crate) async fn add_playlist_entries(
     .fetch_one(&mut *transaction)
     .await
     .map_err(|_| LibraryError::database())?;
-    for (index, (entry_id, song_id)) in entry_ids.iter().zip(&song_ids).enumerate() {
-        let (title, artist, album) = snapshots.get(song_id).ok_or_else(LibraryError::database)?;
-        sqlx::query(
-            "INSERT INTO playlist_entries (
-                id, playlist_id, song_id, position, title_snapshot, artist_snapshot,
-                album_snapshot
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(entry_id)
-        .bind(&playlist_id)
-        .bind(song_id)
-        .bind(start + index as i64)
-        .bind(title)
-        .bind(artist)
-        .bind(album)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| LibraryError::database())?;
-    }
+    insert_playlist_rows(&mut transaction, &playlist_id, start, &song_ids, &snapshots).await?;
     sqlx::query(
         "UPDATE playlists SET updated_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
          WHERE id = ?",
@@ -599,6 +652,38 @@ pub(crate) async fn add_playlist_entries(
     Ok(PlaylistMutation {
         affected: song_ids.len() as u32,
     })
+}
+
+pub(crate) async fn create_imported_playlist(
+    pool: &SqlitePool,
+    name: String,
+    song_ids: Vec<String>,
+) -> Result<PlaylistSummary, LibraryError> {
+    validate_import_song_ids(&song_ids)?;
+    let name = normalize_name(&name)?;
+    let playlist_id = generated_playlist_id()?;
+    let unique_song_ids = song_ids.iter().cloned().collect::<HashSet<_>>();
+    let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
+    let snapshots = load_playlist_snapshots(&mut transaction, &unique_song_ids, true).await?;
+    if snapshots.len() != unique_song_ids.len() {
+        return Err(LibraryError::invalid_query(
+            "The music library changed after this playlist import was reviewed.",
+        ));
+    }
+    sqlx::query("INSERT INTO playlists (id, name, name_key, kind) VALUES (?, ?, ?, 'manual')")
+        .bind(&playlist_id)
+        .bind(name.display)
+        .bind(name.key)
+        .execute(&mut *transaction)
+        .await
+        .map_err(playlist_conflict)?;
+    insert_playlist_rows(&mut transaction, &playlist_id, 0, &song_ids, &snapshots).await?;
+    let summary = summary_by_id(&mut *transaction, &playlist_id).await?;
+    transaction
+        .commit()
+        .await
+        .map_err(|_| LibraryError::database())?;
+    Ok(summary)
 }
 
 pub(crate) async fn list_playlist_entries(
@@ -1207,6 +1292,33 @@ mod tests {
                 .expect("read duplicated boundary entry"),
                 "two"
             );
+        });
+    }
+
+    #[test]
+    fn imported_playlist_crosses_the_chunk_boundary_with_stable_order() {
+        tauri::async_runtime::block_on(async {
+            let pool = fixture().await;
+            let mut song_ids = vec!["one".to_owned(); MAX_BATCH_SIZE];
+            song_ids.push("two".to_owned());
+
+            let imported = create_imported_playlist(&pool, "Large import".to_owned(), song_ids)
+                .await
+                .expect("import across chunk boundary");
+            assert_eq!(imported.entry_count, (MAX_BATCH_SIZE + 1) as i64);
+
+            let boundary: Vec<String> = sqlx::query_scalar(
+                "SELECT song_id FROM playlist_entries
+                 WHERE playlist_id = ? AND position >= ?
+                 ORDER BY position",
+            )
+            .bind(&imported.id)
+            .bind((MAX_BATCH_SIZE - 1) as i64)
+            .fetch_all(&pool)
+            .await
+            .expect("read imported boundary entries");
+
+            assert_eq!(boundary, vec!["one".to_owned(), "two".to_owned()]);
         });
     }
 
