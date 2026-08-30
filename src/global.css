@@ -2,6 +2,7 @@
 @config "../tailwind.config.js";
 
 :root {
+  --app-accent: #7c93bf;
   --secondary: #3f3f59;
   --navbar-width: 200px;
   --audio-sidebar-width: 320px;
@@ -72,9 +73,22 @@ body {
 }
 
 .app-audio-sidebar {
+  --playback-accent: var(--app-accent);
+  --playback-accent-strong: #a8c1eb;
+  --playback-accent-soft: rgb(124 147 191 / 12%);
+  --playback-accent-border: rgb(124 147 191 / 55%);
+  --playback-control-text: #94a3b8;
+  --playback-control-text-strong: #e2e8f0;
+  --playback-drawer-surface: rgb(20 20 28 / 98%);
+  --playback-focus-ring: #9bbcf2;
+  --playback-range-inactive: #343746;
+  --playback-range-muted: #64748b;
+  --playback-range-thumb-border: #17171f;
+  --playback-row-hover: rgb(124 147 191 / 7%);
   grid-column: 3;
   grid-row: 1;
   visibility: hidden;
+  background: var(--playback-drawer-surface);
 }
 
 .app-audio-sidebar[data-open='true'] {
@@ -82,8 +96,8 @@ body {
 }
 
 .playback-range {
-  --range-active: #fcd34d;
-  --range-inactive: #343746;
+  --range-active: var(--playback-accent);
+  --range-inactive: var(--playback-range-inactive);
   appearance: none;
   height: 18px;
   cursor: pointer;
@@ -92,7 +106,7 @@ body {
 }
 
 .playback-range[data-muted='true'] {
-  --range-active: #64748b;
+  --range-active: var(--playback-range-muted);
 }
 
 .playback-range::-webkit-slider-runnable-track {
@@ -112,7 +126,7 @@ body {
   width: 12px;
   height: 12px;
   margin-top: -4.5px;
-  border: 2px solid #17171f;
+  border: 2px solid var(--playback-range-thumb-border);
   border-radius: 999px;
   background: var(--range-active);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--range-active) 55%, transparent);
@@ -133,13 +147,13 @@ body {
 .playback-range::-moz-range-thumb {
   width: 10px;
   height: 10px;
-  border: 2px solid #17171f;
+  border: 2px solid var(--playback-range-thumb-border);
   border-radius: 999px;
   background: var(--range-active);
 }
 
 .playback-range:focus-visible {
-  outline: 2px solid #fbbf24;
+  outline: 2px solid var(--playback-focus-ring);
   outline-offset: 2px;
 }
 
@@ -150,6 +164,84 @@ body {
 
 .app-audio-sidebar summary::-webkit-details-marker {
   display: none;
+}
+
+.playback-interactive {
+  color: var(--playback-control-text);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.playback-interactive:not(:disabled):hover {
+  background: var(--playback-accent-soft);
+  color: var(--playback-control-text-strong);
+}
+
+.playback-interactive:focus-visible,
+.playback-link:focus-visible,
+.playback-primary-button:focus-visible,
+.playback-upcoming-row:focus-visible {
+  outline: 2px solid var(--playback-focus-ring);
+  outline-offset: 2px;
+}
+
+.playback-interactive:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.playback-link {
+  border-radius: 2px;
+  transition: color 120ms ease;
+}
+
+.playback-link:hover {
+  color: var(--playback-accent-strong);
+}
+
+.playback-mode-button[data-active='true'] {
+  background: var(--playback-accent-soft);
+  color: var(--playback-accent-strong);
+}
+
+.playback-accent-text {
+  color: var(--playback-accent-strong);
+}
+
+.playback-primary-button {
+  color: var(--playback-range-thumb-border);
+  background: var(--playback-accent);
+  box-shadow: 0 0 0 1px var(--playback-accent-border);
+}
+
+.playback-primary-button:hover {
+  background: var(--playback-accent-strong);
+}
+
+.playback-artwork-link {
+  outline: none;
+  box-shadow: 0 0 0 0 var(--playback-accent-border);
+  transition: box-shadow 120ms ease;
+}
+
+.playback-artwork-link:hover {
+  box-shadow: 0 0 0 1px var(--playback-accent-border);
+}
+
+.playback-queue-marker {
+  background: var(--playback-accent);
+}
+
+.playback-upcoming-row {
+  border-radius: 0.25rem;
+  cursor: default;
+  outline: none;
+  transition: background-color 120ms ease;
+}
+
+.playback-upcoming-row:hover {
+  background: var(--playback-row-hover);
 }
 
 @media (max-width: 1050px) {
@@ -185,7 +277,7 @@ body {
   width: 2px;
   margin-right: 1px;
   height: 10px;
-  background: #7c93bf;
+  background: var(--app-accent);
   animation: sound 0ms -800ms linear infinite alternate;
   transition: height 0.8s;
 }
