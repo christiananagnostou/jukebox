@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 import type { Song } from '~/App'
-import type { PlaylistMutation, PlaylistSummary } from '~/services/playlist-client'
+import { playlistErrorMessage, type PlaylistMutation, type PlaylistSummary } from '~/services/playlist-client'
 
 export type SmartMatchMode = 'all' | 'any'
 export type SmartTextOperator = 'is' | 'is_not' | 'contains' | 'does_not_contain' | 'starts_with' | 'ends_with'
@@ -76,6 +76,19 @@ export interface SmartPlaylistPage {
   total: number
 }
 
+export interface SmartPlaylistCatalogState {
+  error: string
+  pages: Record<string, SmartPlaylistItem[]>
+  revision: string
+  status: 'loading' | 'ready' | 'error'
+  total: number
+}
+
+export const SMART_PLAYLIST_PAGE_SIZE = 100
+export const MAX_RETAINED_SMART_PLAYLIST_PAGES = 5
+
+export type SmartPlaylistPageFetcher = (playlistId: string, query: SmartPlaylistQuery) => Promise<SmartPlaylistPage>
+
 export function createSmartPlaylist(name: string, definition: SmartPlaylistDefinition): Promise<SmartPlaylist> {
   return invoke('create_smart_playlist', { definition, name })
 }
@@ -98,4 +111,124 @@ export function deleteSmartPlaylist(playlistId: string): Promise<PlaylistMutatio
 
 export function querySmartPlaylist(playlistId: string, query: SmartPlaylistQuery): Promise<SmartPlaylistPage> {
   return invoke('query_smart_playlist', { playlistId, query })
+}
+
+export class SmartPlaylistPager {
+  private generation = 0
+  private lastEndPage = 0
+  private lastStartPage = 0
+  private playlistId = ''
+  private queue = Promise.resolve()
+
+  constructor(
+    private readonly state: SmartPlaylistCatalogState,
+    private readonly fetchPage: SmartPlaylistPageFetcher = querySmartPlaylist
+  ) {}
+
+  reset(playlistId: string): Promise<void> {
+    if (playlistId === this.playlistId && this.state.status !== 'error') return this.queue
+    this.playlistId = playlistId
+    this.lastStartPage = 0
+    this.lastEndPage = 0
+    return this.enqueueRange(0, 0, this.beginQuery())
+  }
+
+  reload(): Promise<void> {
+    if (!this.playlistId) return Promise.resolve()
+    return this.enqueueRange(this.lastStartPage, this.lastEndPage, this.beginQuery())
+  }
+
+  clear(): void {
+    this.playlistId = ''
+    this.lastStartPage = 0
+    this.lastEndPage = 0
+    this.beginQuery()
+  }
+
+  ensureRange(startIndex: number, endIndex: number): Promise<void> {
+    if (this.state.status === 'error' || endIndex < 0) return Promise.resolve()
+    const startPage = Math.max(0, Math.floor(startIndex / SMART_PLAYLIST_PAGE_SIZE))
+    const endPage = Math.max(startPage, Math.floor(endIndex / SMART_PLAYLIST_PAGE_SIZE))
+    this.lastStartPage = startPage
+    this.lastEndPage = endPage
+    return this.enqueueRange(startPage, endPage, this.generation)
+  }
+
+  dispose(): void {
+    this.generation += 1
+  }
+
+  private enqueueRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    this.queue = this.queue.then(() => this.loadRange(startPage, endPage, generation))
+    return this.queue
+  }
+
+  private async loadRange(startPage: number, endPage: number, generation: number): Promise<void> {
+    try {
+      for (let pageIndex = startPage; pageIndex <= endPage; pageIndex += 1) {
+        if (generation !== this.generation || !this.playlistId) return
+        if (this.state.pages[String(pageIndex)]) continue
+        const page = await this.fetchPage(this.playlistId, {
+          limit: SMART_PLAYLIST_PAGE_SIZE,
+          offset: pageIndex * SMART_PLAYLIST_PAGE_SIZE,
+        })
+        if (generation !== this.generation) return
+        if (this.state.revision && page.revision !== this.state.revision) {
+          await this.loadRange(0, 0, this.beginQuery())
+          return
+        }
+        this.state.pages[String(pageIndex)] = page.items
+        this.state.revision = page.revision
+        this.state.total = page.total
+      }
+      if (generation !== this.generation) return
+      this.evictDistantPages(startPage, endPage)
+      this.state.error = ''
+      this.state.status = 'ready'
+    } catch (error) {
+      if (generation !== this.generation) return
+      this.state.error = playlistErrorMessage(error, 'Jukebox could not load that smart playlist.')
+      this.state.status = 'error'
+    }
+  }
+
+  private beginQuery(): number {
+    this.generation += 1
+    this.state.error = ''
+    this.state.pages = {}
+    this.state.revision = ''
+    this.state.status = 'loading'
+    this.state.total = 0
+    return this.generation
+  }
+
+  private evictDistantPages(startPage: number, endPage: number): void {
+    const center = (startPage + endPage) / 2
+    const retained = Object.keys(this.state.pages)
+      .map(Number)
+      .sort((left, right) => Math.abs(left - center) - Math.abs(right - center))
+      .slice(0, MAX_RETAINED_SMART_PLAYLIST_PAGES)
+    const keep = new Set(retained.map(String))
+    for (const pageIndex of Object.keys(this.state.pages)) {
+      if (!keep.has(pageIndex)) delete this.state.pages[pageIndex]
+    }
+  }
+}
+
+export function smartPlaylistItemAt(state: SmartPlaylistCatalogState, index: number): SmartPlaylistItem | undefined {
+  const pageIndex = Math.floor(index / SMART_PLAYLIST_PAGE_SIZE)
+  return state.pages[String(pageIndex)]?.[index % SMART_PLAYLIST_PAGE_SIZE]
+}
+
+export function smartPlaylistPlaybackAt(
+  state: SmartPlaylistCatalogState,
+  index: number
+): { playlist: Song[]; playlistIndex: number; song: Song } | undefined {
+  const page = state.pages[String(Math.floor(index / SMART_PLAYLIST_PAGE_SIZE))]
+  const itemIndex = index % SMART_PLAYLIST_PAGE_SIZE
+  const item = page?.[itemIndex]
+  if (!item || item.availability !== 'available') return undefined
+  const playlist = page.filter(({ availability }) => availability === 'available').map(({ track }) => track)
+  const playlistIndex = page.slice(0, itemIndex).filter(({ availability }) => availability === 'available').length
+  return { playlist, playlistIndex, song: item.track }
 }

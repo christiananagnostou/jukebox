@@ -13,6 +13,7 @@ import type { DocumentHead } from '@builder.io/qwik-city'
 
 import type { ListItemStyle } from '~/App'
 import BuiltInCollectionView from '~/components/playlists/BuiltInCollectionView'
+import SmartPlaylistView from '~/components/playlists/SmartPlaylistView'
 import { BUILT_IN_COLLECTIONS } from '~/components/playlists/built-in-collections'
 import VirtualList from '~/components/Shared/VirtualList'
 import { type BuiltInCollectionKind, resolvePlaybackTracks } from '~/services/library-client'
@@ -21,6 +22,7 @@ import {
   createPlaylist,
   deletePlaylist,
   duplicatePlaylist,
+  isManualPlaylistKind,
   playlistAt,
   type PlaylistCatalogState,
   type PlaylistEntry,
@@ -67,7 +69,9 @@ export default component$(() => {
     renameName: '',
     selectedBuiltIn: '' as '' | BuiltInCollectionKind,
     selectedId: '',
+    selectedKind: '' as '' | PlaylistSummary['kind'],
     selectedName: '',
+    smartCreating: false,
   })
 
   useVisibleTask$(({ cleanup }) => {
@@ -88,12 +92,14 @@ export default component$(() => {
   useTask$(({ track }) => {
     const selectedId = track(() => state.selectedId)
     const selectedBuiltIn = track(() => state.selectedBuiltIn)
+    const selectedKind = track(() => state.selectedKind)
+    const smartCreating = track(() => state.smartCreating)
     state.confirmDelete = false
     state.duplicating = false
     state.editing = false
-    if (selectedBuiltIn) {
+    if (selectedBuiltIn || smartCreating || selectedKind === 'smart') {
       entryPager.value?.clear()
-    } else if (selectedId) {
+    } else if (selectedId && isManualPlaylistKind(selectedKind)) {
       void entryPager.value?.reset(selectedId)
     } else {
       entryPager.value?.clear()
@@ -105,7 +111,9 @@ export default component$(() => {
     state.notice = ''
     state.selectedBuiltIn = ''
     state.duplicating = false
+    state.smartCreating = false
     state.selectedId = playlist.id
+    state.selectedKind = playlist.kind
     state.selectedName = playlist.name
     state.renameName = playlist.name
   })
@@ -115,8 +123,46 @@ export default component$(() => {
     state.notice = ''
     state.selectedBuiltIn = kind
     state.duplicating = false
+    state.smartCreating = false
     state.selectedId = ''
+    state.selectedKind = ''
     state.selectedName = ''
+  })
+
+  const beginSmartPlaylist = $(() => {
+    if (state.action) return
+    state.error = ''
+    state.notice = ''
+    state.selectedBuiltIn = ''
+    state.selectedId = ''
+    state.selectedKind = ''
+    state.selectedName = ''
+    state.smartCreating = true
+  })
+
+  const smartPlaylistCreated = $(async (playlist: PlaylistSummary) => {
+    state.smartCreating = false
+    state.selectedBuiltIn = ''
+    state.selectedId = playlist.id
+    state.selectedKind = 'smart'
+    state.selectedName = playlist.name
+    state.notice = `Created ${playlist.name}.`
+    await playlistPager.value?.reload()
+  })
+
+  const smartPlaylistUpdated = $(async (playlist: PlaylistSummary) => {
+    state.selectedName = playlist.name
+    state.notice = `Updated ${playlist.name}.`
+    await playlistPager.value?.reload()
+  })
+
+  const smartPlaylistDeleted = $(async () => {
+    const deletedName = state.selectedName
+    state.selectedId = ''
+    state.selectedKind = ''
+    state.selectedName = ''
+    state.notice = `Deleted ${deletedName}.`
+    await playlistPager.value?.reload()
   })
 
   const createPlaylistRecord = $(async () => {
@@ -129,7 +175,9 @@ export default component$(() => {
       const created = await createPlaylist(name)
       state.createName = ''
       state.selectedBuiltIn = ''
+      state.smartCreating = false
       state.selectedId = created.id
+      state.selectedKind = 'manual'
       state.selectedName = created.name
       state.renameName = created.name
       state.notice = `Created ${created.name}.`
@@ -143,7 +191,7 @@ export default component$(() => {
 
   const renamePlaylistRecord = $(async () => {
     const name = state.renameName.trim()
-    if (!state.selectedId || !name || state.action) return
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || !name || state.action) return
     state.action = 'rename'
     state.error = ''
     state.notice = ''
@@ -162,7 +210,7 @@ export default component$(() => {
   })
 
   const deletePlaylistRecord = $(async () => {
-    if (!state.selectedId || state.action !== '') return
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || state.action !== '') return
     state.action = 'delete'
     state.error = ''
     state.notice = ''
@@ -170,6 +218,7 @@ export default component$(() => {
       const deletedName = state.selectedName
       await deletePlaylist(state.selectedId)
       state.selectedId = ''
+      state.selectedKind = ''
       state.selectedName = ''
       state.renameName = ''
       state.confirmDelete = false
@@ -184,7 +233,7 @@ export default component$(() => {
 
   const duplicatePlaylistRecord = $(async () => {
     const name = state.duplicateName.trim()
-    if (!state.selectedId || !name || state.action) return
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || !name || state.action) return
     state.action = 'duplicate'
     state.error = ''
     state.notice = ''
@@ -193,6 +242,7 @@ export default component$(() => {
       state.duplicateName = ''
       state.duplicating = false
       state.selectedId = duplicated.id
+      state.selectedKind = 'manual'
       state.selectedName = duplicated.name
       state.renameName = duplicated.name
       state.notice = `Created ${duplicated.name}.`
@@ -206,7 +256,7 @@ export default component$(() => {
 
   const addCurrentTrack = $(async () => {
     const song = store.player.currSong
-    if (!state.selectedId || !song || state.action) return
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || !song || state.action) return
     state.action = 'add'
     state.error = ''
     state.notice = ''
@@ -222,7 +272,7 @@ export default component$(() => {
   })
 
   const removeEntry = $(async (entry: PlaylistEntry) => {
-    if (!state.selectedId || state.action) return
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || state.action) return
     state.action = `remove:${entry.id}`
     state.error = ''
     state.notice = ''
@@ -238,7 +288,7 @@ export default component$(() => {
   })
 
   const moveEntry = $(async (entry: PlaylistEntry, direction: PlaylistMoveDirection) => {
-    if (!state.selectedId || state.action) return
+    if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || state.action) return
     state.action = `move:${entry.id}`
     state.error = ''
     state.notice = ''
@@ -256,7 +306,7 @@ export default component$(() => {
   })
 
   const playEntry = $(async (index: number) => {
-    if (state.action) return
+    if (!isManualPlaylistKind(state.selectedKind) || state.action) return
     const playback = playlistPagePlaybackAt(entries, index)
     const entry = playlistEntryAt(entries, index)
     if (!playback || !entry) return
@@ -314,7 +364,10 @@ export default component$(() => {
               Create
             </button>
           </form>
-          {!state.selectedId && !state.selectedBuiltIn && (
+          <button class={`${BUTTON_CLASS} mt-2 w-full`} type="button" onClick$={beginSmartPlaylist} disabled={busy}>
+            New smart playlist
+          </button>
+          {!state.selectedId && !state.selectedBuiltIn && !state.smartCreating && (
             <div class="mt-2 min-h-4 text-xs" aria-live="polite">
               {state.error ? (
                 <span role="alert" class="text-red-300">
@@ -377,7 +430,9 @@ export default component$(() => {
                   aria-current={selected ? 'page' : undefined}
                 >
                   <span class="truncate">{playlist.name}</span>
-                  <span class="text-xs tabular-nums text-slate-500">{playlist.entryCount}</span>
+                  <span class="text-xs tabular-nums text-slate-500">
+                    {playlist.kind === 'smart' ? 'Smart' : playlist.entryCount}
+                  </span>
                 </button>
               )
             })}
@@ -388,6 +443,12 @@ export default component$(() => {
       <div class="flex min-h-0 min-w-0 flex-col">
         {state.selectedBuiltIn ? (
           <BuiltInCollectionView kind={state.selectedBuiltIn} />
+        ) : state.smartCreating ? (
+          <SmartPlaylistView
+            onCreated$={smartPlaylistCreated}
+            onUpdated$={smartPlaylistUpdated}
+            onDeleted$={smartPlaylistDeleted}
+          />
         ) : !state.selectedId ? (
           <div class="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400">
             <div>
@@ -395,6 +456,13 @@ export default component$(() => {
               <p class="mt-2">Choose one from the list or create a new collection.</p>
             </div>
           </div>
+        ) : state.selectedKind === 'smart' ? (
+          <SmartPlaylistView
+            playlistId={state.selectedId}
+            onCreated$={smartPlaylistCreated}
+            onUpdated$={smartPlaylistUpdated}
+            onDeleted$={smartPlaylistDeleted}
+          />
         ) : (
           <>
             <header class="border-b border-gray-700 p-4">
