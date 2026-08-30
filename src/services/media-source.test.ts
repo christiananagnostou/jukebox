@@ -1,31 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const convertFileSrcMock = vi.hoisted(() => vi.fn())
 const invokeMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: convertFileSrcMock, invoke: invokeMock }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
-import { authorizePlaybackSource } from './media-source'
+import { authorizePlaybackSource, PlaybackSourceAccessError } from './media-source'
 
 describe('authorizePlaybackSource', () => {
   beforeEach(() => {
-    convertFileSrcMock.mockReset()
     invokeMock.mockReset()
   })
 
-  it('converts only the path returned by exact-track native authorization', async () => {
-    invokeMock.mockResolvedValue('/approved/library/track.flac')
-    convertFileSrcMock.mockReturnValue('asset://localhost/approved/track.flac')
+  it('returns only the opaque URL from exact-track native authorization', async () => {
+    invokeMock.mockResolvedValue('http://127.0.0.1:49152/media/token/track-one')
 
-    await expect(authorizePlaybackSource({ id: 'track-one' })).resolves.toBe('asset://localhost/approved/track.flac')
+    await expect(authorizePlaybackSource({ id: 'track-one' })).resolves.toBe(
+      'http://127.0.0.1:49152/media/token/track-one'
+    )
     expect(invokeMock).toHaveBeenCalledWith('authorize_playback_asset', { trackId: 'track-one' })
-    expect(convertFileSrcMock).toHaveBeenCalledWith('/approved/library/track.flac')
   })
 
   it('does not convert a path when native authorization fails', async () => {
     invokeMock.mockRejectedValue(new Error('unavailable'))
 
     await expect(authorizePlaybackSource({ id: 'track-one' })).rejects.toThrow('unavailable')
-    expect(convertFileSrcMock).not.toHaveBeenCalled()
+  })
+
+  it('classifies the path-free native folder access error', async () => {
+    invokeMock.mockRejectedValue('Music folder access is required. Reconnect the folder in Settings.')
+
+    await expect(authorizePlaybackSource({ id: 'track-one' })).rejects.toBeInstanceOf(PlaybackSourceAccessError)
   })
 })

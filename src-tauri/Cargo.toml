@@ -1,11 +1,11 @@
 [package]
-name = "app"
+name = "jukebox"
 version = "0.1.0"
-description = "Jukebox"
-authors = ["you"]
-license = ""
-repository = ""
-default-run = "app"
+description = "A fast, local-first desktop music player"
+authors = ["Christian Anagnostou"]
+license = "GPL-3.0-only"
+repository = "https://github.com/christiananagnostou/jukebox"
+default-run = "jukebox"
 edition = "2021"
 rust-version = "1.93"
 
@@ -18,12 +18,12 @@ tauri-build = { version = "2", features = [] }
 axum = "0.8.9"
 arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
 base64 = "0.22.1"
+getrandom = "0.3.4"
 serde_json = "1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["macros", "migrate", "runtime-tokio", "sqlite"] }
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
 symphonia = { version = "0.5.5", features = ["all"] }
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-dialog = "2"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "net", "process", "sync", "time"] }
 tokio-util = { version = "0.7.19", features = ["io"] }

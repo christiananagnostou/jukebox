@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { Song, Store } from '~/App'
 import type { AudioTransport, AudioTransportEvent } from '~/services/audio-transport'
+import { PlaybackSourceAccessError } from '~/services/media-source'
 import type {
   PlaybackBridge,
   PlaybackCommand,
@@ -11,6 +12,7 @@ import type {
 import {
   bindPlaybackEvents,
   createPlaybackController,
+  PLAYBACK_ACCESS_ERROR_MESSAGE,
   PLAYBACK_ERROR_MESSAGE,
   PLAYBACK_PERSISTENCE_WARNING_MESSAGE,
   type PlaybackController,
@@ -315,7 +317,7 @@ const flushPromises = async () => {
 }
 
 describe('native-backed playback controller', () => {
-  it('hydrates a restored context and queue without autoplay', async () => {
+  it('hydrates restored metadata without opening media until playback is requested', async () => {
     const snapshot = emptySnapshot()
     snapshot.context = { cursor: 1, order: [0, 1], trackIds: ['one', 'two'] }
     snapshot.current = {
@@ -353,9 +355,74 @@ describe('native-backed playback controller', () => {
     expect(store.player.currSong?.id).toBe('two')
     expect(store.player.currentTime).toBe(42)
     expect(store.player.isPaused).toBe(true)
+    expect(transport.loadedSongId).toBeUndefined()
+    expect(transport.currentTime).toBe(0)
+    expect(transport.playCalls).toBe(0)
+
+    await controller.resumeSong()
+
     expect(transport.loadedSongId).toBe('two')
     expect(transport.currentTime).toBe(42)
-    expect(transport.playCalls).toBe(0)
+    expect(transport.playCalls).toBe(1)
+    expect(store.player.isPaused).toBe(false)
+  })
+
+  it('reports a generic unavailable error when a restored source cannot be authorized', async () => {
+    const snapshot = emptySnapshot()
+    snapshot.context = { cursor: 0, order: [0], trackIds: ['missing'] }
+    snapshot.current = {
+      contextIndex: 0,
+      queueEntryId: null,
+      resumeContextIndex: null,
+      trackId: 'missing',
+    }
+    snapshot.status = 'paused'
+    const store = playbackStore()
+    const bridge = new FakePlaybackBridge(snapshot)
+    const controller = createPlaybackController(
+      store,
+      new FakeAudioTransport(),
+      async () => {
+        throw new Error('/private/path/missing.flac')
+      },
+      bridge,
+      undefined,
+      async (trackIds) => trackIds.map(song)
+    )
+
+    await controller.initialize()
+    await expect(controller.resumeSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
+
+    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
+    expect(bridge.commands.at(-1)).toEqual({ type: 'reportError', code: 'unavailable', recoverable: true })
+  })
+
+  it('gives an actionable error when macOS folder access must be reconnected', async () => {
+    const snapshot = emptySnapshot()
+    snapshot.context = { cursor: 0, order: [0], trackIds: ['protected'] }
+    snapshot.current = {
+      contextIndex: 0,
+      queueEntryId: null,
+      resumeContextIndex: null,
+      trackId: 'protected',
+    }
+    snapshot.status = 'paused'
+    const store = playbackStore()
+    const controller = createPlaybackController(
+      store,
+      new FakeAudioTransport(),
+      async () => {
+        throw new PlaybackSourceAccessError()
+      },
+      new FakePlaybackBridge(snapshot),
+      undefined,
+      async (trackIds) => trackIds.map(song)
+    )
+
+    await controller.initialize()
+    await expect(controller.resumeSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
+
+    expect(store.player.error).toBe(PLAYBACK_ACCESS_ERROR_MESSAGE)
   })
 
   it('surfaces a generic warning when playback durability is degraded', async () => {

@@ -1,83 +1,31 @@
-use tauri_plugin_sql::{Migration, MigrationKind};
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 9;
 
-pub const LIBRARY_DB_URL: &str = "sqlite:library.db";
-
+#[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
+#[cfg(test)]
 pub(crate) const CATALOG_QUERY_SCHEMA: &str = include_str!("../migrations/0002_catalog_query.sql");
+#[cfg(test)]
 pub(crate) const LIBRARY_SCAN_SCHEMA: &str =
     include_str!("../migrations/0003_library_scan_state.sql");
+#[cfg(test)]
 pub(crate) const LIBRARY_DISCOVERY_SCHEMA: &str =
     include_str!("../migrations/0004_library_scan_discovery.sql");
+#[cfg(test)]
 pub(crate) const LIBRARY_METADATA_SCHEMA: &str =
     include_str!("../migrations/0005_library_scan_metadata.sql");
+#[cfg(test)]
 pub(crate) const LIBRARY_RECONCILIATION_SCHEMA: &str =
     include_str!("../migrations/0006_library_scan_reconciliation.sql");
+#[cfg(test)]
 pub(crate) const LIBRARY_REFRESH_SCHEMA: &str =
     include_str!("../migrations/0007_library_refresh_runs.sql");
+#[cfg(test)]
 pub(crate) const LIBRARY_STORAGE_SCHEMA: &str =
     include_str!("../migrations/0008_library_storage_nodes.sql");
+#[cfg(test)]
 pub(crate) const PLAYBACK_SESSION_SCHEMA: &str =
     include_str!("../migrations/0009_playback_session.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
-
-pub fn migrations() -> Vec<Migration> {
-    vec![
-        Migration {
-            version: 1,
-            description: "create initial songs table",
-            sql: INITIAL_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 2,
-            description: "add indexed catalog queries",
-            sql: CATALOG_QUERY_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 3,
-            description: "add native library scan state",
-            sql: LIBRARY_SCAN_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 4,
-            description: "add bounded scan discovery staging",
-            sql: LIBRARY_DISCOVERY_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 5,
-            description: "add bounded scan metadata staging",
-            sql: LIBRARY_METADATA_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 6,
-            description: "add atomic scan reconciliation support",
-            sql: LIBRARY_RECONCILIATION_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 7,
-            description: "identify orchestrated library refreshes",
-            sql: LIBRARY_REFRESH_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 8,
-            description: "add indexed native storage nodes",
-            sql: LIBRARY_STORAGE_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 9,
-            description: "persist the committed playback session",
-            sql: PLAYBACK_SESSION_SCHEMA,
-            kind: MigrationKind::Up,
-        },
-    ]
-}
 
 #[cfg(test)]
 mod tests {

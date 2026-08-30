@@ -19,7 +19,7 @@ use crate::metadata::Metadata;
 use crate::playback::{
     dispatch_playback_command, get_playback_snapshot, observe_playback_position, PlaybackState,
 };
-use crate::playback_assets::authorize_playback_asset;
+use crate::playback_assets::{authorize_playback_asset, PlaybackAssetServer};
 use crate::remote_access::{
     get_remote_access_status, set_remote_access_enabled, RemoteAccessState,
 };
@@ -75,10 +75,7 @@ fn with_main_window<F: FnOnce(&tauri::WebviewWindow)>(app: &tauri::AppHandle, f:
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
-            let schema_version = database::migrations()
-                .last()
-                .map(|migration| migration.version)
-                .unwrap_or_default();
+            let schema_version = database::LATEST_SCHEMA_VERSION;
             let diagnostics = DiagnosticsState::new(app.handle(), schema_version);
             diagnostics.record_info(
                 "application",
@@ -105,6 +102,12 @@ fn main() {
                 std::io::Error::other(error)
             })?;
             app.manage(library.clone());
+            let playback_server = tauri::async_runtime::block_on(PlaybackAssetServer::start(
+                library.pool(),
+                diagnostics.clone(),
+            ))
+            .map_err(std::io::Error::other)?;
+            app.manage(playback_server);
             app.manage(PlaybackState::new(library.pool()));
             let watcher_app = app.handle().clone();
             let watcher_diagnostics = diagnostics.clone();
@@ -232,11 +235,6 @@ fn main() {
             stop_tailscale_serve
         ])
         .plugin(tauri_plugin_dialog::init())
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations(database::LIBRARY_DB_URL, database::migrations())
-                .build(),
-        )
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
