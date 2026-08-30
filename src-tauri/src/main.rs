@@ -11,11 +11,12 @@ use crate::import_paths::{classify_import_paths, pick_import_directories};
 use crate::library::{
     add_library_root, add_playlist_entries, apply_library_reconciliation,
     cancel_library_reconciliation, cancel_library_refresh, cancel_library_scan, create_playlist,
-    delete_playlist, get_library_reconciliation, get_library_refresh, get_library_scan,
-    list_library_refreshes, list_library_roots, list_playlist_entries, list_playlists,
-    prepare_library_scan, query_albums, query_artists, query_built_in_collection, query_facets,
-    query_storage, query_tracks, remove_playlist_entries, rename_playlist, resolve_playback_tracks,
-    set_library_root_enabled, start_library_refresh, start_library_scan, LibraryState,
+    delete_playlist, duplicate_playlist, get_library_reconciliation, get_library_refresh,
+    get_library_scan, list_library_refreshes, list_library_roots, list_playlist_entries,
+    list_playlists, move_playlist_entry, prepare_library_scan, query_albums, query_artists,
+    query_built_in_collection, query_facets, query_storage, query_tracks, remove_playlist_entries,
+    rename_playlist, resolve_playback_tracks, set_library_root_enabled, start_library_refresh,
+    start_library_scan, LibraryState,
 };
 use crate::metadata::Metadata;
 use crate::playback::{
@@ -206,9 +207,11 @@ fn main() {
             list_playlists,
             rename_playlist,
             delete_playlist,
+            duplicate_playlist,
             add_playlist_entries,
             list_playlist_entries,
             remove_playlist_entries,
+            move_playlist_entry,
             resolve_playback_tracks,
             query_artists,
             query_albums,

@@ -9,6 +9,7 @@ const ID_RANDOM_BYTES: usize = 16;
 const MAX_BATCH_SIZE: usize = 500;
 const MAX_NAME_CHARACTERS: usize = 200;
 const MAX_OFFSET: u32 = 100_000;
+const MAX_PLAYLIST_ENTRIES: i64 = 100_000;
 const MAX_SONG_ID_BYTES: usize = 128;
 const MAX_SNAPSHOT_CHARACTERS: usize = 1024;
 const PLAYLIST_ID_PREFIX: &str = "playlist_";
@@ -89,6 +90,13 @@ pub struct PlaylistEntryPage {
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistMutation {
     pub affected: u32,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlaylistMoveDirection {
+    Up,
+    Down,
 }
 
 fn normalize_page(limit: u32, offset: u32) -> Result<(u32, u32), LibraryError> {
@@ -192,6 +200,17 @@ fn validate_entry_ids(entry_ids: &[String]) -> Result<(), LibraryError> {
     {
         return Err(LibraryError::invalid_query(
             "Playlist entry batches must contain bounded opaque identifiers.",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_playlist_capacity(existing: i64, additions: usize) -> Result<(), LibraryError> {
+    if !(0..=MAX_PLAYLIST_ENTRIES).contains(&existing)
+        || existing.saturating_add(additions as i64) > MAX_PLAYLIST_ENTRIES
+    {
+        return Err(LibraryError::invalid_query(
+            "A playlist can contain at most 100,000 entries.",
         ));
     }
     Ok(())
@@ -368,6 +387,90 @@ pub(crate) async fn delete_playlist(
     Ok(PlaylistMutation { affected: 1 })
 }
 
+pub(crate) async fn duplicate_playlist(
+    pool: &SqlitePool,
+    playlist_id: String,
+    name: String,
+) -> Result<PlaylistSummary, LibraryError> {
+    validate_playlist_id(&playlist_id)?;
+    let name = normalize_name(&name)?;
+    let duplicated_id = generated_id(PLAYLIST_ID_PREFIX)?;
+    let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
+    ensure_playlist(&mut *transaction, &playlist_id).await?;
+    let entry_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM playlist_entries WHERE playlist_id = ?")
+            .bind(&playlist_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+    ensure_playlist_capacity(entry_count, 0)?;
+
+    sqlx::query("INSERT INTO playlists (id, name, name_key, kind) VALUES (?, ?, ?, 'manual')")
+        .bind(&duplicated_id)
+        .bind(name.display)
+        .bind(name.key)
+        .execute(&mut *transaction)
+        .await
+        .map_err(playlist_conflict)?;
+
+    let mut after_position = -1_i64;
+    loop {
+        let rows = sqlx::query_as::<_, (String, i64, String, String, String, String)>(
+            "SELECT song_id, position, title_snapshot, artist_snapshot, album_snapshot, added_at
+             FROM playlist_entries
+             WHERE playlist_id = ? AND position > ?
+             ORDER BY position, id
+             LIMIT ?",
+        )
+        .bind(&playlist_id)
+        .bind(after_position)
+        .bind(MAX_BATCH_SIZE as i64)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(|_| LibraryError::database())?;
+        if rows.is_empty() {
+            break;
+        }
+        after_position = rows.last().map(|row| row.1).unwrap_or(after_position);
+        let copies = rows
+            .into_iter()
+            .map(|row| generated_id(ENTRY_ID_PREFIX).map(|entry_id| (entry_id, row)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut insert = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO playlist_entries (
+               id, playlist_id, song_id, position, title_snapshot, artist_snapshot,
+               album_snapshot, added_at
+             ) ",
+        );
+        insert.push_values(
+            copies,
+            |mut values, (entry_id, (song_id, position, title, artist, album, added_at))| {
+                values
+                    .push_bind(entry_id)
+                    .push_bind(&duplicated_id)
+                    .push_bind(song_id)
+                    .push_bind(position)
+                    .push_bind(title)
+                    .push_bind(artist)
+                    .push_bind(album)
+                    .push_bind(added_at);
+            },
+        );
+        insert
+            .build()
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+    }
+
+    let duplicated = summary_by_id(&mut *transaction, &duplicated_id).await?;
+    transaction
+        .commit()
+        .await
+        .map_err(|_| LibraryError::database())?;
+    Ok(duplicated)
+}
+
 async fn ensure_playlist(
     executor: impl sqlx::Executor<'_, Database = Sqlite>,
     playlist_id: &str,
@@ -392,12 +495,19 @@ pub(crate) async fn add_playlist_entries(
 ) -> Result<PlaylistMutation, LibraryError> {
     validate_playlist_id(&playlist_id)?;
     validate_song_ids(&song_ids)?;
-    let entry_ids = (0..song_ids.len())
-        .map(|_| generated_id(ENTRY_ID_PREFIX))
-        .collect::<Result<Vec<_>, _>>()?;
     let unique_song_ids = song_ids.iter().cloned().collect::<HashSet<_>>();
     let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
     ensure_playlist(&mut *transaction, &playlist_id).await?;
+    let existing_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM playlist_entries WHERE playlist_id = ?")
+            .bind(&playlist_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|_| LibraryError::database())?;
+    ensure_playlist_capacity(existing_count, song_ids.len())?;
+    let entry_ids = (0..song_ids.len())
+        .map(|_| generated_id(ENTRY_ID_PREFIX))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut snapshots = HashMap::with_capacity(unique_song_ids.len());
     for chunk in unique_song_ids
@@ -571,6 +681,100 @@ pub(crate) async fn remove_playlist_entries(
         .await
         .map_err(|_| LibraryError::database())?;
     Ok(PlaylistMutation { affected })
+}
+
+pub(crate) async fn move_playlist_entry(
+    pool: &SqlitePool,
+    playlist_id: String,
+    entry_id: String,
+    direction: PlaylistMoveDirection,
+) -> Result<PlaylistMutation, LibraryError> {
+    validate_playlist_id(&playlist_id)?;
+    validate_entry_ids(std::slice::from_ref(&entry_id))?;
+    let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
+    ensure_playlist(&mut *transaction, &playlist_id).await?;
+    let position = sqlx::query_scalar::<_, i64>(
+        "SELECT position FROM playlist_entries WHERE playlist_id = ? AND id = ?",
+    )
+    .bind(&playlist_id)
+    .bind(&entry_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(|_| LibraryError::database())?
+    .ok_or_else(|| LibraryError::invalid_query("That playlist entry does not exist."))?;
+    let adjacent_position = match direction {
+        PlaylistMoveDirection::Up => sqlx::query_scalar::<_, i64>(
+            "SELECT position FROM playlist_entries
+             WHERE playlist_id = ? AND position < ?
+             ORDER BY position DESC LIMIT 1",
+        ),
+        PlaylistMoveDirection::Down => sqlx::query_scalar::<_, i64>(
+            "SELECT position FROM playlist_entries
+             WHERE playlist_id = ? AND position > ?
+             ORDER BY position LIMIT 1",
+        ),
+    }
+    .bind(&playlist_id)
+    .bind(position)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(|_| LibraryError::database())?;
+    let Some(adjacent_position) = adjacent_position else {
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LibraryError::database())?;
+        return Ok(PlaylistMutation { affected: 0 });
+    };
+    let maximum_position = sqlx::query_scalar::<_, Option<i64>>(
+        "SELECT MAX(position) FROM playlist_entries WHERE playlist_id = ?",
+    )
+    .bind(&playlist_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(|_| LibraryError::database())?
+    .unwrap_or(0);
+    let temporary_position = maximum_position
+        .checked_add(1)
+        .ok_or_else(|| LibraryError::invalid_query("Playlist positions are out of range."))?;
+
+    sqlx::query("UPDATE playlist_entries SET position = ? WHERE playlist_id = ? AND id = ?")
+        .bind(temporary_position)
+        .bind(&playlist_id)
+        .bind(&entry_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LibraryError::database())?;
+    sqlx::query(
+        "UPDATE playlist_entries SET position = ?
+         WHERE playlist_id = ? AND position = ?",
+    )
+    .bind(position)
+    .bind(&playlist_id)
+    .bind(adjacent_position)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| LibraryError::database())?;
+    sqlx::query("UPDATE playlist_entries SET position = ? WHERE playlist_id = ? AND id = ?")
+        .bind(adjacent_position)
+        .bind(&playlist_id)
+        .bind(&entry_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LibraryError::database())?;
+    sqlx::query(
+        "UPDATE playlists SET updated_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id = ?",
+    )
+    .bind(&playlist_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| LibraryError::database())?;
+    transaction
+        .commit()
+        .await
+        .map_err(|_| LibraryError::database())?;
+    Ok(PlaylistMutation { affected: 1 })
 }
 
 #[cfg(test)]
@@ -753,6 +957,270 @@ mod tests {
                     .expect("remove one duplicate entry");
             assert_eq!(removed.affected, 1);
         });
+    }
+
+    #[test]
+    fn playlist_duplication_preserves_order_duplicates_and_missing_snapshots_atomically() {
+        tauri::async_runtime::block_on(async {
+            let pool = fixture().await;
+            let source = create_playlist(&pool, "Source".to_owned())
+                .await
+                .expect("create source playlist");
+            add_playlist_entries(
+                &pool,
+                source.id.clone(),
+                vec!["one".to_owned(), "one".to_owned(), "two".to_owned()],
+            )
+            .await
+            .expect("populate source playlist");
+            sqlx::query("DELETE FROM songs WHERE id = 'one'")
+                .execute(&pool)
+                .await
+                .expect("make duplicate tracks missing");
+            let source_entries =
+                list_playlist_entries(&pool, source.id.clone(), PlaylistEntryQuery::default())
+                    .await
+                    .expect("read source entries");
+
+            let duplicated = duplicate_playlist(&pool, source.id.clone(), "Source copy".to_owned())
+                .await
+                .expect("duplicate playlist");
+            assert_ne!(duplicated.id, source.id);
+            assert_eq!(duplicated.entry_count, 3);
+            let copied_entries =
+                list_playlist_entries(&pool, duplicated.id.clone(), PlaylistEntryQuery::default())
+                    .await
+                    .expect("read duplicated entries");
+            assert_eq!(
+                copied_entries
+                    .items
+                    .iter()
+                    .map(|entry| (
+                        &entry.song_id,
+                        entry.position,
+                        &entry.title,
+                        &entry.availability,
+                        &entry.added_at
+                    ))
+                    .collect::<Vec<_>>(),
+                source_entries
+                    .items
+                    .iter()
+                    .map(|entry| (
+                        &entry.song_id,
+                        entry.position,
+                        &entry.title,
+                        &entry.availability,
+                        &entry.added_at
+                    ))
+                    .collect::<Vec<_>>()
+            );
+            assert!(copied_entries
+                .items
+                .iter()
+                .zip(&source_entries.items)
+                .all(|(copied, original)| copied.id != original.id
+                    && copied.playlist_id == duplicated.id));
+
+            let conflict = duplicate_playlist(&pool, source.id.clone(), "SOURCE".to_owned())
+                .await
+                .expect_err("reject conflicting destination name");
+            assert_eq!(conflict.code, "playlist_name_conflict");
+
+            sqlx::raw_sql(
+                "CREATE TRIGGER reject_second_copied_entry
+                 BEFORE INSERT ON playlist_entries
+                 WHEN NEW.position = 1
+                 BEGIN
+                   SELECT RAISE(ABORT, 'fixture copy failure');
+                 END;",
+            )
+            .execute(&pool)
+            .await
+            .expect("install duplication failure trigger");
+            let failed = duplicate_playlist(&pool, source.id, "Broken copy".to_owned())
+                .await
+                .expect_err("roll back failed duplicate");
+            assert_eq!(failed.code, "database_unavailable");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM playlists WHERE name = 'Broken copy'"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("count rolled back destination"),
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn entry_moves_swap_nearest_neighbors_across_position_gaps() {
+        tauri::async_runtime::block_on(async {
+            let pool = fixture().await;
+            let playlist = create_playlist(&pool, "Ordered".to_owned())
+                .await
+                .expect("create ordered playlist");
+            add_playlist_entries(
+                &pool,
+                playlist.id.clone(),
+                vec!["one".to_owned(), "two".to_owned(), "one".to_owned()],
+            )
+            .await
+            .expect("populate ordered playlist");
+            let original =
+                list_playlist_entries(&pool, playlist.id.clone(), PlaylistEntryQuery::default())
+                    .await
+                    .expect("read original order");
+            let first_id = original.items[0].id.clone();
+            let second_id = original.items[1].id.clone();
+            let last_id = original.items[2].id.clone();
+
+            assert_eq!(
+                move_playlist_entry(
+                    &pool,
+                    playlist.id.clone(),
+                    first_id.clone(),
+                    PlaylistMoveDirection::Up,
+                )
+                .await
+                .expect("top move is a no-op")
+                .affected,
+                0
+            );
+            assert_eq!(
+                move_playlist_entry(
+                    &pool,
+                    playlist.id.clone(),
+                    last_id.clone(),
+                    PlaylistMoveDirection::Down,
+                )
+                .await
+                .expect("bottom move is a no-op")
+                .affected,
+                0
+            );
+            assert_eq!(
+                move_playlist_entry(
+                    &pool,
+                    playlist.id.clone(),
+                    first_id.clone(),
+                    PlaylistMoveDirection::Down,
+                )
+                .await
+                .expect("move first down")
+                .affected,
+                1
+            );
+            let moved =
+                list_playlist_entries(&pool, playlist.id.clone(), PlaylistEntryQuery::default())
+                    .await
+                    .expect("read moved order");
+            assert_eq!(
+                moved
+                    .items
+                    .iter()
+                    .map(|entry| entry.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec![second_id.as_str(), first_id.as_str(), last_id.as_str()]
+            );
+
+            remove_playlist_entries(&pool, playlist.id.clone(), vec![second_id])
+                .await
+                .expect("create a position gap");
+            move_playlist_entry(
+                &pool,
+                playlist.id.clone(),
+                first_id.clone(),
+                PlaylistMoveDirection::Down,
+            )
+            .await
+            .expect("move across position gap");
+            let gapped =
+                list_playlist_entries(&pool, playlist.id.clone(), PlaylistEntryQuery::default())
+                    .await
+                    .expect("read gapped order");
+            assert_eq!(
+                gapped
+                    .items
+                    .iter()
+                    .map(|entry| entry.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec![last_id.as_str(), first_id.as_str()]
+            );
+
+            let missing_id = format!("{ENTRY_ID_PREFIX}{}", "0".repeat(ID_RANDOM_BYTES * 2));
+            assert_eq!(
+                move_playlist_entry(&pool, playlist.id, missing_id, PlaylistMoveDirection::Up,)
+                    .await
+                    .expect_err("reject missing entry")
+                    .code,
+                "invalid_query"
+            );
+        });
+    }
+
+    #[test]
+    fn playlist_duplication_crosses_the_chunk_boundary_without_loss() {
+        tauri::async_runtime::block_on(async {
+            let pool = fixture().await;
+            let source = create_playlist(&pool, "Large source".to_owned())
+                .await
+                .expect("create large source");
+            add_playlist_entries(
+                &pool,
+                source.id.clone(),
+                vec!["one".to_owned(); MAX_BATCH_SIZE],
+            )
+            .await
+            .expect("add first source chunk");
+            add_playlist_entries(&pool, source.id.clone(), vec!["two".to_owned()])
+                .await
+                .expect("cross source chunk boundary");
+
+            let duplicated = duplicate_playlist(&pool, source.id.clone(), "Large copy".to_owned())
+                .await
+                .expect("duplicate across chunk boundary");
+            assert_eq!(duplicated.entry_count, (MAX_BATCH_SIZE + 1) as i64);
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM playlist_entries WHERE playlist_id = ?"
+                )
+                .bind(&duplicated.id)
+                .fetch_one(&pool)
+                .await
+                .expect("count duplicated entries"),
+                (MAX_BATCH_SIZE + 1) as i64
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, String>(
+                    "SELECT song_id FROM playlist_entries
+                     WHERE playlist_id = ? ORDER BY position DESC LIMIT 1"
+                )
+                .bind(&duplicated.id)
+                .fetch_one(&pool)
+                .await
+                .expect("read duplicated boundary entry"),
+                "two"
+            );
+        });
+    }
+
+    #[test]
+    fn playlist_capacity_is_bounded_before_database_work() {
+        assert!(ensure_playlist_capacity(MAX_PLAYLIST_ENTRIES - 1, 1).is_ok());
+        assert_eq!(
+            ensure_playlist_capacity(MAX_PLAYLIST_ENTRIES, 1)
+                .expect_err("reject overflow")
+                .code,
+            "invalid_query"
+        );
+        assert_eq!(
+            ensure_playlist_capacity(MAX_PLAYLIST_ENTRIES + 1, 0)
+                .expect_err("reject oversized source")
+                .code,
+            "invalid_query"
+        );
     }
 
     #[test]

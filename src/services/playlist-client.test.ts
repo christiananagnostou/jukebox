@@ -8,9 +8,11 @@ import {
   addPlaylistEntries,
   createPlaylist,
   deletePlaylist,
+  duplicatePlaylist,
   listPlaylistEntries,
   listPlaylists,
   MAX_RETAINED_PLAYLIST_PAGES,
+  movePlaylistEntry,
   playlistAt,
   PlaylistEntryPager,
   playlistPagePlaybackAt,
@@ -62,6 +64,7 @@ describe('native playlist client', () => {
     await listPlaylists(query)
     await renamePlaylist('playlist_0123456789abcdef0123456789abcdef', 'Drive')
     await deletePlaylist('playlist_0123456789abcdef0123456789abcdef')
+    await duplicatePlaylist('playlist_0123456789abcdef0123456789abcdef', 'Drive copy')
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'create_playlist', { name: 'Road trip' })
     expect(invokeMock).toHaveBeenNthCalledWith(2, 'list_playlists', { query })
@@ -71,6 +74,10 @@ describe('native playlist client', () => {
     })
     expect(invokeMock).toHaveBeenNthCalledWith(4, 'delete_playlist', {
       playlistId: 'playlist_0123456789abcdef0123456789abcdef',
+    })
+    expect(invokeMock).toHaveBeenNthCalledWith(5, 'duplicate_playlist', {
+      playlistId: 'playlist_0123456789abcdef0123456789abcdef',
+      name: 'Drive copy',
     })
   })
 
@@ -85,6 +92,7 @@ describe('native playlist client', () => {
       'entry_0123456789abcdef0123456789abcdef',
       'entry_fedcba9876543210fedcba9876543210',
     ])
+    await movePlaylistEntry(playlistId, 'entry_0123456789abcdef0123456789abcdef', 'down')
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'add_playlist_entries', {
       playlistId,
@@ -94,6 +102,11 @@ describe('native playlist client', () => {
     expect(invokeMock).toHaveBeenNthCalledWith(3, 'remove_playlist_entries', {
       playlistId,
       entryIds: ['entry_0123456789abcdef0123456789abcdef', 'entry_fedcba9876543210fedcba9876543210'],
+    })
+    expect(invokeMock).toHaveBeenNthCalledWith(4, 'move_playlist_entry', {
+      direction: 'down',
+      entryId: 'entry_0123456789abcdef0123456789abcdef',
+      playlistId,
     })
   })
 
@@ -170,6 +183,23 @@ describe('native playlist client', () => {
     await pager.reload()
     expect(state.status).toBe('error')
     expect(state.error).toBe('That playlist no longer exists.')
+  })
+
+  it('reloads the visible entry page after a far-down mutation', async () => {
+    const state = catalogState<PlaylistEntry>()
+    const fetchPage = vi.fn(async (_playlistId: string, query: { limit: number; offset: number }) => ({
+      items: [entry(`entry-${query.offset}`, `song-${query.offset}`)],
+      total: 10_000,
+    }))
+    const pager = new PlaylistEntryPager(state, fetchPage)
+
+    await pager.reset('playlist-one')
+    await pager.ensureRange(730, 760)
+    await pager.reload()
+
+    expect(fetchPage).toHaveBeenLastCalledWith('playlist-one', { limit: 100, offset: 700 })
+    expect(state.pages['7']?.[0]?.id).toBe('entry-700')
+    expect(state.pages['0']).toBeUndefined()
   })
 
   it('builds a duplicate-preserving playback context from only the loaded entry page', () => {
