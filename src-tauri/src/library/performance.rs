@@ -1,3 +1,5 @@
+use super::facets::{FacetQuery, TrackFacet};
+use super::query::TrackAvailability;
 use super::{AggregateQuery, LibraryState, StorageQuery, TrackQuery};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
@@ -44,11 +46,20 @@ fn reference_100k_library_performance() {
             limit: 100,
             ..TrackQuery::default()
         };
+        let filtered = TrackQuery {
+            availability: TrackAvailability::Available,
+            genre: Some("Genre 07".to_owned()),
+            min_favorite_rating: Some(1),
+            year: Some(2007),
+            ..TrackQuery::default()
+        };
 
         let query_budgets = [
             measure_query(&library, "browse_first_page", browse).await,
             measure_query(&library, "fts_search", search).await,
             measure_query(&library, "browse_continuation", continuation).await,
+            measure_query(&library, "indexed_filters", filtered).await,
+            measure_facet_query(&library).await,
             measure_artist_query(&library).await,
             measure_album_query(&library).await,
             measure_storage_query(&library, "storage_roots", StorageQuery::default()).await,
@@ -71,6 +82,32 @@ fn reference_100k_library_performance() {
                 QUERY_P95_BUDGET
             );
         }
+
+        let scan_files: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM library_scan_files WHERE scan_id = ?")
+                .bind(scan_id)
+                .fetch_one(&library.repository.pool())
+                .await
+                .expect("count reference scan files");
+        let unchanged_candidates: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)
+             FROM library_scan_files AS files
+             JOIN library_scans AS scans ON scans.id = files.scan_id
+             JOIN songs
+               ON songs.root_id = scans.root_id
+              AND songs.normalized_path = files.normalized_path
+              AND songs.file_size = files.file_size
+              AND songs.modified_at_ns = files.modified_at_ns
+              AND songs.metadata_version = ?
+             WHERE files.scan_id = ?",
+        )
+        .bind(super::reconciliation::METADATA_VERSION)
+        .bind(scan_id)
+        .fetch_one(&library.repository.pool())
+        .await
+        .expect("count unchanged reference candidates");
+        assert_eq!(scan_files, REFERENCE_TRACKS);
+        assert_eq!(unchanged_candidates, REFERENCE_TRACKS);
 
         let preparation_started = Instant::now();
         let task = library
@@ -119,6 +156,33 @@ fn reference_100k_library_performance() {
             "reference_tracks={REFERENCE_TRACKS} {query_report} preparation={preparation:?} publish={publish:?}"
         );
     });
+}
+
+async fn measure_facet_query(library: &LibraryState) -> QueryBudget {
+    let query = FacetQuery {
+        kind: TrackFacet::Genre,
+        limit: 100,
+        ..FacetQuery::default()
+    };
+    library
+        .query_facets(query.clone())
+        .await
+        .expect("warm reference facet query");
+    let mut samples = Vec::with_capacity(QUERY_SAMPLES);
+    for _ in 0..QUERY_SAMPLES {
+        let started = Instant::now();
+        let page = library
+            .query_facets(query.clone())
+            .await
+            .expect("run reference facet query");
+        samples.push(started.elapsed());
+        black_box(page.items.len());
+    }
+    samples.sort_unstable();
+    QueryBudget {
+        name: "genre_facets",
+        p95: samples[(QUERY_SAMPLES * 95).div_ceil(100) - 1],
+    }
 }
 
 async fn measure_artist_query(library: &LibraryState) -> QueryBudget {
@@ -310,7 +374,7 @@ async fn reference_fixture() -> (tempfile::TempDir, SqlitePool, i64) {
                 .push_bind(format!("fingerprint-{index:06}"))
                 .push_bind("available")
                 .push_bind(Option::<i64>::None)
-                .push_bind(1_i64);
+                .push_bind(super::reconciliation::METADATA_VERSION);
         });
         songs
             .build()

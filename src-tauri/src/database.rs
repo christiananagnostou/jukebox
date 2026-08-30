@@ -1,4 +1,4 @@
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 9;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 10;
 
 #[cfg(test)]
 pub(crate) const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_initial.sql");
@@ -25,6 +25,9 @@ pub(crate) const LIBRARY_STORAGE_SCHEMA: &str =
 #[cfg(test)]
 pub(crate) const PLAYBACK_SESSION_SCHEMA: &str =
     include_str!("../migrations/0009_playback_session.sql");
+#[cfg(test)]
+pub(crate) const LIBRARY_FILTERS_SCHEMA: &str =
+    include_str!("../migrations/0010_library_filters_facets.sql");
 pub(crate) static NATIVE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[cfg(test)]
@@ -186,11 +189,18 @@ mod tests {
                     .fetch_one(&pool)
                     .await
                     .expect("search wildcard-like metadata");
+            let genre_match: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM songs_fts WHERE songs_fts MATCH ?")
+                    .bind(r#""Electronic""#)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("search indexed genre metadata");
 
             assert_eq!(row_count, 5);
             assert_eq!(rating_sum, 4);
             assert_eq!(unicode_match, 2);
             assert_eq!(wildcard_like_match, 1);
+            assert_eq!(genre_match, 2);
             assert_eq!(
                 sqlx::query_scalar::<_, i64>("SELECT revision FROM catalog_meta WHERE id = 1")
                     .fetch_one(&pool)
@@ -217,7 +227,34 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .expect("count applied migrations"),
-                9
+                10
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'index'
+                       AND name IN (
+                         'idx_songs_genre_filter', 'idx_songs_codec_filter',
+                         'idx_songs_year_filter', 'idx_songs_availability_filter'
+                       )",
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("inspect facet indexes"),
+                4
+            );
+            sqlx::query("UPDATE songs SET genre = 'Downtempo' WHERE id = '01'")
+                .execute(&pool)
+                .await
+                .expect("update indexed genre");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM songs_fts WHERE songs_fts MATCH 'downtempo'"
+                )
+                .fetch_one(&pool)
+                .await
+                .expect("confirm genre trigger refresh"),
+                1
             );
             let scan_columns: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM pragma_table_info('songs') WHERE name IN (

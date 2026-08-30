@@ -24,13 +24,32 @@ type NativeTrackSort =
 export interface TrackQuery {
   album?: string
   artist?: string
+  availability?: 'available' | 'unavailable' | 'any'
+  codec?: string
   cursor?: string
   direction: 'asc' | 'desc'
+  genre?: string
   limit: number
+  minFavoriteRating?: Song['favorRating']
   pathPrefix?: string
   q: string
   rootId?: number
   sort: NativeTrackSort
+  year?: number
+}
+
+export type TrackFacet = 'codec' | 'genre' | 'year'
+
+export interface FacetQuery {
+  filters: TrackQuery
+  kind: TrackFacet
+  limit: number
+  offset: number
+}
+
+export interface FacetItem {
+  count: number
+  value: string
 }
 
 export interface AggregateQuery {
@@ -59,12 +78,16 @@ export interface StorageQuery {
 interface NativeTrackSummary {
   album: string
   artist: string
+  bpm: number
   codec: string
+  compilation: number
   date: string
   dateAdded: string
   duration: string
+  encoder: string
   favorRating: Song['favorRating']
   file: string
+  genre: string
   id: string
   path: string
   sampleRate: string
@@ -72,6 +95,7 @@ interface NativeTrackSummary {
   startTime: number
   title: string
   trackNumber: number
+  trackTotal: number
   visualsPath: string
 }
 
@@ -94,14 +118,7 @@ export type AggregatePageFetcher<Item> = (query: AggregateQuery) => Promise<Aggr
 export type StoragePageFetcher = (query: StorageQuery) => Promise<AggregatePage<StorageNode>>
 
 function toSong(track: NativeTrackSummary): Song {
-  return {
-    ...track,
-    bpm: 0,
-    compilation: 0,
-    encoder: '',
-    genre: '',
-    trackTotal: 0,
-  }
+  return track
 }
 
 export async function resolvePlaybackTracks(trackIds: string[]): Promise<Song[]> {
@@ -112,6 +129,10 @@ export async function resolvePlaybackTracks(trackIds: string[]): Promise<Song[]>
 export async function queryTracks(query: TrackQuery): Promise<TrackPage> {
   const page = await invoke<NativeTrackPage>('query_tracks', { query })
   return { ...page, items: page.items.map(toSong) }
+}
+
+export function queryFacets(query: FacetQuery): Promise<AggregatePage<FacetItem>> {
+  return invoke('query_facets', { query })
 }
 
 export function queryArtists(query: AggregateQuery): Promise<AggregatePage<ArtistSummary>> {

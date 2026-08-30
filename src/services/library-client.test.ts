@@ -18,6 +18,7 @@ import {
   MAX_RETAINED_LIBRARY_PAGES,
   queryAlbums,
   queryArtists,
+  queryFacets,
   queryStorage,
   queryTracks,
   resolvePlaybackTracks,
@@ -88,19 +89,26 @@ describe('native library commands', () => {
   beforeEach(() => invokeMock.mockReset())
 
   it('sends exact track filters through the shared query boundary', async () => {
-    invokeMock.mockResolvedValue({ items: [], revision: 3, total: 0 })
+    const nativeTrack = { ...song(7), bpm: 123, encoder: 'Native encoder', genre: 'Electronic', trackTotal: 12 }
+    invokeMock.mockResolvedValue({ items: [nativeTrack], revision: 3, total: 1 })
     const query = {
       album: 'Homogenic',
       artist: 'Björk',
+      availability: 'available' as const,
+      codec: 'flac',
       direction: 'asc' as const,
+      genre: 'Electronic',
       limit: 50,
+      minFavoriteRating: 1 as const,
       q: '',
       sort: 'track' as const,
+      year: 1997,
     }
 
-    await queryTracks(query)
+    const page = await queryTracks(query)
 
     expect(invokeMock).toHaveBeenCalledWith('query_tracks', { query })
+    expect(page.items[0]).toMatchObject({ bpm: 123, encoder: 'Native encoder', genre: 'Electronic', trackTotal: 12 })
   })
 
   it('resolves only the requested playback track IDs through the bounded command', async () => {
@@ -121,6 +129,27 @@ describe('native library commands', () => {
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'query_artists', { query })
     expect(invokeMock).toHaveBeenNthCalledWith(2, 'query_albums', { query })
+  })
+
+  it('sends bounded facet filters through the native boundary', async () => {
+    invokeMock.mockResolvedValue({ items: [{ count: 4, value: 'Ambient' }], revision: 3, total: 1 })
+    const query = {
+      filters: {
+        availability: 'available' as const,
+        direction: 'asc' as const,
+        genre: 'Ambient',
+        limit: 100,
+        q: '',
+        sort: 'default' as const,
+      },
+      kind: 'genre' as const,
+      limit: 50,
+      offset: 0,
+    }
+
+    await queryFacets(query)
+
+    expect(invokeMock).toHaveBeenCalledWith('query_facets', { query })
   })
 
   it('sends bounded storage traversal payloads through the native boundary', async () => {

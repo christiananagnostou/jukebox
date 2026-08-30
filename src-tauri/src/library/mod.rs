@@ -1,4 +1,5 @@
 mod aggregates;
+mod facets;
 #[cfg(test)]
 mod performance;
 mod query;
@@ -11,6 +12,7 @@ pub(crate) mod storage;
 mod watcher;
 
 pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, ArtistPage};
+pub use facets::{FacetPage, FacetQuery};
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
 pub use refresh::{
@@ -93,6 +95,11 @@ impl LibraryState {
     pub async fn query_tracks(&self, query: TrackQuery) -> Result<TrackPage, LibraryError> {
         self.ensure_initialized().await?;
         self.repository.query_tracks(query).await
+    }
+
+    pub async fn query_facets(&self, query: FacetQuery) -> Result<FacetPage, LibraryError> {
+        self.ensure_initialized().await?;
+        facets::load_facet_page(&self.repository.pool(), query).await
     }
 
     pub async fn resolve_playback_tracks(
@@ -251,6 +258,14 @@ pub async fn query_tracks(
     query: TrackQuery,
 ) -> Result<TrackPage, LibraryError> {
     library.query_tracks(query).await
+}
+
+#[tauri::command]
+pub async fn query_facets(
+    library: tauri::State<'_, LibraryState>,
+    query: FacetQuery,
+) -> Result<FacetPage, LibraryError> {
+    library.query_facets(query).await
 }
 
 #[tauri::command]
