@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Song, Store } from '~/App'
 import type { AudioTransport, AudioTransportEvent } from '~/services/audio-transport'
@@ -194,7 +194,17 @@ class FakePlaybackBridge implements PlaybackBridge {
       case 'removeQueueEntry':
         this.snapshot.queue = this.snapshot.queue.filter((entry) => entry.entryId !== command.entryId)
         break
-      case 'moveQueueEntry':
+      case 'moveQueueEntry': {
+        const from = this.snapshot.queue.findIndex((entry) => entry.entryId === command.entryId)
+        if (from < 0) throw { code: 'invalid_command' }
+        const [entry] = this.snapshot.queue.splice(from, 1)
+        const to = command.beforeEntryId
+          ? this.snapshot.queue.findIndex((queued) => queued.entryId === command.beforeEntryId)
+          : this.snapshot.queue.length
+        if (to < 0) throw { code: 'invalid_command' }
+        this.snapshot.queue.splice(to, 0, entry)
+        break
+      }
       case 'setRepeat':
       case 'setShuffle':
       case 'markUnavailable':
@@ -290,6 +300,10 @@ function playbackStore(playlist: Song[] = []): Pick<Store, 'player' | 'playlist'
   }
 }
 
+function queueItem(entryId: string, track: Song) {
+  return { entryId, song: track }
+}
+
 function setup(store = playbackStore()): {
   bridge: FakePlaybackBridge
   controller: PlaybackController
@@ -328,7 +342,10 @@ describe('native-backed playback controller', () => {
     }
     snapshot.durationMs = 180_000
     snapshot.positionMs = 42_000
-    snapshot.queue = [{ entryId: 'queued-bonus', trackId: 'bonus' }]
+    snapshot.queue = [
+      { entryId: 'queued-bonus', trackId: 'bonus' },
+      { entryId: 'queued-bonus-again', trackId: 'bonus' },
+    ]
     snapshot.revision = 7
     snapshot.status = 'paused'
     const store = playbackStore()
@@ -351,7 +368,10 @@ describe('native-backed playback controller', () => {
 
     expect(resolvedIds).toEqual([['one', 'two', 'bonus']])
     expect(store.playlist.map((track) => track.id)).toEqual(['one', 'two'])
-    expect(store.queue.map((track) => track.id)).toEqual(['bonus'])
+    expect(store.queue).toEqual([
+      queueItem('queued-bonus', song('bonus')),
+      queueItem('queued-bonus-again', song('bonus')),
+    ])
     expect(store.player.currSong?.id).toBe('two')
     expect(store.player.currentTime).toBe(42)
     expect(store.player.isPaused).toBe(true)
@@ -454,9 +474,49 @@ describe('native-backed playback controller', () => {
     await controller.nextSong()
 
     expect(transport.loadedSources).toEqual([{ songId: 'duplicate', source: 'asset:/music/duplicate.flac' }])
-    expect(store.queue).toEqual([second])
+    expect(store.queue).toEqual([queueItem('entry-2', second)])
     expect(store.player.currSong).toBe(first)
     expect(bridge.commands.at(-1)).toEqual({ type: 'commitTransition' })
+  })
+
+  it('moves, removes, and clears duplicate queue entries by stable identity', async () => {
+    const duplicate = song('duplicate')
+    const other = song('other')
+    const { bridge, controller, store } = setup()
+    await controller.initialize()
+    await controller.enqueueSong(duplicate)
+    await controller.enqueueSong(duplicate)
+    await controller.enqueueSong(other)
+
+    await controller.moveQueuedSong('entry-3', 'entry-1')
+    expect(store.queue.map((entry) => entry.entryId)).toEqual(['entry-3', 'entry-1', 'entry-2'])
+
+    await controller.removeQueuedSong('entry-1')
+    expect(store.queue).toEqual([queueItem('entry-3', other), queueItem('entry-2', duplicate)])
+
+    await controller.clearUpcoming()
+    expect(store.queue).toEqual([])
+    expect(bridge.commands.slice(-3)).toEqual([
+      { type: 'moveQueueEntry', entryId: 'entry-3', beforeEntryId: 'entry-1' },
+      { type: 'removeQueueEntry', entryId: 'entry-1' },
+      { type: 'clearUpcoming' },
+    ])
+  })
+
+  it('does not optimistically change the queue when a native edit fails', async () => {
+    const queued = song('queued')
+    const { bridge, controller, store } = setup()
+    await controller.initialize()
+    await controller.enqueueSong(queued)
+    const dispatch = bridge.dispatch.bind(bridge)
+    vi.spyOn(bridge, 'dispatch').mockImplementation(async (command) => {
+      if (command.type === 'removeQueueEntry') throw new Error('native mutation failed')
+      return dispatch(command)
+    })
+
+    await expect(controller.removeQueuedSong('entry-1')).rejects.toThrow('native mutation failed')
+
+    expect(store.queue).toEqual([queueItem('entry-1', queued)])
   })
 
   it('rolls back a failed queue transition and restores the previous current song', async () => {
@@ -470,7 +530,7 @@ describe('native-backed playback controller', () => {
 
     await expect(controller.nextSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
-    expect(store.queue).toEqual([queued])
+    expect(store.queue).toEqual([queueItem('entry-1', queued)])
     expect(store.player.currSong).toBe(current)
     expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
     expect(store.player.isPaused).toBe(true)
@@ -500,7 +560,7 @@ describe('native-backed playback controller', () => {
 
     await expect(controller.nextSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
-    expect(store.queue).toEqual([queued])
+    expect(store.queue).toEqual([queueItem('blocked-entry', queued)])
     expect(store.player.currSong).toBe(current)
     expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
     expect(bridge.commands.at(-1)).toEqual({ type: 'rejectTransition', code: 'unavailable', recoverable: true })
@@ -549,7 +609,7 @@ describe('playback event bindings', () => {
     transport.emit('ended')
     await flushPromises()
 
-    expect(store.queue).toEqual([queued])
+    expect(store.queue).toEqual([queueItem('entry-1', queued)])
     expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
     cleanup()
   })
@@ -574,7 +634,7 @@ describe('playback event bindings', () => {
     resolvePlay()
     await flushPromises()
 
-    expect(store.queue).toEqual([second])
+    expect(store.queue).toEqual([queueItem('entry-2', second)])
     cleanup()
   })
 

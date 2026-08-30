@@ -66,7 +66,11 @@ export default component$(() => {
         <button onClick$={storeActions.prevSong} aria-label="Previous track" title="Previous track">
           <PrevTrack />
         </button>
-        {store.player.isPaused ? (
+        {!store.player.currSong ? (
+          <button onClick$={storeActions.nextSong} aria-label="Play queued track" title="Play queued track">
+            <Play />
+          </button>
+        ) : store.player.isPaused ? (
           <button onClick$={storeActions.resumeSong} aria-label="Play" title="Play">
             <Play />
           </button>
