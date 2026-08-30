@@ -56,6 +56,7 @@ export interface Store {
   queue: QueuedSong[]
 
   player: {
+    canUndoQueueEdit: boolean
     currSong?: Song
     currSongIndex: number
     audioElem?: HTMLAudioElement
@@ -218,6 +219,7 @@ export interface StoreActions {
   reloadLibrary: QRL<() => Promise<void>>
   requestLibraryRange: QRL<(startIndex: number, endIndex: number) => Promise<void>>
   removeQueuedSong: QRL<(entryId: string) => Promise<void>>
+  undoQueueEdit: QRL<() => Promise<void>>
 }
 
 export interface StorageNode {

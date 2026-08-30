@@ -8,6 +8,7 @@ import { NativePlaybackBridge, type PlaybackSnapshot } from './playback-client'
 
 function snapshot(revision: number): PlaybackSnapshot {
   return {
+    canUndoQueueEdit: false,
     context: { cursor: 0, order: [0], trackIds: ['track-one'] },
     current: {
       contextIndex: 0,

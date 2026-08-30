@@ -102,6 +102,8 @@ impl Default for ShuffleState {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSnapshot {
+    #[serde(default)]
+    can_undo_queue_edit: bool,
     context: PlaybackContext,
     current: Option<PlaybackSelection>,
     duration_ms: u64,
@@ -123,6 +125,7 @@ pub struct PlaybackSnapshot {
 impl Default for PlaybackSnapshot {
     fn default() -> Self {
         Self {
+            can_undo_queue_edit: false,
             context: PlaybackContext::default(),
             current: None,
             duration_ms: 0,
@@ -190,6 +193,8 @@ pub enum PlaybackCommand {
         entry_id: String,
     },
     ClearUpcoming,
+    UndoQueueEdit,
+    DiscardQueueUndo,
     Play,
     Pause,
     Seek {
@@ -277,9 +282,16 @@ impl PlaybackCommandError {
     }
 }
 
+#[derive(Clone)]
+struct PlaybackRollback {
+    queue_undo: Option<Vec<QueueEntry>>,
+    snapshot: PlaybackSnapshot,
+}
+
 #[derive(Default)]
 struct PlaybackMachine {
-    rollback: Option<PlaybackSnapshot>,
+    queue_undo: Option<Vec<QueueEntry>>,
+    rollback: Option<PlaybackRollback>,
     snapshot: PlaybackSnapshot,
 }
 
@@ -439,16 +451,39 @@ impl PlaybackState {
             _ => {}
         }
 
+        if matches!(request.command, PlaybackCommand::UndoQueueEdit) {
+            return machine.undo_queue_edit();
+        }
+        if matches!(request.command, PlaybackCommand::DiscardQueueUndo) {
+            return Ok(machine.discard_queue_undo());
+        }
+
         let previous = machine.snapshot.clone();
+        let previous_queue_undo = machine.queue_undo.clone();
         let previous_current = previous.current.clone();
         let requires_confirmation = request.command.requires_transition_confirmation();
+        let is_queue_edit = request.command.is_queue_edit();
+        let can_invalidate_queue_undo = request.command.can_invalidate_queue_undo();
         let mut next = previous.clone();
         let changed = next.apply(request.command)?;
         if changed {
+            if is_queue_edit {
+                machine.queue_undo = Some(previous.queue.clone());
+            } else if can_invalidate_queue_undo
+                && (next.context != previous.context
+                    || next.current != previous.current
+                    || next.queue != previous.queue)
+            {
+                machine.queue_undo = None;
+            }
+            next.can_undo_queue_edit = machine.queue_undo.is_some();
             next.revision = next.revision.saturating_add(1);
             if requires_confirmation && next.current.is_some() && next.current != previous_current {
                 next.transition_pending = true;
-                machine.rollback = Some(previous);
+                machine.rollback = Some(PlaybackRollback {
+                    queue_undo: previous_queue_undo,
+                    snapshot: previous,
+                });
             }
             machine.snapshot = next;
         }
@@ -512,6 +547,27 @@ impl PlaybackState {
 }
 
 impl PlaybackMachine {
+    fn discard_queue_undo(&mut self) -> PlaybackSnapshot {
+        if self.queue_undo.take().is_some() {
+            self.snapshot.can_undo_queue_edit = false;
+            self.snapshot.revision = self.snapshot.revision.saturating_add(1);
+        }
+        self.snapshot.clone()
+    }
+
+    fn undo_queue_edit(&mut self) -> Result<PlaybackSnapshot, PlaybackCommandError> {
+        let Some(queue) = self.queue_undo.take() else {
+            return Err(PlaybackCommandError::invalid(
+                self.snapshot.revision,
+                "There is no queue edit to undo.",
+            ));
+        };
+        self.snapshot.queue = queue;
+        self.snapshot.can_undo_queue_edit = false;
+        self.snapshot.revision = self.snapshot.revision.saturating_add(1);
+        Ok(self.snapshot.clone())
+    }
+
     fn commit_transition(&mut self) -> Result<PlaybackSnapshot, PlaybackCommandError> {
         if self.rollback.take().is_none() {
             return Err(PlaybackCommandError::no_transition(self.snapshot.revision));
@@ -526,14 +582,17 @@ impl PlaybackMachine {
         code: PlaybackErrorCode,
         recoverable: bool,
     ) -> Result<PlaybackSnapshot, PlaybackCommandError> {
-        let Some(mut rollback) = self.rollback.take() else {
+        let Some(rollback) = self.rollback.take() else {
             return Err(PlaybackCommandError::no_transition(self.snapshot.revision));
         };
-        rollback.revision = self.snapshot.revision.saturating_add(1);
-        rollback.error = Some(PlaybackFailure { code, recoverable });
-        rollback.status = PlaybackStatus::Paused;
-        rollback.transition_pending = false;
-        self.snapshot = rollback;
+        let mut snapshot = rollback.snapshot;
+        snapshot.revision = self.snapshot.revision.saturating_add(1);
+        snapshot.error = Some(PlaybackFailure { code, recoverable });
+        snapshot.status = PlaybackStatus::Paused;
+        snapshot.transition_pending = false;
+        self.queue_undo = rollback.queue_undo;
+        snapshot.can_undo_queue_edit = self.queue_undo.is_some();
+        self.snapshot = snapshot;
         Ok(self.snapshot.clone())
     }
 }
@@ -658,10 +717,11 @@ impl PlaybackSnapshot {
     }
 
     pub(super) fn committed_for_persistence(&self) -> Result<Self, &'static str> {
-        self.validate_persisted()?;
         let mut snapshot = self.clone();
+        snapshot.can_undo_queue_edit = false;
         snapshot.error = None;
         snapshot.persistence_warning = false;
+        snapshot.validate_persisted()?;
         Ok(snapshot)
     }
 
@@ -827,6 +887,9 @@ impl PlaybackSnapshot {
         if self.transition_pending {
             return Err("A pending playback transition cannot be persisted.");
         }
+        if self.can_undo_queue_edit {
+            return Err("A session-local queue undo cannot be persisted.");
+        }
         if self.context.track_ids.len() > MAX_CONTEXT_TRACKS
             || self.context.order.len() != self.context.track_ids.len()
         {
@@ -944,6 +1007,9 @@ impl PlaybackSnapshot {
                 self.queue.clear();
                 true
             }),
+            PlaybackCommand::UndoQueueEdit | PlaybackCommand::DiscardQueueUndo => {
+                unreachable!("queue undo commands are handled by PlaybackMachine")
+            }
             PlaybackCommand::Play => Ok(
                 if self.current.is_some() && self.status != PlaybackStatus::Playing {
                     self.status = PlaybackStatus::Playing;
@@ -1399,6 +1465,7 @@ impl PlaybackCommand {
                 | Self::RemoveQueueEntry { .. }
                 | Self::MoveQueueEntry { .. }
                 | Self::ClearUpcoming
+                | Self::UndoQueueEdit
                 | Self::Play
                 | Self::Pause
                 | Self::Next
@@ -1418,6 +1485,27 @@ impl PlaybackCommand {
             Self::Next | Self::Previous | Self::Ended | Self::MarkUnavailable { .. } => true,
             _ => false,
         }
+    }
+
+    fn is_queue_edit(&self) -> bool {
+        matches!(
+            self,
+            Self::Enqueue { .. }
+                | Self::RemoveQueueEntry { .. }
+                | Self::MoveQueueEntry { .. }
+                | Self::ClearUpcoming
+        )
+    }
+
+    fn can_invalidate_queue_undo(&self) -> bool {
+        matches!(
+            self,
+            Self::ReplaceContext { .. }
+                | Self::Next
+                | Self::Previous
+                | Self::Ended
+                | Self::MarkUnavailable { .. }
+        )
     }
 }
 
@@ -1791,6 +1879,171 @@ mod tests {
             ))
             .expect_err("duplicate ID");
         assert_eq!(duplicate.code, "invalid_command");
+    }
+
+    #[test]
+    fn one_step_queue_undo_restores_exact_identity_order_and_duplicates() {
+        let state = PlaybackState::default();
+        let original = vec![
+            queue("one", "same"),
+            queue("two", "same"),
+            queue("three", "other"),
+        ];
+        let queued = dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: original.clone(),
+            },
+        );
+        assert!(queued.can_undo_queue_edit);
+
+        dispatch_committed(
+            &state,
+            PlaybackCommand::MoveQueueEntry {
+                before_entry_id: Some("one".to_string()),
+                entry_id: "three".to_string(),
+            },
+        );
+        let restored_move = dispatch_committed(&state, PlaybackCommand::UndoQueueEdit);
+        assert_eq!(restored_move.queue, original);
+        assert!(!restored_move.can_undo_queue_edit);
+
+        let removed = dispatch_committed(
+            &state,
+            PlaybackCommand::RemoveQueueEntry {
+                entry_id: "one".to_string(),
+            },
+        );
+        assert_ne!(removed.queue, original);
+        assert_eq!(
+            dispatch_committed(&state, PlaybackCommand::UndoQueueEdit).queue,
+            original
+        );
+
+        let cleared = dispatch_committed(&state, PlaybackCommand::ClearUpcoming);
+        assert!(cleared.queue.is_empty());
+        assert_eq!(
+            dispatch_committed(&state, PlaybackCommand::UndoQueueEdit).queue,
+            original
+        );
+
+        let error = state
+            .dispatch(request(
+                state.snapshot().expect("snapshot").revision,
+                PlaybackCommand::UndoQueueEdit,
+            ))
+            .expect_err("undo is single use");
+        assert_eq!(error.code, "invalid_command");
+    }
+
+    #[test]
+    fn only_changed_queue_edits_replace_the_previous_undo() {
+        let state = PlaybackState::default();
+        dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("one", "one"), queue("two", "two")],
+            },
+        );
+        let removed = dispatch_committed(
+            &state,
+            PlaybackCommand::RemoveQueueEntry {
+                entry_id: "one".to_string(),
+            },
+        );
+
+        let no_op = dispatch_committed(
+            &state,
+            PlaybackCommand::RemoveQueueEntry {
+                entry_id: "missing".to_string(),
+            },
+        );
+        assert_eq!(no_op.revision, removed.revision);
+        assert!(no_op.can_undo_queue_edit);
+        assert_eq!(
+            dispatch_committed(&state, PlaybackCommand::UndoQueueEdit).queue,
+            vec![queue("one", "one"), queue("two", "two")]
+        );
+
+        dispatch_committed(
+            &state,
+            PlaybackCommand::RemoveQueueEntry {
+                entry_id: "one".to_string(),
+            },
+        );
+        dispatch_committed(&state, PlaybackCommand::ClearUpcoming);
+        assert_eq!(
+            dispatch_committed(&state, PlaybackCommand::UndoQueueEdit).queue,
+            vec![queue("two", "two")]
+        );
+    }
+
+    #[test]
+    fn rejected_playback_movement_restores_queue_undo_but_commit_invalidates_it() {
+        let state = PlaybackState::default();
+        dispatch_committed(&state, replace(&["context"], 0));
+        dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("one", "bonus-one"), queue("two", "bonus-two")],
+            },
+        );
+        let editable = dispatch_committed(
+            &state,
+            PlaybackCommand::RemoveQueueEntry {
+                entry_id: "two".to_string(),
+            },
+        );
+        let prepared = state
+            .dispatch(request(editable.revision, PlaybackCommand::Next))
+            .expect("prepare next");
+        assert!(!prepared.can_undo_queue_edit);
+
+        let rejected = state
+            .dispatch(request(
+                prepared.revision,
+                PlaybackCommand::RejectTransition {
+                    code: PlaybackErrorCode::Decoder,
+                    recoverable: true,
+                },
+            ))
+            .expect("reject transition");
+        assert!(rejected.can_undo_queue_edit);
+        assert_eq!(
+            dispatch_committed(&state, PlaybackCommand::UndoQueueEdit).queue,
+            vec![queue("one", "bonus-one"), queue("two", "bonus-two")]
+        );
+
+        dispatch_committed(
+            &state,
+            PlaybackCommand::RemoveQueueEntry {
+                entry_id: "two".to_string(),
+            },
+        );
+        let committed = dispatch_committed(&state, PlaybackCommand::Next);
+        assert!(!committed.can_undo_queue_edit);
+        let error = state
+            .dispatch(request(committed.revision, PlaybackCommand::UndoQueueEdit))
+            .expect_err("committed movement invalidates undo");
+        assert_eq!(error.code, "invalid_command");
+    }
+
+    #[test]
+    fn queue_undo_is_removed_from_committed_persistence() {
+        let state = PlaybackState::default();
+        let editable = dispatch_committed(
+            &state,
+            PlaybackCommand::Enqueue {
+                entries: vec![queue("one", "one")],
+            },
+        );
+        assert!(editable.can_undo_queue_edit);
+
+        let persisted = editable
+            .committed_for_persistence()
+            .expect("committed snapshot");
+        assert!(!persisted.can_undo_queue_edit);
+        assert_eq!(persisted.queue, editable.queue);
     }
 
     #[test]

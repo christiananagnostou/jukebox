@@ -44,6 +44,7 @@ const song = (id: string): Song => ({
 
 function emptySnapshot(): PlaybackSnapshot {
   return {
+    canUndoQueueEdit: false,
     context: { cursor: null, order: [], trackIds: [] },
     current: null,
     durationMs: 0,
@@ -68,7 +69,8 @@ const cloneSnapshot = (snapshot: PlaybackSnapshot): PlaybackSnapshot => structur
 class FakePlaybackBridge implements PlaybackBridge {
   commands: PlaybackCommand[] = []
   observations: Array<{ durationMs: number; positionMs: number; trackId: string }> = []
-  private rollback?: PlaybackSnapshot
+  private queueUndo?: PlaybackSnapshot['queue']
+  private rollback?: { queueUndo?: PlaybackSnapshot['queue']; snapshot: PlaybackSnapshot }
   private snapshot: PlaybackSnapshot
 
   constructor(snapshot: PlaybackSnapshot = emptySnapshot()) {
@@ -95,7 +97,8 @@ class FakePlaybackBridge implements PlaybackBridge {
     if (command.type === 'rejectTransition') {
       if (!this.rollback) throw { code: 'no_pending_transition' }
       const revision = this.snapshot.revision + 1
-      this.snapshot = this.rollback
+      this.snapshot = this.rollback.snapshot
+      this.queueUndo = this.rollback.queueUndo
       this.rollback = undefined
       this.snapshot.error = { code: command.code, recoverable: command.recoverable }
       this.snapshot.revision = revision
@@ -105,6 +108,7 @@ class FakePlaybackBridge implements PlaybackBridge {
     }
 
     const before = cloneSnapshot(this.snapshot)
+    const beforeQueueUndo = this.queueUndo ? structuredClone(this.queueUndo) : undefined
     let changed = true
     switch (command.type) {
       case 'replaceContext': {
@@ -134,6 +138,17 @@ class FakePlaybackBridge implements PlaybackBridge {
       case 'clearUpcoming':
         changed = this.snapshot.queue.length > 0
         this.snapshot.queue = []
+        break
+      case 'undoQueueEdit':
+        if (!this.queueUndo) throw { code: 'invalid_command' }
+        this.snapshot.queue = this.queueUndo
+        this.queueUndo = undefined
+        this.snapshot.canUndoQueueEdit = false
+        break
+      case 'discardQueueUndo':
+        changed = Boolean(this.queueUndo)
+        this.queueUndo = undefined
+        this.snapshot.canUndoQueueEdit = false
         break
       case 'next':
       case 'ended': {
@@ -212,6 +227,29 @@ class FakePlaybackBridge implements PlaybackBridge {
         break
     }
 
+    const queueEdit =
+      command.type === 'enqueue' ||
+      command.type === 'removeQueueEntry' ||
+      command.type === 'moveQueueEntry' ||
+      command.type === 'clearUpcoming'
+    if (changed && queueEdit) {
+      this.queueUndo = before.queue
+      this.snapshot.canUndoQueueEdit = true
+    }
+    const playbackStructureChanged =
+      JSON.stringify(before.context) !== JSON.stringify(this.snapshot.context) ||
+      JSON.stringify(before.current) !== JSON.stringify(this.snapshot.current) ||
+      JSON.stringify(before.queue) !== JSON.stringify(this.snapshot.queue)
+    const invalidatesQueueUndo =
+      command.type === 'replaceContext' ||
+      command.type === 'next' ||
+      command.type === 'previous' ||
+      command.type === 'ended' ||
+      command.type === 'markUnavailable'
+    if (changed && invalidatesQueueUndo && playbackStructureChanged) {
+      this.queueUndo = undefined
+      this.snapshot.canUndoQueueEdit = false
+    }
     if (changed) this.snapshot.revision += 1
     const selectionChanged = JSON.stringify(before.current) !== JSON.stringify(this.snapshot.current)
     const needsConfirmation =
@@ -221,7 +259,7 @@ class FakePlaybackBridge implements PlaybackBridge {
       command.type === 'ended' ||
       command.type === 'markUnavailable'
     if (changed && needsConfirmation && selectionChanged && this.snapshot.current) {
-      this.rollback = before
+      this.rollback = { queueUndo: beforeQueueUndo, snapshot: before }
       this.snapshot.transitionPending = true
     }
     return cloneSnapshot(this.snapshot)
@@ -289,6 +327,7 @@ function playbackStore(playlist: Song[] = []): Pick<Store, 'player' | 'playlist'
     playlist,
     queue: [],
     player: {
+      canUndoQueueEdit: false,
       currSong: undefined,
       currSongIndex: 0,
       audioElem: undefined,
@@ -500,6 +539,47 @@ describe('native-backed playback controller', () => {
       { type: 'moveQueueEntry', entryId: 'entry-3', beforeEntryId: 'entry-1' },
       { type: 'removeQueueEntry', entryId: 'entry-1' },
       { type: 'clearUpcoming' },
+    ])
+  })
+
+  it('undoes one queue edit with duplicate identity and metadata intact', async () => {
+    const duplicate = song('duplicate')
+    const other = song('other')
+    const { bridge, controller, store } = setup()
+    await controller.initialize()
+    await controller.enqueueSong(duplicate)
+    await controller.enqueueSong(duplicate)
+    await controller.enqueueSong(other)
+
+    await controller.clearUpcoming()
+    expect(store.queue).toEqual([])
+    expect(store.player.canUndoQueueEdit).toBe(true)
+
+    await controller.undoQueueEdit()
+
+    expect(store.queue).toEqual([
+      queueItem('entry-1', duplicate),
+      queueItem('entry-2', duplicate),
+      queueItem('entry-3', other),
+    ])
+    expect(store.player.canUndoQueueEdit).toBe(false)
+    expect(bridge.commands.at(-1)).toEqual({ type: 'undoQueueEdit' })
+  })
+
+  it('discards queue undo when clearing all playback state', async () => {
+    const { bridge, controller, store } = setup(playbackStore([song('context')]))
+    await controller.initialize()
+    await controller.enqueueSong(song('queued'))
+
+    await controller.clearPlayback()
+
+    expect(store.queue).toEqual([])
+    expect(store.playlist).toEqual([])
+    expect(store.player.canUndoQueueEdit).toBe(false)
+    expect(bridge.commands.slice(-3)).toEqual([
+      { type: 'replaceContext', autoplay: false, startIndex: 0, trackIds: [] },
+      { type: 'clearUpcoming' },
+      { type: 'discardQueueUndo' },
     ])
   })
 
