@@ -1,15 +1,15 @@
 import { $, component$, useComputed$, useContext, useStore } from '@builder.io/qwik'
-import { Link } from '@builder.io/qwik-city'
 
 import type { Song } from '~/App'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { playbackSourceCopy } from '~/utils/PlaybackSource'
-import { getUpcomingSongs } from '~/utils/Songs'
+import { getUpcomingSongSelections } from '~/utils/Songs'
+import PlaybackLink from './playback-link'
 
 const QUEUE_ERROR_MESSAGE = 'Jukebox could not update the queue.'
 const VISIBLE_QUEUE_LIMIT = 100
-const ACTION_CLASS =
-  'rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-400 disabled:cursor-not-allowed disabled:opacity-30'
+const ACTION_CLASS = 'playback-interactive rounded px-2 py-1 text-[11px]'
+const PLAYBACK_ERROR_MESSAGE = 'Jukebox could not play that track.'
 
 function formatDuration(song: Song): string {
   const parts = song.duration.split(':').map(Number)
@@ -27,7 +27,7 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const state = useStore({ action: '', error: '' })
-  const upcomingSongs = getUpcomingSongs(store.playlist, store.player.currSongIndex)
+  const upcomingSelections = getUpcomingSongSelections(store.playlist, store.player.currSongIndex)
   const sourceCopy = useComputed$(() => playbackSourceCopy(store.playbackSource, store.playlist))
   const hasExplicitQueue = store.queue.length > 0
   const visibleQueue = store.queue.slice(0, VISIBLE_QUEUE_LIMIT)
@@ -85,6 +85,19 @@ export default component$(() => {
     }
   })
 
+  const playUpcoming = $(async (song: Song, contextIndex: number) => {
+    if (state.action) return
+    state.action = `play:${contextIndex}`
+    state.error = ''
+    try {
+      await storeActions.playSong(song, contextIndex, store.playbackSource)
+    } catch {
+      state.error = PLAYBACK_ERROR_MESSAGE
+    } finally {
+      state.action = ''
+    }
+  })
+
   return (
     <section class="p-3" aria-label={hasExplicitQueue ? 'Queued tracks' : 'Upcoming tracks'}>
       <div class="flex min-h-8 items-center justify-between gap-2 border-b border-slate-800 pb-2">
@@ -96,15 +109,9 @@ export default component$(() => {
             {hasExplicitQueue ? (
               'Up next'
             ) : (
-              <Link
-                href={sourceCopy.value.href}
-                class="rounded-sm hover:text-amber-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-400"
-                onClick$={() => {
-                  if (sourceCopy.value.searchTerm !== undefined) store.searchTerm = sourceCopy.value.searchTerm
-                }}
-              >
+              <PlaybackLink href={sourceCopy.value.href} searchTerm={sourceCopy.value.searchTerm}>
                 {sourceCopy.value.heading}
-              </Link>
+              </PlaybackLink>
             )}
           </h2>
           <p class="mt-0.5 text-[10px] text-slate-500">
@@ -115,7 +122,7 @@ export default component$(() => {
         </div>
         <div class="flex shrink-0 items-center gap-1">
           {store.player.canUndoQueueEdit && (
-            <button class={`${ACTION_CLASS} text-amber-300`} onClick$={undoQueueEdit} disabled={busy}>
+            <button class={`${ACTION_CLASS} playback-accent-text`} onClick$={undoQueueEdit} disabled={busy}>
               Undo
             </button>
           )}
@@ -140,7 +147,7 @@ export default component$(() => {
               <div class="flex min-w-0 items-start gap-2">
                 <span
                   aria-hidden="true"
-                  class="mt-1.5 h-7 w-0.5 shrink-0 rounded-full bg-amber-300/70"
+                  class="playback-queue-marker mt-1.5 h-7 w-0.5 shrink-0 rounded-full"
                   title="Manually queued"
                 />
                 <div class="min-w-0 flex-1">
@@ -148,16 +155,14 @@ export default component$(() => {
                     {entry.song.title}
                   </span>
                   {entry.song.artist ? (
-                    <Link
+                    <PlaybackLink
                       href="/artists/"
-                      class="block truncate rounded-sm text-[11px] leading-4 text-slate-500 hover:text-amber-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-400"
+                      class="block truncate text-[11px] leading-4 text-slate-500"
                       title={`Browse ${entry.song.artist}`}
-                      onClick$={() => {
-                        store.searchTerm = entry.song.artist
-                      }}
+                      searchTerm={entry.song.artist}
                     >
                       {entry.song.artist}
-                    </Link>
+                    </PlaybackLink>
                   ) : (
                     <span class="block truncate text-[11px] leading-4 text-slate-500">Unknown artist</span>
                   )}
@@ -167,7 +172,7 @@ export default component$(() => {
                 </span>
                 <details class="relative shrink-0">
                   <summary
-                    class="grid h-7 w-7 cursor-pointer list-none place-items-center rounded text-xs tracking-widest text-slate-500 hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-400"
+                    class="playback-interactive grid h-7 w-7 cursor-pointer list-none place-items-center rounded text-xs tracking-widest"
                     aria-label={`Actions for ${entry.song.title}`}
                     title="Queue actions"
                   >
@@ -204,10 +209,22 @@ export default component$(() => {
             </li>
           ))}
         </ol>
-      ) : upcomingSongs.length ? (
+      ) : upcomingSelections.length ? (
         <ol class="divide-y divide-slate-800/70">
-          {upcomingSongs.map((song, index) => (
-            <li class="flex min-w-0 items-center gap-2 py-2.5" key={`upcoming-song-${song.id}-${index}`}>
+          {upcomingSelections.map(({ contextIndex, song }, index) => (
+            <li
+              class="playback-upcoming-row flex min-w-0 items-center gap-2 px-1 py-2.5"
+              key={`upcoming-song-${contextIndex}`}
+              tabIndex={0}
+              title={`Double-click to play ${song.title}`}
+              onDblClick$={() => playUpcoming(song, contextIndex)}
+              onKeyDown$={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  void playUpcoming(song, contextIndex)
+                }
+              }}
+            >
               <span class="w-4 shrink-0 text-center font-mono text-[10px] tabular-nums text-slate-600">
                 {index + 1}
               </span>
@@ -216,16 +233,14 @@ export default component$(() => {
                   {song.title}
                 </span>
                 {song.artist ? (
-                  <Link
+                  <PlaybackLink
                     href="/artists/"
-                    class="block truncate rounded-sm text-[11px] leading-4 text-slate-500 hover:text-amber-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-400"
+                    class="block truncate text-[11px] leading-4 text-slate-500"
                     title={`Browse ${song.artist}`}
-                    onClick$={() => {
-                      store.searchTerm = song.artist
-                    }}
+                    searchTerm={song.artist}
                   >
                     {song.artist}
-                  </Link>
+                  </PlaybackLink>
                 ) : (
                   <span class="block truncate text-[11px] leading-4 text-slate-500">Unknown artist</span>
                 )}

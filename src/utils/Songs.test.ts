@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Song } from '~/App'
-import { getUpcomingSongs } from './Songs'
+import { getUpcomingSongSelections } from './Songs'
 
 const song = (overrides: Partial<Song>): Song => ({
   id: 'song',
@@ -28,18 +28,31 @@ const song = (overrides: Partial<Song>): Song => ({
   ...overrides,
 })
 
-describe('getUpcomingSongs', () => {
+describe('getUpcomingSongSelections', () => {
   it('wraps once without repeating the current song', () => {
     const playlist = ['one', 'two', 'three'].map((id) => song({ id }))
 
-    expect(getUpcomingSongs(playlist, 2).map(({ id }) => id)).toEqual(['one', 'two'])
+    expect(getUpcomingSongSelections(playlist, 2)).toEqual([
+      { contextIndex: 0, song: playlist[0] },
+      { contextIndex: 1, song: playlist[1] },
+    ])
   })
 
   it('handles empty, single-song, and stale indices', () => {
     const playlist = [song({ id: 'one' }), song({ id: 'two' })]
 
-    expect(getUpcomingSongs([], 0)).toEqual([])
-    expect(getUpcomingSongs(playlist.slice(0, 1), 0)).toEqual([])
-    expect(getUpcomingSongs(playlist, 5).map(({ id }) => id)).toEqual(['one'])
+    expect(getUpcomingSongSelections([], 0)).toEqual([])
+    expect(getUpcomingSongSelections(playlist.slice(0, 1), 0)).toEqual([])
+    expect(getUpcomingSongSelections(playlist, 5)).toEqual([{ contextIndex: 0, song: playlist[0] }])
+  })
+
+  it('preserves the exact context index when track IDs repeat', () => {
+    const repeated = song({ id: 'repeated' })
+    const playlist = [repeated, song({ id: 'middle' }), { ...repeated }]
+
+    expect(getUpcomingSongSelections(playlist, 1)).toEqual([
+      { contextIndex: 2, song: playlist[2] },
+      { contextIndex: 0, song: playlist[0] },
+    ])
   })
 })

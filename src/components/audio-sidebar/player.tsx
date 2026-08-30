@@ -1,10 +1,10 @@
 import { $, component$, useComputed$, useContext, useStore } from '@builder.io/qwik'
-import { Link } from '@builder.io/qwik-city'
 import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { Song } from '~/App'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { updateFavoriteRating } from '~/services/library-db'
+import PlaybackLink from './playback-link'
 import { MusicNote } from '../svg/MusicNote'
 import { NextTrack } from '../svg/NextTrack'
 import { Pause } from '../svg/Pause'
@@ -16,11 +16,9 @@ import { Star1 } from '../svg/Star1'
 import { Star2 } from '../svg/Star2'
 
 const MODE_BUTTON_CLASS =
-  'relative grid h-8 w-8 place-items-center rounded text-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400'
-const TRANSPORT_BUTTON_CLASS =
-  'grid h-10 w-10 place-items-center rounded-full text-slate-300 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400'
-const PRIMARY_BUTTON_CLASS =
-  'grid h-11 w-11 place-items-center rounded-full bg-amber-300 text-slate-950 shadow-[0_0_0_1px_rgba(251,191,36,0.2)] hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400'
+  'playback-interactive playback-mode-button relative grid h-8 w-8 place-items-center rounded text-lg'
+const TRANSPORT_BUTTON_CLASS = 'playback-interactive grid h-10 w-10 place-items-center rounded-full'
+const PRIMARY_BUTTON_CLASS = 'playback-primary-button grid h-11 w-11 place-items-center rounded-full'
 
 function formatSeconds(time: number): string {
   if (!Number.isFinite(time) || time < 0) return '0:00'
@@ -76,15 +74,13 @@ export default component$(() => {
 
   const current = store.player.currSong
   const nextFavorite = current ? (((current.favorRating + 1) % 3) as Song['favorRating']) : 0
-  const activeModeClass = 'bg-amber-400/10 text-amber-300'
-
   return (
     <section aria-label="Now playing" class="border-b border-slate-700/80">
       <div class="flex items-center justify-between px-4 pb-2 pt-3">
         <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Now playing</span>
         <button
           type="button"
-          class="grid h-8 w-8 place-items-center rounded text-lg text-slate-400 hover:bg-white/5 hover:text-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 disabled:opacity-30"
+          class="playback-interactive grid h-8 w-8 place-items-center rounded text-lg"
           disabled={!current || favoriteState.busy}
           aria-label={current ? `Set favorite rating to ${nextFavorite}` : 'No track selected'}
           title={current ? `Favorite rating: ${current.favorRating}` : 'No track selected'}
@@ -96,14 +92,12 @@ export default component$(() => {
 
       <div class="px-4">
         {current ? (
-          <Link
+          <PlaybackLink
             href={current.album ? '/albums/' : '/'}
-            aria-label={current.album ? `Browse album ${current.album}` : `Find ${current.title} in the library`}
+            ariaLabel={current.album ? `Browse album ${current.album}` : `Find ${current.title} in the library`}
             title={current.album ? `Browse ${current.album}` : 'Find in library'}
-            onClick$={() => {
-              store.searchTerm = current.album || current.title
-            }}
-            class="mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)] outline-none ring-amber-400 hover:ring-1 focus-visible:ring-2"
+            searchTerm={current.album || current.title}
+            class="playback-artwork-link mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]"
           >
             {albumArt.value ? (
               <img
@@ -119,7 +113,7 @@ export default component$(() => {
                 <MusicNote height="18%" width="18%" />
               </span>
             )}
-          </Link>
+          </PlaybackLink>
         ) : (
           <div class="mx-auto max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]">
             <div class="aspect-square w-full grid place-items-center bg-slate-800 text-slate-600">
@@ -131,45 +125,27 @@ export default component$(() => {
         <div class="min-w-0 pb-1 pt-4 text-center">
           {current ? (
             <h2 class="truncate text-base font-semibold leading-6 text-slate-100" title={current.title}>
-              <Link
-                href="/"
-                class="rounded-sm hover:text-amber-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
-                onClick$={() => {
-                  store.searchTerm = current.title
-                }}
-              >
+              <PlaybackLink href="/" searchTerm={current.title}>
                 {current.title}
-              </Link>
+              </PlaybackLink>
             </h2>
           ) : (
             <h2 class="truncate text-base font-semibold leading-6 text-slate-100">Nothing playing</h2>
           )}
           {current?.artist ? (
             <p class="truncate text-xs leading-5 text-slate-400" title={current.artist}>
-              <Link
-                href="/artists/"
-                class="rounded-sm hover:text-amber-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
-                onClick$={() => {
-                  store.searchTerm = current.artist
-                }}
-              >
+              <PlaybackLink href="/artists/" searchTerm={current.artist}>
                 {current.artist}
-              </Link>
+              </PlaybackLink>
             </p>
           ) : (
             <p class="truncate text-xs leading-5 text-slate-400">Choose a track from your library</p>
           )}
           {current?.album && (
             <p class="truncate text-[11px] leading-4 text-slate-500" title={current.album}>
-              <Link
-                href="/albums/"
-                class="rounded-sm hover:text-amber-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
-                onClick$={() => {
-                  store.searchTerm = current.album
-                }}
-              >
+              <PlaybackLink href="/albums/" searchTerm={current.album}>
                 {current.album}
-              </Link>
+              </PlaybackLink>
             </p>
           )}
         </div>
@@ -197,7 +173,8 @@ export default component$(() => {
         <div class="mt-1 grid grid-cols-[1fr_auto_auto_auto_1fr] items-center gap-1" aria-label="Playback controls">
           <button
             type="button"
-            class={`${MODE_BUTTON_CLASS} justify-self-start ${store.player.shuffleEnabled ? activeModeClass : ''}`}
+            class={`${MODE_BUTTON_CLASS} justify-self-start`}
+            data-active={store.player.shuffleEnabled ? 'true' : 'false'}
             aria-label={store.player.shuffleEnabled ? 'Turn shuffle off' : 'Turn shuffle on'}
             aria-pressed={store.player.shuffleEnabled}
             title={store.player.shuffleEnabled ? 'Shuffle on' : 'Shuffle off'}
@@ -241,7 +218,8 @@ export default component$(() => {
           </button>
           <button
             type="button"
-            class={`${MODE_BUTTON_CLASS} justify-self-end ${store.player.repeatMode !== 'off' ? activeModeClass : ''}`}
+            class={`${MODE_BUTTON_CLASS} justify-self-end`}
+            data-active={store.player.repeatMode !== 'off' ? 'true' : 'false'}
             aria-label={`${repeatLabel(store.player.repeatMode)}. Change mode.`}
             title={repeatLabel(store.player.repeatMode)}
             onClick$={() => storeActions.setRepeatMode(nextRepeatMode(store.player.repeatMode))}
@@ -258,7 +236,7 @@ export default component$(() => {
         <div class="mb-3 mt-2 flex items-center gap-2">
           <button
             type="button"
-            class="grid h-8 w-8 shrink-0 place-items-center rounded text-base text-slate-400 hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400"
+            class="playback-interactive grid h-8 w-8 shrink-0 place-items-center rounded text-base"
             aria-label={store.player.muted ? 'Unmute' : 'Mute'}
             aria-pressed={store.player.muted}
             title={store.player.muted ? 'Unmute' : 'Mute'}
@@ -302,7 +280,7 @@ export default component$(() => {
 
       {current && (
         <details class="group border-t border-slate-800 px-4 py-2 text-xs">
-          <summary class="cursor-pointer list-none py-1 text-slate-400 hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400">
+          <summary class="playback-interactive cursor-pointer list-none rounded py-1">
             <span class="group-open:hidden">Show track details</span>
             <span class="hidden group-open:inline">Hide track details</span>
           </summary>
