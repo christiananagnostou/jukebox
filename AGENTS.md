@@ -51,6 +51,11 @@ Format:
 - npm run fmt
 - npm run fmt.check
 
+Local pre-push gate:
+
+- npm run pre-push
+- npm run check:rust # Rust-only format, tests, and Clippy
+
 Desktop bundle:
 
 - npm run tauri build
