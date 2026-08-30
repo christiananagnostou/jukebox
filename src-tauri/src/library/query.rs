@@ -251,6 +251,20 @@ impl LibraryError {
         }
     }
 
+    pub(crate) fn playlist_name_conflict() -> Self {
+        Self {
+            code: "playlist_name_conflict".to_owned(),
+            message: "A playlist with that name already exists.".to_owned(),
+        }
+    }
+
+    pub(crate) fn playlist_not_found() -> Self {
+        Self {
+            code: "playlist_not_found".to_owned(),
+            message: "That playlist no longer exists.".to_owned(),
+        }
+    }
+
     pub(crate) fn root_not_found() -> Self {
         Self {
             code: "library_root_not_found".to_owned(),

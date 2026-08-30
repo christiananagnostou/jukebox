@@ -2,6 +2,7 @@ mod aggregates;
 mod facets;
 #[cfg(test)]
 mod performance;
+mod playlists;
 mod query;
 mod reconciliation;
 mod refresh;
@@ -13,6 +14,10 @@ mod watcher;
 
 pub use aggregates::{query_albums, query_artists, AggregateQuery, AlbumPage, ArtistPage};
 pub use facets::{FacetPage, FacetQuery};
+pub use playlists::{
+    PlaylistEntryPage, PlaylistEntryQuery, PlaylistMutation, PlaylistPage, PlaylistQuery,
+    PlaylistSummary,
+};
 pub use query::{LibraryError, TrackQuery, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 pub use reconciliation::LibraryReconciliation;
 pub use refresh::{
@@ -100,6 +105,60 @@ impl LibraryState {
     pub async fn query_facets(&self, query: FacetQuery) -> Result<FacetPage, LibraryError> {
         self.ensure_initialized().await?;
         facets::load_facet_page(&self.repository.pool(), query).await
+    }
+
+    pub async fn create_playlist(&self, name: String) -> Result<PlaylistSummary, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::create_playlist(&self.repository.pool(), name).await
+    }
+
+    pub async fn list_playlists(&self, query: PlaylistQuery) -> Result<PlaylistPage, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::list_playlists(&self.repository.pool(), query).await
+    }
+
+    pub async fn rename_playlist(
+        &self,
+        playlist_id: String,
+        name: String,
+    ) -> Result<PlaylistSummary, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::rename_playlist(&self.repository.pool(), playlist_id, name).await
+    }
+
+    pub async fn delete_playlist(
+        &self,
+        playlist_id: String,
+    ) -> Result<PlaylistMutation, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::delete_playlist(&self.repository.pool(), playlist_id).await
+    }
+
+    pub async fn add_playlist_entries(
+        &self,
+        playlist_id: String,
+        song_ids: Vec<String>,
+    ) -> Result<PlaylistMutation, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::add_playlist_entries(&self.repository.pool(), playlist_id, song_ids).await
+    }
+
+    pub async fn list_playlist_entries(
+        &self,
+        playlist_id: String,
+        query: PlaylistEntryQuery,
+    ) -> Result<PlaylistEntryPage, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::list_playlist_entries(&self.repository.pool(), playlist_id, query).await
+    }
+
+    pub async fn remove_playlist_entries(
+        &self,
+        playlist_id: String,
+        entry_ids: Vec<String>,
+    ) -> Result<PlaylistMutation, LibraryError> {
+        self.ensure_initialized().await?;
+        playlists::remove_playlist_entries(&self.repository.pool(), playlist_id, entry_ids).await
     }
 
     pub async fn resolve_playback_tracks(
@@ -266,6 +325,68 @@ pub async fn query_facets(
     query: FacetQuery,
 ) -> Result<FacetPage, LibraryError> {
     library.query_facets(query).await
+}
+
+#[tauri::command]
+pub async fn create_playlist(
+    library: tauri::State<'_, LibraryState>,
+    name: String,
+) -> Result<PlaylistSummary, LibraryError> {
+    library.create_playlist(name).await
+}
+
+#[tauri::command]
+pub async fn list_playlists(
+    library: tauri::State<'_, LibraryState>,
+    query: PlaylistQuery,
+) -> Result<PlaylistPage, LibraryError> {
+    library.list_playlists(query).await
+}
+
+#[tauri::command]
+pub async fn rename_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    name: String,
+) -> Result<PlaylistSummary, LibraryError> {
+    library.rename_playlist(playlist_id, name).await
+}
+
+#[tauri::command]
+pub async fn delete_playlist(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+) -> Result<PlaylistMutation, LibraryError> {
+    library.delete_playlist(playlist_id).await
+}
+
+#[tauri::command]
+pub async fn add_playlist_entries(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    song_ids: Vec<String>,
+) -> Result<PlaylistMutation, LibraryError> {
+    library.add_playlist_entries(playlist_id, song_ids).await
+}
+
+#[tauri::command]
+pub async fn list_playlist_entries(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    query: PlaylistEntryQuery,
+) -> Result<PlaylistEntryPage, LibraryError> {
+    library.list_playlist_entries(playlist_id, query).await
+}
+
+#[tauri::command]
+pub async fn remove_playlist_entries(
+    library: tauri::State<'_, LibraryState>,
+    playlist_id: String,
+    entry_ids: Vec<String>,
+) -> Result<PlaylistMutation, LibraryError> {
+    library
+        .remove_playlist_entries(playlist_id, entry_ids)
+        .await
 }
 
 #[tauri::command]

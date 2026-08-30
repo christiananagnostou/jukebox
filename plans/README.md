@@ -1,6 +1,6 @@
 # Jukebox implementation plans
 
-Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-036 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
+Reconciled by the `improve` audit on 2026-08-26. Execute focused plans 007-037 in the order below unless dependencies say otherwise. Each executor must read its plan fully, honor its STOP conditions, run every verification gate, and update the status row when done.
 
 The product direction remains local-first: a fast native catalog, dependable playback, durable collections, a compact accessible interface, and private iPhone listening through loopback-only Jukebox HTTP plus Tailscale Serve. Public sharing, mandatory accounts, visualizers, and large decorative animations remain out of scope.
 
@@ -38,6 +38,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [034](034-exact-track-asset-scope.md)              | Authorize exact playback assets and enable production CSP           | P1       | M      | 033        | DONE   |
 | [035](035-data-safe-app-identity.md)               | Stabilize packaging and nonblocking desktop playback                | P1       | M      | 034        | ACTIVE |
 | [036](036-native-library-facets.md)                | Add complete metadata and bounded native filters/facets             | P1       | M      | 035        | DONE   |
+| [037](037-playlist-repository-foundation.md)       | Establish a durable native manual-playlist repository               | P1       | M      | 036        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
@@ -48,7 +49,7 @@ Plans 007-010 are deliberately independent and may be delivered as separate PRs.
 | [001](001-quality-security-release-foundation.md) | Migrations, diagnostics, permissions, identity, release quality | IN PROGRESS — migrations, diagnostics, Rust quality gates, portability, build-path remapping, renderer SQL/filesystem-plugin narrowing, exact asset scope, and production CSP are complete; identity migration, Windows, signing, and updater remain              |
 | [002](002-native-library-index.md)                | Incremental scanning, watching, FTS, bounded frontend memory    | IN PROGRESS — plans 011-026 and 036 delivered the native refresh pipeline, executable 100k-track budgets, bounded routes, complete track metadata, indexed filters/facets, renderer-memory cleanup, shared mutation pool ownership, and bounded artwork lifecycle |
 | [003](003-playback-engine-and-os-integration.md)  | Reliable restart-safe playback and OS integration               | IN PROGRESS — plans 009 and 028-031 delivered native authority, browser parity, restart-safe recovery, six-codec decode, exact seek, and sample-boundary evidence; real-device native output remains                                                              |
-| [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | IN PROGRESS — stable native queue entries, desktop parity, and committed session/queue persistence are complete; named playlists and broader collection management remain                                                                                         |
+| [004](004-playlists-queue-and-history.md)         | Durable collections, queue, and history                         | IN PROGRESS — stable native queue entries, desktop parity, committed session/queue persistence, and the named manual-playlist repository are complete; playlist UI, reordering, smart rules, history, and broader collection workflows remain                     |
 | [005](005-fast-accessible-interface.md)           | Compact, keyboard-complete, motion-light UI                     | TODO — small accessibility fixes may land continuously; structural work follows stable APIs                                                                                                                                                                       |
 | [006](006-private-remote-listening.md)            | Private iPhone browsing and playback                            | IN PROGRESS — loopback streaming, one-click Tailscale controls, port coexistence, installable PWA shell, bounded artist/album drill-down, native-root authorization, continuation, and lock-screen transport are complete                                         |
 

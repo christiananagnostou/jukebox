@@ -27,6 +27,7 @@ symphonia = { version = "0.5.5", features = ["all"] }
 tauri-plugin-dialog = "2"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "net", "process", "sync", "time"] }
 tokio-util = { version = "0.7.19", features = ["io"] }
+unicode-normalization = "0.1.25"
 md5 = "0.8.0"
 sha2 = "0.10.9"
 notify = "8.2.0"

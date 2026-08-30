@@ -2041,6 +2041,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower",
+ "unicode-normalization",
 ]
 
 [[package]]
