@@ -339,6 +339,7 @@ mod tests {
 
     async fn close_test_pool(pool: SqlitePool, root: PathBuf) {
         pool.close().await;
+        drop(pool);
         std::fs::remove_dir_all(root).expect("remove isolated database directory");
     }
 
@@ -516,6 +517,7 @@ mod tests {
             assert_eq!(song_count(&pool).await, 0);
             assert!(!referenced_artwork.exists());
 
+            drop(library);
             close_test_pool(pool, root).await;
         });
     }
