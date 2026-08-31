@@ -1,5 +1,5 @@
 import { component$, useContext } from '@builder.io/qwik'
-import { KeyboardCommands } from '~/hooks/useKeyboardShortcuts'
+import { KEYBOARD_COMMAND_GROUPS } from '~/services/app-commands'
 import { StoreContext } from '~/routes/layout'
 import { Backspace } from '../svg/Backspace'
 import { Command } from '../svg/Command'
@@ -14,7 +14,7 @@ export const ShortcutsModal = component$(() => {
       onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
     >
       <div class="p-8 w-max h-max grid grid-cols-2 gap-12 border border-slate-700 rounded bg-[var(--body-bg-solid)]">
-        {KeyboardCommands.map((shortcutGroup, i) => (
+        {KEYBOARD_COMMAND_GROUPS.map((shortcutGroup, i) => (
           <div key={i}>
             <span class="pb-2 -mb-1 border-b border-slate-700 w-full text-gray-200 text-center block">
               {shortcutGroup.title}

@@ -1,51 +1,125 @@
 import { component$, useContext } from '@builder.io/qwik'
 import { Link, useLocation } from '@builder.io/qwik-city'
+
 import { StoreContext } from '~/routes/layout'
-import MusicPicker from './Shared/MusicPicker'
+import { isNavigationRouteActive, NAVIGATION_COMMANDS, type NavigationCommand } from '~/services/app-commands'
 import { ShortcutsModal } from './Shared/ShortcutsModal'
+import { NavigationIcon } from './svg/NavigationIcon'
 
-const Links = [
-  { title: 'Library', url: '/', shortcut: 'L' },
-  { title: 'Artists', url: '/artists/', shortcut: 'A' },
-  { title: 'Storage', url: '/storage/', shortcut: 'O' },
-  { title: 'Albums', url: '/albums/', shortcut: 'M' },
-  { title: 'Playlists', url: '/playlists/', shortcut: 'P' },
-  { title: 'Settings', url: '/settings/', shortcut: 'S' },
-]
+const commandsFor = (group: NavigationCommand['group']) =>
+  NAVIGATION_COMMANDS.filter((command) => command.group === group)
 
-const NavItemStyles = {
-  button: 'w-full flex items-center justify-between p-2 hover:bg-gray-700 group',
-  icon: 'text-xs text-gray-500 group-hover:text-gray-400',
-}
+const primaryCommands = commandsFor('primary')
+const libraryCommands = commandsFor('library')
+const toolCommands = commandsFor('tools')
+const utilityCommands = commandsFor('utility')
+
+const NavigationLink = component$((props: { command: NavigationCommand; pathname: string }) => {
+  const { command, pathname } = props
+  if (!command.href) return null
+  const active = isNavigationRouteActive(pathname, command.href)
+
+  return (
+    <Link
+      href={command.href}
+      class="nav-index-link"
+      data-active={active ? 'true' : 'false'}
+      aria-current={active ? 'page' : undefined}
+      title={command.shortcut ? `${command.label} (Shift+${command.shortcut})` : command.label}
+    >
+      <span class="nav-index-marker" aria-hidden="true" />
+      <span class="nav-index-icon">
+        <NavigationIcon name={command.icon} />
+      </span>
+      <span class="min-w-0 flex-1 truncate">{command.label}</span>
+      {command.shortcut && <kbd class="nav-index-shortcut">⇧{command.shortcut}</kbd>}
+    </Link>
+  )
+})
 
 export default component$(() => {
   const store = useContext(StoreContext)
   const location = useLocation()
+  const pathname = location.url.pathname
+  const libraryBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
+  const statusLabel = libraryBusy
+    ? store.sync.message || (store.sync.status === 'scanning' ? 'Scanning library' : 'Importing music')
+    : store.sync.status === 'error' || store.bootstrap.libraryError
+      ? 'Library needs attention'
+      : 'Library ready'
 
   return (
     <>
-      <nav class="app-navigation border-r border-gray-700 h-screen min-w-0 flex z-20 flex-col text-sm">
-        <div class="flex-1 mt-[29px] border-t border-gray-700">
-          {Links.map((link) => (
-            <Link
-              key={link.title}
-              href={link.url}
-              title={link.title}
-              class={NavItemStyles.button + ` ${location?.url?.pathname === link.url ? '!bg-gray-700' : ''}`}
-            >
-              {link.title}
+      <nav class="app-navigation" aria-label="Primary navigation">
+        <header class="nav-index-header">
+          <span class="nav-index-brand-mark" aria-hidden="true">
+            <span />
+          </span>
+          <span class="min-w-0">
+            <strong class="block truncate text-[13px] font-semibold tracking-wide text-slate-100">Jukebox</strong>
+            <span class="mt-1 block font-mono text-[10px] tabular-nums text-slate-500">
+              {store.libraryCatalog.total.toLocaleString()} {store.libraryCatalog.total === 1 ? 'track' : 'tracks'}
+            </span>
+          </span>
+        </header>
 
-              <span class={NavItemStyles.icon}>{link.shortcut}</span>
-            </Link>
-          ))}
+        <div class="nav-index-scroll">
+          <div class="nav-index-primary">
+            {primaryCommands.map((command) => (
+              <NavigationLink command={command} pathname={pathname} key={command.id} />
+            ))}
+          </div>
+
+          <section aria-labelledby="library-navigation-heading">
+            <h2 id="library-navigation-heading" class="nav-index-heading">
+              Library
+            </h2>
+            {libraryCommands.map((command) => (
+              <NavigationLink command={command} pathname={pathname} key={command.id} />
+            ))}
+          </section>
+
+          <section class="mt-4" aria-labelledby="tools-navigation-heading">
+            <h2 id="tools-navigation-heading" class="nav-index-heading">
+              Tools
+            </h2>
+            {toolCommands.map((command) => (
+              <NavigationLink command={command} pathname={pathname} key={command.id} />
+            ))}
+          </section>
         </div>
 
-        <MusicPicker styles={NavItemStyles} />
+        <footer class="nav-index-footer">
+          <div class="nav-index-status" title={statusLabel}>
+            <span
+              class="nav-index-status-dot"
+              data-state={libraryBusy ? 'busy' : store.sync.status}
+              aria-hidden="true"
+            />
+            <span class="min-w-0 flex-1 truncate">{statusLabel}</span>
+          </div>
 
-        <button class={NavItemStyles.button} onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}>
-          Shortcuts
-          <span class={NavItemStyles.icon}>?</span>
-        </button>
+          {utilityCommands.map((command) =>
+            command.href ? (
+              <NavigationLink command={command} pathname={pathname} key={command.id} />
+            ) : (
+              <button
+                class="nav-index-link"
+                key={command.id}
+                type="button"
+                onClick$={() => (store.showKeyShortcuts = !store.showKeyShortcuts)}
+                aria-expanded={store.showKeyShortcuts}
+              >
+                <span class="nav-index-marker" aria-hidden="true" />
+                <span class="nav-index-icon">
+                  <NavigationIcon name={command.icon} />
+                </span>
+                <span class="min-w-0 flex-1 truncate text-left">{command.label}</span>
+                <kbd class="nav-index-shortcut">?</kbd>
+              </button>
+            )
+          )}
+        </footer>
       </nav>
 
       {store.showKeyShortcuts && <ShortcutsModal />}

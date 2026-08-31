@@ -1,8 +1,10 @@
 import { $, component$, useContext, useOnWindow, useSignal } from '@builder.io/qwik'
+import { useNavigate } from '@builder.io/qwik-city'
 import { StoreContext } from '~/routes/layout'
 
 export default component$(() => {
   const store = useContext(StoreContext)
+  const navigate = useNavigate()
   const searchInput = useSignal<HTMLInputElement>()
 
   useOnWindow(
@@ -13,6 +15,7 @@ export default component$(() => {
 
       if (key === '/') {
         e.preventDefault()
+        void navigate('/songs/')
         searchInput.value.focus()
       }
       if (key === 'Escape') {

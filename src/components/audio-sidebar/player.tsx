@@ -125,7 +125,7 @@ export default component$(() => {
         <div class="min-w-0 pb-1 pt-4 text-center">
           {current ? (
             <h2 class="truncate text-base font-semibold leading-6 text-slate-100" title={current.title}>
-              <PlaybackLink href="/" searchTerm={current.title}>
+              <PlaybackLink href="/songs/" searchTerm={current.title}>
                 {current.title}
               </PlaybackLink>
             </h2>
