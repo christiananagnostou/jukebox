@@ -85,6 +85,292 @@ body {
   color: #64748b;
 }
 
+.focused-collection,
+.focused-collection-invalid {
+  --focused-accent-hover: #c1d5f5;
+  --focused-accent-soft: rgb(124 147 191 / 8%);
+  --focused-art-surface: #20212b;
+  --focused-danger-border: #7f1d1d;
+  --focused-danger-surface: #450a0a;
+  --focused-danger-text: #fecaca;
+  --focused-divider: rgb(52 55 70 / 70%);
+  --focused-divider-soft: rgb(52 55 70 / 55%);
+  --focused-loading-surface: rgb(52 55 70 / 15%);
+  --focused-muted: #64748b;
+}
+
+.focused-collection {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--body-bg-solid);
+}
+
+.focused-collection-header {
+  display: grid;
+  min-height: 144px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1rem;
+  border-bottom: 1px solid var(--app-border);
+  padding: 1rem;
+  background: var(--focused-accent-soft);
+}
+
+.focused-collection-art {
+  display: grid;
+  width: 112px;
+  height: 112px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 0.25rem;
+  color: var(--focused-muted);
+  background: var(--focused-art-surface);
+}
+
+.focused-collection-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.focused-collection-heading {
+  min-width: 0;
+  padding-bottom: 0.125rem;
+}
+
+.focused-collection-trail {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  color: var(--focused-muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.focused-collection-trail a,
+.focused-collection-artist,
+.focused-collection-notice a,
+.focused-collection-empty a,
+.focused-collection-invalid a {
+  border-radius: 0.125rem;
+  color: var(--app-accent-strong);
+  text-decoration: none;
+}
+
+.focused-collection-trail a:hover,
+.focused-collection-artist:hover,
+.focused-collection-notice a:hover,
+.focused-collection-empty a:hover,
+.focused-collection-invalid a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.focused-collection-trail a:focus-visible,
+.focused-collection-artist:focus-visible,
+.focused-collection-notice a:focus-visible,
+.focused-collection-empty a:focus-visible,
+.focused-collection-invalid a:focus-visible,
+.focused-collection-play:focus-visible,
+.focused-track-play:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}
+
+.focused-collection-trail [aria-current='page'] {
+  overflow: hidden;
+  color: var(--app-text-muted);
+  text-overflow: ellipsis;
+}
+
+.focused-collection h1 {
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 500;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focused-collection-artist {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focused-collection-count {
+  margin-top: 0.5rem;
+  color: var(--focused-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.focused-collection-play {
+  min-width: 72px;
+  min-height: 38px;
+  border: 1px solid var(--app-accent);
+  border-radius: 0.25rem;
+  padding: 0.5rem 1rem;
+  color: var(--body-bg-solid);
+  background: var(--app-accent-strong);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.focused-collection-play:hover:not(:disabled) {
+  background: var(--focused-accent-hover);
+}
+
+.focused-collection-play:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.focused-collection-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--focused-danger-border);
+  padding: 0.65rem 1rem;
+  color: var(--focused-danger-text);
+  background: var(--focused-danger-surface);
+  font-size: 0.75rem;
+}
+
+.focused-collection-columns,
+.focused-track-row {
+  display: grid;
+  grid-template-columns: 56px minmax(12rem, 1.4fr) minmax(9rem, 1fr) 92px;
+  align-items: center;
+}
+
+.focused-collection-columns {
+  min-height: 30px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--focused-muted);
+  font-size: 0.6875rem;
+}
+
+.focused-collection-columns span,
+.focused-track-row > span,
+.focused-track-play {
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid var(--focused-divider);
+  padding: 0 0.75rem;
+}
+
+.focused-collection-columns span:first-child,
+.focused-track-row > span:first-child {
+  border-left: 0;
+}
+
+.focused-collection-tracks {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+}
+
+.focused-track-row {
+  border-bottom: 1px solid var(--focused-divider-soft);
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+
+.focused-track-row:hover,
+.focused-track-row-playing {
+  background: var(--focused-accent-soft);
+}
+
+.focused-track-row-loading {
+  background: var(--focused-loading-surface);
+}
+
+.focused-track-number,
+.focused-track-duration {
+  display: flex;
+  align-items: center;
+  color: var(--focused-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.focused-track-play {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--app-text);
+  text-align: left;
+}
+
+.focused-track-play:hover {
+  color: var(--app-accent-strong);
+}
+
+.focused-track-album {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focused-collection-empty,
+.focused-collection-invalid {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.focused-collection-invalid {
+  flex: 1;
+}
+
+.focused-collection-invalid h1 {
+  color: var(--app-text);
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+@media (max-width: 920px) {
+  .focused-collection-header {
+    min-height: 120px;
+  }
+
+  .focused-collection-art {
+    width: 88px;
+    height: 88px;
+  }
+
+  .focused-collection-columns,
+  .focused-track-row {
+    grid-template-columns: 48px minmax(10rem, 1fr) 80px;
+  }
+
+  .focused-collection-columns span:nth-child(3),
+  .focused-track-album {
+    display: none;
+  }
+}
+
 select.app-form-control {
   appearance: none;
   padding-right: 2rem;

@@ -1,5 +1,7 @@
 # Stable app identity and nonblocking desktop playback
 
+Status: DONE — verified on `091a8b6` (2026-08-30)
+
 ## Objective
 
 Correct Jukebox's public package metadata, remove the obsolete renderer SQL surface, and move desktop audio file I/O off Tauri's macOS main thread without invalidating existing Music-folder privacy grants.

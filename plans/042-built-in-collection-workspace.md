@@ -1,6 +1,6 @@
 # Built-in collection workspace
 
-Status: ACTIVE
+Status: DONE — verified on `091a8b6` (2026-08-30)
 
 ## Objective
 
