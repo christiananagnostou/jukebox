@@ -42,11 +42,10 @@ export default component$(() => {
   const location = useLocation()
   const pathname = location.url.pathname
   const libraryBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
+  const libraryNeedsAttention = store.sync.status === 'error' || Boolean(store.bootstrap.libraryError)
   const statusLabel = libraryBusy
     ? store.sync.message || (store.sync.status === 'scanning' ? 'Scanning library' : 'Importing music')
-    : store.sync.status === 'error' || store.bootstrap.libraryError
-      ? 'Library needs attention'
-      : 'Library ready'
+    : 'Library needs attention'
 
   return (
     <>
@@ -90,14 +89,12 @@ export default component$(() => {
         </div>
 
         <footer class="nav-index-footer">
-          <div class="nav-index-status" title={statusLabel}>
-            <span
-              class="nav-index-status-dot"
-              data-state={libraryBusy ? 'busy' : store.sync.status}
-              aria-hidden="true"
-            />
-            <span class="min-w-0 flex-1 truncate">{statusLabel}</span>
-          </div>
+          {(libraryBusy || libraryNeedsAttention) && (
+            <Link class="nav-index-status" href="/settings/library/" title={`${statusLabel}. Open Library settings.`}>
+              <span class="nav-index-status-dot" data-state={libraryBusy ? 'busy' : 'error'} aria-hidden="true" />
+              <span class="min-w-0 flex-1 truncate">{statusLabel}</span>
+            </Link>
+          )}
 
           {utilityCommands.map((command) =>
             command.href ? (

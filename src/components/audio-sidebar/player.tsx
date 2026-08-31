@@ -1,7 +1,9 @@
 import { $, component$, useComputed$, useContext, useStore } from '@builder.io/qwik'
+import { Link } from '@builder.io/qwik-city'
 import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { Song } from '~/App'
+import { PLAYBACK_ACCESS_ERROR_MESSAGE } from '~/hooks/useAudioPlayer'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { updateFavoriteRating } from '~/services/library-db'
 import PlaybackLink from './playback-link'
@@ -76,8 +78,7 @@ export default component$(() => {
   const nextFavorite = current ? (((current.favorRating + 1) % 3) as Song['favorRating']) : 0
   return (
     <section aria-label="Now playing" class="border-b border-slate-700/80">
-      <div class="flex items-center justify-between px-4 pb-2 pt-3">
-        <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Now playing</span>
+      <div class="flex items-center justify-end px-4 pb-2 pt-3">
         <button
           type="button"
           class="playback-interactive grid h-8 w-8 place-items-center rounded text-lg"
@@ -266,25 +267,40 @@ export default component$(() => {
       {(store.player.error || favoriteState.error) && (
         <div role="alert" class="mx-3 mb-3 border-l-2 border-red-500 bg-red-950/60 px-3 py-2 text-xs text-red-100">
           <p>{favoriteState.error || store.player.error}</p>
-          {store.player.error && current && (
-            <button
-              type="button"
-              class="mt-2 font-semibold text-red-200 underline decoration-red-500/60 underline-offset-2 hover:text-white"
-              onClick$={storeActions.resumeSong}
+          {store.player.error === PLAYBACK_ACCESS_ERROR_MESSAGE ? (
+            <Link
+              class="mt-2 inline-block font-semibold text-red-200 underline decoration-red-500/60 underline-offset-2 hover:text-white"
+              href="/settings/library/"
             >
-              Try again
-            </button>
+              Reconnect a music folder
+            </Link>
+          ) : (
+            store.player.error &&
+            current && (
+              <button
+                type="button"
+                class="mt-2 font-semibold text-red-200 underline decoration-red-500/60 underline-offset-2 hover:text-white"
+                onClick$={storeActions.resumeSong}
+              >
+                Try again
+              </button>
+            )
           )}
         </div>
       )}
 
       {current && (
-        <details class="group border-t border-slate-800 px-4 py-2 text-xs">
-          <summary class="playback-interactive cursor-pointer list-none rounded py-1">
-            <span class="group-open:hidden">Show track details</span>
-            <span class="hidden group-open:inline">Hide track details</span>
+        <details class="group border-t border-slate-800 text-xs">
+          <summary class="playback-details-summary playback-interactive flex cursor-pointer list-none items-center justify-between px-4 py-3">
+            <span>
+              <span class="group-open:hidden">Show track details</span>
+              <span class="hidden group-open:inline">Hide track details</span>
+            </span>
+            <span class="playback-details-chevron" aria-hidden="true">
+              ›
+            </span>
           </summary>
-          <dl class="grid grid-cols-2 gap-x-3 gap-y-2 pb-2 pt-3">
+          <dl class="grid grid-cols-2 gap-x-3 gap-y-2 px-4 pb-4 pt-1">
             <div>
               <dt class="text-[10px] uppercase tracking-wide text-slate-600">Track</dt>
               <dd class="mt-1 truncate text-slate-300">

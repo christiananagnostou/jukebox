@@ -386,7 +386,42 @@ const flushPromises = async () => {
   for (let index = 0; index < 10; index += 1) await Promise.resolve()
 }
 
+function deferred() {
+  let resolve = () => {}
+  const promise = new Promise<void>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
 describe('native-backed playback controller', () => {
+  it('keeps rapid track choices responsive and applies the latest queued selection', async () => {
+    const first = song('first')
+    const second = song('second')
+    const latest = song('latest')
+    const { bridge, controller, store, transport } = setup()
+    const firstPlay = deferred()
+    transport.queuePlay(firstPlay.promise)
+    await controller.initialize()
+
+    const firstRequest = controller.playTracks([first], 0)
+    await flushPromises()
+    const supersededRequest = controller.playTracks([second], 0)
+    const latestRequest = controller.playTracks([latest], 0)
+
+    await expect(supersededRequest).resolves.toBeUndefined()
+    firstPlay.resolve()
+    await Promise.all([firstRequest, latestRequest])
+
+    expect(store.player.currSong?.id).toBe('latest')
+    expect(store.playlist.map((track) => track.id)).toEqual(['latest'])
+    expect(transport.loadedSources.map(({ songId }) => songId)).toEqual(['first', 'latest'])
+    expect(bridge.commands.filter((command) => command.type === 'replaceContext')).toEqual([
+      { type: 'replaceContext', autoplay: true, startIndex: 0, trackIds: ['first'] },
+      { type: 'replaceContext', autoplay: true, startIndex: 0, trackIds: ['latest'] },
+    ])
+  })
+
   it('hydrates restored metadata without opening media until playback is requested', async () => {
     const snapshot = emptySnapshot()
     snapshot.context = { cursor: 1, order: [0, 1], trackIds: ['one', 'two'] }

@@ -56,7 +56,6 @@ export default component$(() => {
     >
       <section class="settings-control-group" aria-labelledby="listening-history-heading">
         <header>
-          <p class="workspace-eyebrow">On this device</p>
           <h2 id="listening-history-heading">Listening history</h2>
           <p>
             Jukebox keeps up to 10,000 plays for recent and frequently played views. Track paths are never stored in
@@ -104,7 +103,6 @@ export default component$(() => {
 
       <section class="settings-control-group" aria-labelledby="diagnostics-heading">
         <header>
-          <p class="workspace-eyebrow">Troubleshooting</p>
           <h2 id="diagnostics-heading">Diagnostics</h2>
           <p>
             Bounded local logs categorize errors while excluding music paths, filenames, device names, and private

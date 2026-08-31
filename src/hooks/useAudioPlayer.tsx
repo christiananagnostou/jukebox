@@ -34,6 +34,13 @@ type QueueIdFactory = () => string
 type SourceResolver = (song: Song) => Promise<string>
 type TrackResolver = (trackIds: string[]) => Promise<Song[]>
 
+interface ScheduledTransition {
+  command: PlaybackCommand
+  context?: Song[]
+  reject(error: unknown): void
+  resolve(): void
+}
+
 export interface PlaybackController {
   clearUpcoming(): Promise<void>
   clearPlayback(): Promise<void>
@@ -46,6 +53,7 @@ export interface PlaybackController {
   observePosition(): Promise<void>
   pauseSong(): Promise<void>
   playSong(song: Song, index: number): Promise<void>
+  playTracks(songs: Song[], index: number): Promise<void>
   prevSong(): Promise<void>
   resumeSong(): Promise<void>
   removeQueuedSong(entryId: string): Promise<void>
@@ -92,6 +100,7 @@ export function createPlaybackController(
   const queuedSongs = new Map<string, Song>()
   let undoEntryIds = new Set<string>()
   let transitionTask: Promise<void> | undefined
+  let scheduledTransition: ScheduledTransition | undefined
 
   const loadSong = async (song: Song) => {
     transport.load(await resolveSource(song), song.id)
@@ -211,33 +220,53 @@ export function createPlaybackController(
     }
   }
 
-  const runTransition = async (command: PlaybackCommand): Promise<void> => {
-    if (transitionTask) return
-    const operation = (async () => {
-      const snapshot = await bridge.dispatch(command)
-      if (snapshot.transitionPending) await playPreparedTransition(snapshot)
-      else if (
-        snapshot.current &&
-        (command.type === 'next' || command.type === 'ended' || command.type === 'replaceContext')
-      ) {
-        transport.currentTime = snapshot.positionMs / 1000
-        await playPreparedTransition(snapshot)
-      } else {
-        mirrorSnapshot(snapshot)
-        if (!snapshot.current) transport.pause()
-        else if (command.type === 'previous') transport.currentTime = snapshot.positionMs / 1000
+  const executeTransition = async (command: PlaybackCommand, context?: Song[]): Promise<void> => {
+    if (context) store.playlist = context
+    const snapshot = await bridge.dispatch(command)
+    if (snapshot.transitionPending) await playPreparedTransition(snapshot)
+    else if (
+      snapshot.current &&
+      (command.type === 'next' || command.type === 'ended' || command.type === 'replaceContext')
+    ) {
+      transport.currentTime = snapshot.positionMs / 1000
+      await playPreparedTransition(snapshot)
+    } else {
+      mirrorSnapshot(snapshot)
+      if (!snapshot.current) transport.pause()
+      else if (command.type === 'previous') transport.currentTime = snapshot.positionMs / 1000
+    }
+  }
+
+  const drainTransitions = async (initial: ScheduledTransition): Promise<void> => {
+    let request: ScheduledTransition | undefined = initial
+    while (request) {
+      try {
+        await executeTransition(request.command, request.context)
+        request.resolve()
+      } catch (error) {
+        request.reject(error)
       }
-    })()
-    transitionTask = operation
-    operation.then(
-      () => {
-        if (transitionTask === operation) transitionTask = undefined
-      },
-      () => {
-        if (transitionTask === operation) transitionTask = undefined
+      request = scheduledTransition
+      scheduledTransition = undefined
+    }
+  }
+
+  const runTransition = (command: PlaybackCommand, context?: Song[]): Promise<void> => {
+    if (transitionTask && command.type !== 'replaceContext') return transitionTask
+    return new Promise((resolve, reject) => {
+      const request: ScheduledTransition = { command, context, reject, resolve }
+      if (transitionTask) {
+        scheduledTransition?.resolve()
+        scheduledTransition = request
+        return
       }
-    )
-    return operation
+
+      const operation = drainTransitions(request)
+      transitionTask = operation
+      void operation.finally(() => {
+        if (transitionTask === operation) transitionTask = undefined
+      })
+    })
   }
 
   const waitForTransition = async (): Promise<void> => {
@@ -294,16 +323,23 @@ export function createPlaybackController(
     mirrorSnapshot(snapshot)
   }
 
+  const playTracks = async (songs: Song[], index: number) => {
+    if (!songs[index]) return
+    const context = [...songs]
+    await runTransition(
+      {
+        type: 'replaceContext',
+        autoplay: true,
+        startIndex: index,
+        trackIds: context.map((track) => track.id),
+      },
+      context
+    )
+  }
+
   const playSong = async (song: Song, index: number) => {
     const validContext = store.playlist[index]?.id === song.id
-    const context = validContext ? store.playlist : [song]
-    if (!validContext) store.playlist = context
-    await runTransition({
-      type: 'replaceContext',
-      autoplay: true,
-      startIndex: validContext ? index : 0,
-      trackIds: context.map((track) => track.id),
-    })
+    await playTracks(validContext ? store.playlist : [song], validContext ? index : 0)
   }
 
   const resumeSong = async () => {
@@ -398,6 +434,7 @@ export function createPlaybackController(
       mirrorSnapshot(await bridge.dispatch({ type: 'pause' }))
     },
     playSong,
+    playTracks,
     prevSong: () => {
       const lastIndex = store.playlist.length - 1
       const last = store.playlist[lastIndex]
@@ -531,6 +568,15 @@ export function useAudioPlayer(store: Store) {
     store.playbackSource = source
     return controller.value.playSong(song, index)
   })
+  const playTracks = $(async (songs: Song[], index: number, source?: PlaybackSource) => {
+    if (!controller.value) {
+      recordPlaybackClientEvent('controller_unavailable')
+      recordPlaybackFailure(store)
+      throw new Error(PLAYBACK_ERROR_MESSAGE)
+    }
+    store.playbackSource = source
+    return controller.value.playTracks(songs, index)
+  })
   const pauseSong = $(async () => controller.value?.pauseSong())
   const resumeSong = $(async () => controller.value?.resumeSong())
   const nextSong = $(async () => controller.value?.nextSong())
@@ -600,6 +646,7 @@ export function useAudioPlayer(store: Store) {
     nextSong,
     pauseSong,
     playSong,
+    playTracks,
     prevSong,
     resumeSong,
     removeQueuedSong,

@@ -12,8 +12,7 @@ export function useLibraryPage(store: Store, storeActions: StoreActions) {
   const playHighlighted = $(() => {
     const playback = libraryPlaybackAt(store.libraryCatalog, store.libraryView.cursorIdx)
     if (!playback) return
-    store.playlist = playback.playlist
-    storeActions.playSong(playback.song, playback.playlistIndex, { kind: 'library', label: 'Library' })
+    storeActions.playTracks(playback.playlist, playback.playlistIndex, { kind: 'library', label: 'Library' })
   })
 
   const highlightUp = $(async () => {

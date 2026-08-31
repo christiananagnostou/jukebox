@@ -30,12 +30,9 @@ import {
 } from '~/services/m3u-workflow'
 import { getErrorMessage } from '~/utils/Errors'
 import { StoreContext } from '~/routes/layout'
+import { PLAYLIST_BUTTON_CLASS as BUTTON_CLASS, PLAYLIST_FORM_CONTROL_CLASS as INPUT_CLASS } from './styles'
 
 const ISSUE_ROW_HEIGHT = 44
-const BUTTON_CLASS =
-  'border border-gray-600 px-3 py-2 text-sm hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40'
-const INPUT_CLASS = 'min-w-0 border border-gray-600 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-yellow-600'
-
 interface M3uImportViewProps {
   onApplied$: QRL<(result: M3uImportResult) => void>
   onBusyChange$: QRL<(busy: boolean) => void>
@@ -156,7 +153,7 @@ export default component$((props: M3uImportViewProps) => {
             />
           </label>
           <button
-            class={`${BUTTON_CLASS} border-yellow-700`}
+            class={`${BUTTON_CLASS} playlist-primary-action`}
             type="submit"
             disabled={!canApplyM3uImport(props.preview, state.name) || busy}
           >

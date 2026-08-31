@@ -179,7 +179,6 @@ export default component$(() => {
       <section class="settings-control-group" aria-labelledby="music-folders-heading">
         <header class="settings-group-header">
           <div>
-            <p class="workspace-eyebrow">Sources</p>
             <h2 id="music-folders-heading">Music folders</h2>
             <p>Enabled folders are indexed natively and watched for changes.</p>
           </div>
@@ -280,7 +279,6 @@ export default component$(() => {
 
       <section class="settings-control-group settings-danger-zone" aria-labelledby="clear-library-heading">
         <header>
-          <p class="workspace-eyebrow">Local catalog</p>
           <h2 id="clear-library-heading">Clear library</h2>
           <p>Disable every folder and remove indexed tracks. Your music files are never deleted.</p>
         </header>

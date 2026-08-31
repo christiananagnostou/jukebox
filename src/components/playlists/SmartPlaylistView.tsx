@@ -41,13 +41,10 @@ import {
 import { getErrorMessage } from '~/utils/Errors'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { formatLastPlayed } from './built-in-collections'
+import { PLAYLIST_BUTTON_CLASS as BUTTON_CLASS, PLAYLIST_FORM_CONTROL_CLASS as INPUT_CLASS } from './styles'
 
 const ROW_HEIGHT = 52
 const GRID_CLASS = 'grid grid-cols-[48px_minmax(0,1.2fr)_minmax(0,.8fr)_minmax(0,.8fr)_90px_170px]'
-const BUTTON_CLASS =
-  'border border-gray-600 px-3 py-2 text-sm hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40'
-const INPUT_CLASS = 'min-w-0 border border-gray-600 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-yellow-600'
-
 interface SmartPlaylistViewProps {
   onCreated$: QRL<(playlist: PlaylistSummary) => void>
   onDeleted$: QRL<() => void>
@@ -225,18 +222,16 @@ export default component$((props: SmartPlaylistViewProps) => {
   })
 
   const playItem = $(async (index: number) => {
-    if (state.action) return
     const playback = smartPlaylistPlaybackAt(catalog, index)
     if (!playback) return
-    state.action = 'play'
     state.error = ''
     try {
-      store.playlist = playback.playlist
-      await storeActions.playSong(playback.song, playback.playlistIndex, { kind: 'playlist', label: state.name })
+      await storeActions.playTracks(playback.playlist, playback.playlistIndex, {
+        kind: 'playlist',
+        label: state.name,
+      })
     } catch (error) {
       state.error = getErrorMessage(error)
-    } finally {
-      state.action = ''
     }
   })
 
@@ -554,7 +549,11 @@ export default component$((props: SmartPlaylistViewProps) => {
             <button class={BUTTON_CLASS} type="button" onClick$={addRule} disabled={draft.rules.length >= 32 || busy}>
               Add rule
             </button>
-            <button class={`${BUTTON_CLASS} border-yellow-700`} type="submit" disabled={!validName(state.name) || busy}>
+            <button
+              class={`${BUTTON_CLASS} playlist-primary-action`}
+              type="submit"
+              disabled={!validName(state.name) || busy}
+            >
               {state.action === 'save' ? 'Saving…' : props.playlistId ? 'Save changes' : 'Create smart playlist'}
             </button>
             {props.playlistId && (
