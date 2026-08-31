@@ -1,6 +1,6 @@
 # 043 — Reversible queue edits
 
-Status: ACTIVE
+Status: DONE — verified on `091a8b6` (2026-08-30)
 
 ## Outcome
 
@@ -24,7 +24,7 @@ Give every structural queue edit one authoritative, session-local undo without w
 
 ## Evidence
 
-- 81 frontend tests pass with lint, strict types, formatting, and production build.
-- 161 Rust tests pass with one opt-in benchmark ignored; all three decoder fixtures pass.
+- 129 frontend tests pass on current `master`.
+- 183 Rust tests pass with one opt-in benchmark ignored; all three decoder fixtures pass.
 - Clippy, public-source portability, desktop security, identity, release bundle, and bundle portability checks pass.
-- Computer Use confirmed the installed app remains safely paused at the user-controlled macOS folder picker; no private-folder action was taken.
+- Subsequent packaged-app Computer Use acceptance covered queue controls and playback-workspace coexistence without taking ownership of the user-controlled macOS folder picker.

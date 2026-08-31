@@ -1,6 +1,6 @@
 # 044 — Manual playlist workflows
 
-Status: ACTIVE
+Status: DONE — verified on `091a8b6` (2026-08-30)
 
 ## Outcome
 
@@ -31,7 +31,7 @@ Complete the core manual-playlist lifecycle with duplicate-preserving cloning an
 
 ## Evidence
 
-- 82 frontend tests pass with lint, strict types, formatting, and the production client/SSR build.
-- 164 Rust tests pass with one opt-in benchmark ignored; all three decoder fixtures pass.
+- 129 frontend tests pass on current `master`.
+- 183 Rust tests pass with one opt-in benchmark ignored; all three decoder fixtures pass.
 - Repository coverage includes the 500-entry duplication chunk boundary and an injected mid-copy database failure.
 - Clippy, public-source portability, desktop security, app identity, release app/DMG, and bundle portability checks pass.
