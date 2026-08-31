@@ -1,7 +1,9 @@
 import { $, component$, useComputed$, useContext, useStore } from '@builder.io/qwik'
 
 import type { Song } from '~/App'
+import MetadataLink from '~/components/library/MetadataLink'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
+import { trackMetadataDestinations } from '~/services/library-destination'
 import { playbackSourceCopy } from '~/utils/PlaybackSource'
 import { getUpcomingSongSelections } from '~/utils/Songs'
 import PlaybackLink from './playback-link'
@@ -22,6 +24,23 @@ function formatDuration(song: Song): string {
     ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
     : `${minutes}:${String(seconds).padStart(2, '0')}`
 }
+
+const QueueArtist = component$<{ song: Song }>(({ song }) => {
+  const destination = trackMetadataDestinations(song).artist
+  if (!destination) {
+    return <span class="block truncate text-[11px] leading-4 text-slate-500">Unknown artist</span>
+  }
+
+  return (
+    <MetadataLink
+      destination={destination}
+      class="block truncate text-[11px] leading-4 text-slate-500"
+      title={`Open ${song.artist}`}
+    >
+      {song.artist}
+    </MetadataLink>
+  )
+})
 
 export default component$(() => {
   const store = useContext(StoreContext)
@@ -105,9 +124,7 @@ export default component$(() => {
             {hasExplicitQueue ? (
               'Up next'
             ) : (
-              <PlaybackLink href={sourceCopy.value.href} searchTerm={sourceCopy.value.searchTerm}>
-                {sourceCopy.value.heading}
-              </PlaybackLink>
+              <PlaybackLink href={sourceCopy.value.href}>{sourceCopy.value.heading}</PlaybackLink>
             )}
           </h2>
           <p class="mt-0.5 text-[10px] text-slate-500">
@@ -150,18 +167,7 @@ export default component$(() => {
                   <span class="block truncate text-xs font-medium leading-5 text-slate-200" title={entry.song.title}>
                     {entry.song.title}
                   </span>
-                  {entry.song.artist ? (
-                    <PlaybackLink
-                      href="/artists/"
-                      class="block truncate text-[11px] leading-4 text-slate-500"
-                      title={`Browse ${entry.song.artist}`}
-                      searchTerm={entry.song.artist}
-                    >
-                      {entry.song.artist}
-                    </PlaybackLink>
-                  ) : (
-                    <span class="block truncate text-[11px] leading-4 text-slate-500">Unknown artist</span>
-                  )}
+                  <QueueArtist song={entry.song} />
                 </div>
                 <span class="mt-1 shrink-0 font-mono text-[10px] tabular-nums text-slate-600">
                   {formatDuration(entry.song)}
@@ -228,18 +234,7 @@ export default component$(() => {
                 <span class="block truncate text-xs leading-5 text-slate-300" title={song.title}>
                   {song.title}
                 </span>
-                {song.artist ? (
-                  <PlaybackLink
-                    href="/artists/"
-                    class="block truncate text-[11px] leading-4 text-slate-500"
-                    title={`Browse ${song.artist}`}
-                    searchTerm={song.artist}
-                  >
-                    {song.artist}
-                  </PlaybackLink>
-                ) : (
-                  <span class="block truncate text-[11px] leading-4 text-slate-500">Unknown artist</span>
-                )}
+                <QueueArtist song={song} />
               </div>
               <span class="shrink-0 font-mono text-[10px] tabular-nums text-slate-600">{formatDuration(song)}</span>
             </li>

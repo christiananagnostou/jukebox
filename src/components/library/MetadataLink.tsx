@@ -1,18 +1,20 @@
 import { component$, Slot } from '@builder.io/qwik'
 import { Link } from '@builder.io/qwik-city'
 
-interface PlaybackLinkProps {
+import { libraryDestinationHref, type LibraryDestination } from '~/services/library-destination'
+
+export interface MetadataLinkProps {
   ariaLabel?: string
   class?: string
-  href: string
+  destination: LibraryDestination
   title?: string
 }
 
-export default component$<PlaybackLinkProps>((props) => (
+export default component$<MetadataLinkProps>((props) => (
   <Link
-    href={props.href}
+    href={libraryDestinationHref(props.destination)}
     aria-label={props.ariaLabel}
-    class={`playback-link ${props.class || ''}`}
+    class={`metadata-link ${props.class || ''}`}
     title={props.title}
     onClick$={(event) => event.stopPropagation()}
     onDblClick$={(event) => event.stopPropagation()}

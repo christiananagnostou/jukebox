@@ -11,6 +11,7 @@ import {
 } from '@builder.io/qwik'
 
 import type { ListItemStyle } from '~/App'
+import TrackMetadataCells from '~/components/library/TrackMetadataCells'
 import VirtualList from '~/components/Shared/VirtualList'
 import { listLibraryRoots, type LibraryRoot } from '~/services/library-refresh'
 import type { PlaylistSummary } from '~/services/playlist-client'
@@ -619,12 +620,7 @@ export default component$((props: SmartPlaylistViewProps) => {
                     >
                       <span class="truncate">{item.track.title || '-'}</span>
                     </button>
-                    <span class="flex min-w-0 items-center border-l border-gray-800 px-3">
-                      <span class="truncate">{item.track.artist || '-'}</span>
-                    </span>
-                    <span class="flex min-w-0 items-center border-l border-gray-800 px-3">
-                      <span class="truncate">{item.track.album || '-'}</span>
-                    </span>
+                    <TrackMetadataCells artist={item.track.artist} album={item.track.album} />
                     <span class="flex items-center justify-end border-l border-gray-800 px-3 tabular-nums text-slate-400">
                       {item.playCount}
                     </span>

@@ -12,6 +12,7 @@ import {
 import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { ListItemStyle } from '~/App'
+import MetadataLink from '~/components/library/MetadataLink'
 import VirtualList from '~/components/Shared/VirtualList'
 import { MusicNote } from '~/components/svg/MusicNote'
 import {
@@ -22,6 +23,7 @@ import {
   loadTrackSelection,
   queryAlbums,
 } from '~/services/library-client'
+import { trackMetadataDestinations } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from '../layout'
 
 const ALBUM_GAP = 16
@@ -134,38 +136,74 @@ export default component$(() => {
                   return <div class="h-full w-0 flex-1 bg-gray-900" key={albumIndex} aria-hidden="true" />
                 }
                 const albumArtSrc = album.visualsPath ? convertFileSrc(album.visualsPath) : ''
+                const destinations = trackMetadataDestinations({ album: album.value, artist: album.artistValue })
+                const artwork = albumArtSrc ? (
+                  <img
+                    src={albumArtSrc}
+                    alt=""
+                    width={250}
+                    height={250}
+                    loading="lazy"
+                    decoding="async"
+                    class="block m-auto w-auto h-full"
+                  />
+                ) : (
+                  <span class="h-full w-full grid place-items-center text-gray-700">
+                    <MusicNote height="20%" width="20%" />
+                  </span>
+                )
                 return (
-                  <button
-                    class="album-container flex h-fit w-0 flex-1 cursor-pointer flex-col border border-slate-700 text-left hover:border-slate-500"
+                  <article
+                    class="album-container album-card flex h-fit w-0 flex-1 flex-col text-left"
                     key={`${album.artistValue}\0${album.value}`}
-                    onDblClick$={() => playAlbum(album)}
                   >
-                    <div class="min-w-full aspect-square bg-gray-800">
-                      {albumArtSrc ? (
-                        <img
-                          src={albumArtSrc}
-                          alt=""
-                          width={250}
-                          height={250}
-                          loading="lazy"
-                          decoding="async"
-                          class="block m-auto w-auto h-full"
-                        />
+                    {destinations.album ? (
+                      <MetadataLink
+                        destination={destinations.album}
+                        class="album-card-cover min-w-full aspect-square bg-gray-800"
+                        ariaLabel={`Open album ${album.name}`}
+                      >
+                        {artwork}
+                      </MetadataLink>
+                    ) : (
+                      <div class="album-card-cover min-w-full aspect-square bg-gray-800">{artwork}</div>
+                    )}
+                    <div class="p-2 h-full w-full min-w-0">
+                      <div class="flex min-w-0 items-center gap-2">
+                        {destinations.album ? (
+                          <MetadataLink
+                            destination={destinations.album}
+                            class="album-card-title block min-w-0 flex-1 truncate py-1 text-lg font-light"
+                          >
+                            {album.name}
+                          </MetadataLink>
+                        ) : (
+                          <span class="block min-w-0 flex-1 truncate py-1 text-lg font-light">{album.name}</span>
+                        )}
+                        <button
+                          type="button"
+                          class="album-card-play shrink-0 rounded px-2 py-1 text-xs font-medium"
+                          onClick$={() => playAlbum(album)}
+                          aria-label={`Play ${album.name} by ${album.artist || 'Unknown artist'}`}
+                        >
+                          Play
+                        </button>
+                      </div>
+                      {destinations.artist ? (
+                        <MetadataLink destination={destinations.artist} class="block truncate py-1 mb-1 text-slate-300">
+                          {album.artist}
+                        </MetadataLink>
                       ) : (
-                        <div class="h-full w-full grid place-items-center text-gray-700">
-                          <MusicNote height="20%" width="20%" />
-                        </div>
+                        <span class="block truncate py-1 mb-1 text-slate-300">{album.artist}</span>
                       )}
+                      <div class="flex items-center justify-between gap-2 text-sm text-slate-300">
+                        <span class="truncate py-1">{album.date || '-'}</span>
+                        <span class="truncate py-1">
+                          {album.trackCount} <span class="text-xs text-slate-500">tracks</span>
+                        </span>
+                      </div>
                     </div>
-                    <div class="p-2 h-full w-full">
-                      <span class="truncate py-1 block text-lg font-light">{album.name}</span>
-                      <span class="truncate py-1 block mb-1 text-slate-300">{album.artist}</span>
-                      <span class="truncate py-1 block float-left text-sm text-slate-300">{album.date || '-'}</span>
-                      <span class="truncate py-1 block float-right text-sm text-slate-300">
-                        {album.trackCount} <span class="text-xs text-slate-500">tracks</span>
-                      </span>
-                    </div>
-                  </button>
+                  </article>
                 )
               })}
 

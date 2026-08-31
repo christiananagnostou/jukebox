@@ -85,6 +85,67 @@ body {
   color: #64748b;
 }
 
+.metadata-link {
+  min-width: 0;
+  border-radius: 0.125rem;
+  color: inherit;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.metadata-link:hover {
+  color: var(--app-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.metadata-link:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}
+
+.album-card {
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 0.25rem;
+  background: var(--app-control-surface);
+}
+
+.album-card:focus-within,
+.album-card:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 70%, var(--app-border));
+}
+
+.album-card-cover {
+  display: block;
+  overflow: hidden;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.album-card-cover:focus-visible {
+  outline-offset: -2px;
+}
+
+.album-card-title {
+  color: var(--app-text);
+}
+
+.album-card-play {
+  border: 1px solid var(--app-accent);
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.album-card-play:hover {
+  color: var(--body-bg-solid);
+  background: var(--app-accent-strong);
+}
+
+.album-card-play:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}
+
 .focused-collection,
 .focused-collection-invalid {
   --focused-accent-hover: #c1d5f5;
@@ -117,6 +178,10 @@ body {
   border-bottom: 1px solid var(--app-border);
   padding: 1rem;
   background: var(--focused-accent-soft);
+}
+
+.focused-collection[data-kind='artist'] .focused-collection-header {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .focused-collection-art {
@@ -768,7 +833,7 @@ select.app-form-control {
   border-top: 1px solid var(--workspace-border);
 }
 
-.workspace-collection li button {
+.workspace-track-row {
   display: flex;
   width: 100%;
   min-height: 54px;
@@ -778,14 +843,24 @@ select.app-form-control {
   transition: background-color 120ms ease;
 }
 
-.workspace-collection li button:hover {
+.workspace-track-row:hover {
   background: var(--workspace-accent-soft);
 }
 
-.workspace-collection li strong {
+.workspace-track-play {
   color: var(--workspace-text);
   font-size: 0.75rem;
   font-weight: 500;
+}
+
+.workspace-track-play:hover {
+  color: var(--workspace-accent-strong);
+}
+
+.workspace-track-artist {
+  color: var(--workspace-text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.45;
 }
 
 .workspace-row-number,

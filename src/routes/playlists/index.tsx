@@ -12,6 +12,7 @@ import {
 import type { DocumentHead } from '@builder.io/qwik-city'
 
 import type { ListItemStyle } from '~/App'
+import TrackMetadataCells from '~/components/library/TrackMetadataCells'
 import BuiltInCollectionView from '~/components/playlists/BuiltInCollectionView'
 import M3uImportView from '~/components/playlists/M3uImportView'
 import SmartPlaylistView from '~/components/playlists/SmartPlaylistView'
@@ -750,12 +751,7 @@ export default component$(() => {
                       >
                         <span class="truncate">{entry.title || '-'}</span>
                       </button>
-                      <span class="flex min-w-0 items-center border-l border-gray-800 px-3">
-                        <span class="truncate">{entry.artist || '-'}</span>
-                      </span>
-                      <span class="flex min-w-0 items-center border-l border-gray-800 px-3">
-                        <span class="truncate">{entry.album || '-'}</span>
-                      </span>
+                      <TrackMetadataCells artist={entry.artist} album={entry.album} />
                       <span class="flex items-center justify-between gap-2 border-l border-gray-800 px-2">
                         <span class={available ? 'text-slate-500' : 'text-amber-300'}>
                           {available ? 'Ready' : entry.availability === 'missing' ? 'Missing' : 'Offline'}
