@@ -11,15 +11,18 @@ use sqlx::{Row, SqlitePool};
 use std::fmt::Write;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 
 const MAX_TRACK_ID_BYTES: usize = 128;
 const PLAYBACK_ASSET_ERROR: &str = "That track is not available for playback.";
 const PLAYBACK_ACCESS_ERROR: &str =
     "Music folder access is required. Reconnect the folder in Settings.";
 const PLAYBACK_SERVER_ERROR: &str = "Jukebox could not start its local playback server.";
+const MAX_PLAYBACK_ACCESS_PROBES: usize = 2;
+const PLAYBACK_ACCESS_QUEUE_TIMEOUT: Duration = Duration::from_millis(100);
+const PLAYBACK_ACCESS_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 struct PlaybackHttpState {
@@ -28,7 +31,8 @@ struct PlaybackHttpState {
 }
 
 pub struct PlaybackAssetServer {
-    access_probe_pending: Arc<AtomicBool>,
+    access_probe_slots: Arc<Semaphore>,
+    access_probe_timeout: Duration,
     base_url: String,
     token: String,
 }
@@ -53,7 +57,8 @@ impl PlaybackAssetServer {
             }
         });
         Ok(Self {
-            access_probe_pending: Arc::new(AtomicBool::new(false)),
+            access_probe_slots: Arc::new(Semaphore::new(MAX_PLAYBACK_ACCESS_PROBES)),
+            access_probe_timeout: PLAYBACK_ACCESS_TIMEOUT,
             base_url: format!("http://127.0.0.1:{port}"),
             token,
         })
@@ -63,33 +68,51 @@ impl PlaybackAssetServer {
         format!("{}/media/{}/{}", self.base_url, self.token, track_id)
     }
 
-    async fn verify_track_access(&self, path: PathBuf) -> Result<(), String> {
-        if self
-            .access_probe_pending
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Err(PLAYBACK_ACCESS_ERROR.to_owned());
+    #[cfg(test)]
+    pub(crate) fn for_test(access_probe_timeout: Duration) -> Self {
+        Self {
+            access_probe_slots: Arc::new(Semaphore::new(MAX_PLAYBACK_ACCESS_PROBES)),
+            access_probe_timeout,
+            base_url: "http://127.0.0.1:49152".to_owned(),
+            token: "private-token".to_owned(),
         }
+    }
 
-        let pending = self.access_probe_pending.clone();
-        let mut open = tokio::task::spawn_blocking(move || std::fs::File::open(path));
-        match tokio::time::timeout(Duration::from_secs(2), &mut open).await {
-            Ok(Ok(Ok(_))) => {
-                pending.store(false, Ordering::Release);
-                Ok(())
-            }
-            Ok(_) => {
-                pending.store(false, Ordering::Release);
-                Err(PLAYBACK_ASSET_ERROR.to_owned())
-            }
-            Err(_) => {
-                tokio::spawn(async move {
-                    let _ = open.await;
-                    pending.store(false, Ordering::Release);
-                });
-                Err(PLAYBACK_ACCESS_ERROR.to_owned())
-            }
+    #[cfg(test)]
+    pub(crate) async fn verify_test_access(&self, path: PathBuf) -> Result<(), String> {
+        self.verify_track_access(path).await
+    }
+
+    async fn verify_track_access(&self, path: PathBuf) -> Result<(), String> {
+        self.verify_track_access_with(path, |path| std::fs::File::open(path).map(drop))
+            .await
+    }
+
+    async fn verify_track_access_with<F>(&self, path: PathBuf, open: F) -> Result<(), String>
+    where
+        F: FnOnce(PathBuf) -> std::io::Result<()> + Send + 'static,
+    {
+        let permit = tokio::time::timeout(
+            PLAYBACK_ACCESS_QUEUE_TIMEOUT,
+            self.access_probe_slots.clone().acquire_owned(),
+        )
+        .await
+        .map_err(|_| PLAYBACK_ACCESS_ERROR.to_owned())?
+        .map_err(|_| PLAYBACK_ACCESS_ERROR.to_owned())?;
+        let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
+        let spawn_result = std::thread::Builder::new()
+            .name("jukebox-playback-access".to_owned())
+            .spawn(move || {
+                let _permit = permit;
+                let _ = result_sender.send(open(path));
+            });
+        if spawn_result.is_err() {
+            return Err(PLAYBACK_ASSET_ERROR.to_owned());
+        }
+        match tokio::time::timeout(self.access_probe_timeout, result_receiver).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(_) => Err(PLAYBACK_ASSET_ERROR.to_owned()),
+            Err(_) => Err(PLAYBACK_ACCESS_ERROR.to_owned()),
         }
     }
 }
@@ -220,6 +243,8 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::{Request, StatusCode};
     use sqlx::sqlite::SqlitePoolOptions;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{mpsc as std_mpsc, Condvar, Mutex};
     use tower::ServiceExt;
 
     async fn repository() -> SqlitePool {
@@ -348,6 +373,87 @@ mod tests {
     }
 
     #[test]
+    fn timed_out_probe_does_not_poison_later_access_or_spawn_unbounded_workers() {
+        tauri::async_runtime::block_on(async {
+            let server = PlaybackAssetServer {
+                access_probe_slots: Arc::new(Semaphore::new(MAX_PLAYBACK_ACCESS_PROBES)),
+                access_probe_timeout: Duration::from_millis(25),
+                base_url: "http://127.0.0.1:49152".to_owned(),
+                token: "private-token".to_owned(),
+            };
+            let release = Arc::new((Mutex::new(false), Condvar::new()));
+            let calls = Arc::new(AtomicUsize::new(0));
+            let (started_tx, started_rx) = std_mpsc::sync_channel(2);
+            let blocked_open = |release: Arc<(Mutex<bool>, Condvar)>,
+                                calls: Arc<AtomicUsize>,
+                                started: std_mpsc::SyncSender<()>| {
+                move |_path: PathBuf| {
+                    calls.fetch_add(1, Ordering::AcqRel);
+                    let _ = started.send(());
+                    let (lock, wake) = &*release;
+                    let mut released = lock.lock().expect("lock blocked access probe");
+                    while !*released {
+                        released = wake.wait(released).expect("wait for access release");
+                    }
+                    Ok(())
+                }
+            };
+
+            assert_eq!(
+                server
+                    .verify_track_access_with(
+                        PathBuf::from("first"),
+                        blocked_open(release.clone(), calls.clone(), started_tx.clone()),
+                    )
+                    .await
+                    .expect_err("first access probe times out"),
+                PLAYBACK_ACCESS_ERROR
+            );
+            started_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("first access probe started");
+
+            server
+                .verify_track_access_with(PathBuf::from("healthy"), |_path| Ok(()))
+                .await
+                .expect("later access uses the independent bounded slot");
+
+            assert_eq!(
+                server
+                    .verify_track_access_with(
+                        PathBuf::from("second"),
+                        blocked_open(release.clone(), calls.clone(), started_tx),
+                    )
+                    .await
+                    .expect_err("second access probe times out"),
+                PLAYBACK_ACCESS_ERROR
+            );
+            started_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("second access probe started");
+            assert_eq!(
+                server
+                    .verify_track_access_with(PathBuf::from("bounded"), |_path| {
+                        panic!("a third blocked worker must not start")
+                    })
+                    .await
+                    .expect_err("bounded access pool rejects backlog"),
+                PLAYBACK_ACCESS_ERROR
+            );
+            assert_eq!(calls.load(Ordering::Acquire), MAX_PLAYBACK_ACCESS_PROBES);
+
+            let (lock, wake) = &*release;
+            *lock.lock().expect("release blocked probes") = true;
+            wake.notify_all();
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            assert_eq!(
+                server.access_probe_slots.available_permits(),
+                MAX_PLAYBACK_ACCESS_PROBES
+            );
+        });
+    }
+
+    #[test]
     fn streams_only_authorized_tracks_with_byte_ranges() {
         tauri::async_runtime::block_on(async {
             let pool = repository().await;
@@ -356,7 +462,8 @@ mod tests {
             std::fs::write(&track, b"0123456789").expect("write playback stream fixture");
             insert_track(&pool, "stream", &track, None).await;
             let server = PlaybackAssetServer {
-                access_probe_pending: Arc::new(AtomicBool::new(false)),
+                access_probe_slots: Arc::new(Semaphore::new(MAX_PLAYBACK_ACCESS_PROBES)),
+                access_probe_timeout: PLAYBACK_ACCESS_TIMEOUT,
                 base_url: "http://127.0.0.1:49152".to_owned(),
                 token: "private-token".to_owned(),
             };
@@ -364,16 +471,6 @@ mod tests {
                 .verify_track_access(track.clone())
                 .await
                 .expect("probe readable track");
-            assert!(!server.access_probe_pending.load(Ordering::Acquire));
-            server.access_probe_pending.store(true, Ordering::Release);
-            assert_eq!(
-                server
-                    .verify_track_access(track.clone())
-                    .await
-                    .expect_err("reject a duplicate access probe"),
-                PLAYBACK_ACCESS_ERROR
-            );
-            server.access_probe_pending.store(false, Ordering::Release);
             let app = playback_router(PlaybackHttpState {
                 pool,
                 token: "private-token".to_owned(),

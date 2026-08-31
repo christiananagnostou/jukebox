@@ -164,6 +164,12 @@ impl LibraryState {
         {
             refresh.cancelled.store(true, Ordering::Release);
         }
+        let scan = self.scanner.cancel(scan_id).await?;
+        if scan.status == "completed" && self.reconciliation.get_optional(scan_id).await?.is_some()
+        {
+            let _ = self.reconciliation.cancel(scan_id).await;
+            self.reconciliation.settle_cancelled(scan_id).await?;
+        }
         self.get_library_refresh(scan_id).await
     }
 
@@ -197,6 +203,10 @@ impl LibraryState {
             .reconciliation
             .begin(scan_id, cancelled.clone())
             .await?;
+        if cancelled.load(Ordering::Acquire) {
+            self.reconciliation.settle_cancelled(scan_id).await?;
+            return self.get_library_refresh(scan_id).await;
+        }
         let reconciliation = self
             .reconciliation
             .complete(preparation, app.clone())
