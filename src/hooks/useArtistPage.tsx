@@ -29,27 +29,26 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
     const artist = aggregateItemAt(store.artistView.artists, store.artistView.artistIdx)
     if (!artist) return
     store.artistView.albumIdx = 0
-    store.playlist = await loadTrackSelection({
+    const songs = await loadTrackSelection({
       artist: artist.value,
       direction: 'asc',
       q: store.searchTerm,
       sort: 'default',
     })
-    const firstSong = store.playlist[0]
-    if (firstSong) storeActions.playSong(firstSong, 0, { kind: 'artist', label: artist.name })
+    if (songs[0]) storeActions.playTracks(songs, 0, { kind: 'artist', label: artist.name })
   })
 
   const _playShownAlbum = $(async () => {
     const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
     if (!album) return
-    store.playlist = await loadTrackSelection({
+    const songs = await loadTrackSelection({
       album: album.value,
       artist: album.artistValue,
       direction: 'asc',
       q: store.searchTerm,
       sort: 'track',
     })
-    if (store.playlist[0]) storeActions.playSong(store.playlist[0], 0, { kind: 'album', label: album.name })
+    if (songs[0]) storeActions.playTracks(songs, 0, { kind: 'album', label: album.name })
   })
 
   const _playTrack = $(async () => {
@@ -57,16 +56,16 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
     if (!song) return
     const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
     if (!album) return
-    store.playlist = await loadTrackSelection({
+    const songs = await loadTrackSelection({
       album: album.value,
       artist: album.artistValue,
       direction: 'asc',
       q: store.searchTerm,
       sort: 'track',
     })
-    const playlistIndex = store.playlist.findIndex((track) => track.id === song.id)
+    const playlistIndex = songs.findIndex((track) => track.id === song.id)
     if (playlistIndex >= 0) {
-      storeActions.playSong(store.playlist[playlistIndex], playlistIndex, { kind: 'album', label: album.name })
+      storeActions.playTracks(songs, playlistIndex, { kind: 'album', label: album.name })
     }
   })
 

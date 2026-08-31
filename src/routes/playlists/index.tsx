@@ -16,6 +16,10 @@ import BuiltInCollectionView from '~/components/playlists/BuiltInCollectionView'
 import M3uImportView from '~/components/playlists/M3uImportView'
 import SmartPlaylistView from '~/components/playlists/SmartPlaylistView'
 import { BUILT_IN_COLLECTIONS } from '~/components/playlists/built-in-collections'
+import {
+  PLAYLIST_BUTTON_CLASS as BUTTON_CLASS,
+  PLAYLIST_FORM_CONTROL_CLASS as INPUT_CLASS,
+} from '~/components/playlists/styles'
 import VirtualList from '~/components/Shared/VirtualList'
 import { type BuiltInCollectionKind, resolvePlaybackTracks } from '~/services/library-client'
 import { pickM3uExport, pickM3uImport, type M3uImportPreview, type M3uImportResult } from '~/services/m3u-client'
@@ -44,10 +48,6 @@ import { StoreActionsContext, StoreContext } from '../layout'
 
 const PLAYLIST_ROW_HEIGHT = 44
 const ENTRY_ROW_HEIGHT = 52
-const BUTTON_CLASS =
-  'border border-gray-600 px-3 py-2 text-sm hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40'
-const INPUT_CLASS = 'min-w-0 border border-gray-600 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-yellow-600'
-
 function catalogState<Item>(): PlaylistCatalogState<Item> {
   return { error: '', pages: {}, status: 'loading', total: 0 }
 }
@@ -59,6 +59,7 @@ export default component$(() => {
   const entries = useStore(catalogState<PlaylistEntry>())
   const playlistPager = useSignal<NoSerialize<PlaylistPager>>()
   const entryPager = useSignal<NoSerialize<PlaylistEntryPager>>()
+  const playbackRequest = useSignal(0)
   const state = useStore({
     action: '',
     confirmDelete: false,
@@ -360,15 +361,16 @@ export default component$(() => {
   })
 
   const playEntry = $(async (index: number) => {
-    if (!isManualPlaylistKind(state.selectedKind) || state.action) return
+    if (!isManualPlaylistKind(state.selectedKind)) return
     const playback = playlistPagePlaybackAt(entries, index)
     const entry = playlistEntryAt(entries, index)
     if (!playback || !entry) return
-    state.action = 'play'
+    const request = ++playbackRequest.value
     state.error = ''
     state.notice = ''
     try {
       const songs = await resolvePlaybackTracks(playback.trackIds)
+      if (request !== playbackRequest.value) return
       let playlistIndex = playback.playlistIndex
       if (songs[playlistIndex]?.id !== entry.songId) {
         const targetOccurrence = playback.trackIds
@@ -383,12 +385,11 @@ export default component$(() => {
       }
       const selectedSong = songs[playlistIndex]
       if (!selectedSong) throw new Error('That playlist entry is no longer available.')
-      store.playlist = songs
-      await storeActions.playSong(selectedSong, playlistIndex, { kind: 'playlist', label: state.selectedName })
+      await storeActions.playTracks(songs, playlistIndex, { kind: 'playlist', label: state.selectedName })
     } catch (error) {
-      state.error = playlistErrorMessage(error, 'Jukebox could not prepare that playlist page for playback.')
-    } finally {
-      state.action = ''
+      if (request === playbackRequest.value) {
+        state.error = playlistErrorMessage(error, 'Jukebox could not prepare that playlist page for playback.')
+      }
     }
   })
 
@@ -460,9 +461,14 @@ export default component$(() => {
           )}
         </div>
 
-        <div class="border-b border-gray-700 p-2">
-          <h2 class="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Built-in</h2>
-          <div class="flex flex-col" aria-label="Built-in collections">
+        <details class="playlist-section border-b border-gray-700" open>
+          <summary class="playlist-section-summary">
+            <span>Built-in playlists</span>
+            <span class="playlist-section-chevron" aria-hidden="true">
+              ›
+            </span>
+          </summary>
+          <div class="flex flex-col p-2" aria-label="Built-in collections">
             {BUILT_IN_COLLECTIONS.map((collection) => {
               const selected = collection.kind === state.selectedBuiltIn
               return (
@@ -478,46 +484,55 @@ export default component$(() => {
               )
             })}
           </div>
-        </div>
+        </details>
 
-        <div class="relative min-h-0 flex-1">
-          <h2 class="sr-only">Your playlists</h2>
-          {playlists.status === 'ready' && playlists.total === 0 && (
-            <p class="p-4 text-sm leading-relaxed text-slate-400">Create a playlist to collect tracks for later.</p>
-          )}
-          {playlists.error && (
-            <p role="alert" class="m-3 border border-red-900 bg-red-950 p-3 text-sm text-red-200">
-              {playlists.error}
-            </p>
-          )}
-          <VirtualList
-            numItems={playlists.total}
-            itemHeight={PLAYLIST_ROW_HEIGHT}
-            onRangeChange={$((startIndex, endIndex) => playlistPager.value?.ensureRange(startIndex, endIndex))}
-            renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-              const playlist = playlistAt(playlists, index)
-              if (!playlist) return <div class="bg-gray-900" style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }} />
-              const selected = playlist.id === state.selectedId
-              return (
-                <button
-                  key={playlist.id}
-                  class={`flex w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-gray-800 ${
-                    selected ? 'bg-gray-700' : ''
-                  }`}
-                  style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }}
-                  onClick$={() => selectPlaylist(playlist)}
-                  disabled={busy}
-                  aria-current={selected ? 'page' : undefined}
-                >
-                  <span class="truncate">{playlist.name}</span>
-                  <span class="text-xs tabular-nums text-slate-500">
-                    {playlist.kind === 'smart' ? 'Smart' : playlist.entryCount}
-                  </span>
-                </button>
-              )
-            })}
-          />
-        </div>
+        <details class="playlist-section playlist-section-grow" open>
+          <summary class="playlist-section-summary">
+            <span>Your playlists</span>
+            <span class="playlist-section-count">{playlists.total.toLocaleString()}</span>
+            <span class="playlist-section-chevron" aria-hidden="true">
+              ›
+            </span>
+          </summary>
+          <div class="relative min-h-0 flex-1">
+            {playlists.status === 'ready' && playlists.total === 0 && (
+              <p class="p-4 text-sm leading-relaxed text-slate-400">Create a playlist to collect tracks for later.</p>
+            )}
+            {playlists.error && (
+              <p role="alert" class="m-3 border border-red-900 bg-red-950 p-3 text-sm text-red-200">
+                {playlists.error}
+              </p>
+            )}
+            <VirtualList
+              numItems={playlists.total}
+              itemHeight={PLAYLIST_ROW_HEIGHT}
+              onRangeChange={$((startIndex, endIndex) => playlistPager.value?.ensureRange(startIndex, endIndex))}
+              renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
+                const playlist = playlistAt(playlists, index)
+                if (!playlist)
+                  return <div class="bg-gray-900" style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }} />
+                const selected = playlist.id === state.selectedId
+                return (
+                  <button
+                    key={playlist.id}
+                    class={`flex w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-gray-800 ${
+                      selected ? 'bg-gray-700' : ''
+                    }`}
+                    style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }}
+                    onClick$={() => selectPlaylist(playlist)}
+                    disabled={busy}
+                    aria-current={selected ? 'page' : undefined}
+                  >
+                    <span class="truncate">{playlist.name}</span>
+                    <span class="text-xs tabular-nums text-slate-500">
+                      {playlist.kind === 'smart' ? 'Smart' : playlist.entryCount}
+                    </span>
+                  </button>
+                )
+              })}
+            />
+          </div>
+        </details>
       </aside>
 
       <div class="flex min-h-0 min-w-0 flex-col">
@@ -726,7 +741,7 @@ export default component$(() => {
                       <button
                         class="flex min-w-0 items-center border-l border-gray-800 px-3 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-slate-500"
                         onClick$={() => playEntry(index)}
-                        disabled={!available || busy}
+                        disabled={!available}
                         aria-label={
                           available
                             ? `Play ${entry.title} by ${entry.artist || 'Unknown artist'}`

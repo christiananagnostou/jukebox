@@ -222,6 +222,7 @@ export interface StoreActions {
   enqueueSong: QRL<(song: Song) => Promise<void>>
   moveQueuedSong: QRL<(entryId: string, beforeEntryId?: string | null) => Promise<void>>
   playSong: QRL<(song: Song, index: number, source?: PlaybackSource) => Promise<void> | undefined>
+  playTracks: QRL<(songs: Song[], index: number, source?: PlaybackSource) => Promise<void> | undefined>
   pauseSong: QRL<() => Promise<void> | undefined>
   resumeSong: QRL<() => Promise<void> | undefined>
   nextSong: QRL<() => Promise<void> | undefined>

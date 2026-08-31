@@ -86,15 +86,11 @@ export default component$(() => {
   })
 
   const playUpcoming = $(async (song: Song, contextIndex: number) => {
-    if (state.action) return
-    state.action = `play:${contextIndex}`
     state.error = ''
     try {
       await storeActions.playSong(song, contextIndex, store.playbackSource)
     } catch {
       state.error = PLAYBACK_ERROR_MESSAGE
-    } finally {
-      state.action = ''
     }
   })
 

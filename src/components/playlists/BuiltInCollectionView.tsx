@@ -20,7 +20,7 @@ import {
   BuiltInCollectionPager,
 } from '~/services/library-client'
 import { getErrorMessage } from '~/utils/Errors'
-import { StoreActionsContext, StoreContext } from '~/routes/layout'
+import { StoreActionsContext } from '~/routes/layout'
 import { builtInCollectionDefinition, formatLastPlayed } from './built-in-collections'
 
 const ROW_HEIGHT = 52
@@ -31,11 +31,10 @@ function collectionState(): BuiltInCollectionCatalogState {
 }
 
 export default component$((props: { kind: BuiltInCollectionKind }) => {
-  const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const catalog = useStore(collectionState())
   const pager = useSignal<NoSerialize<BuiltInCollectionPager>>()
-  const state = useStore({ action: '', playbackError: '' })
+  const state = useStore({ playbackError: '' })
   const definition = builtInCollectionDefinition(props.kind)
 
   useVisibleTask$(({ cleanup }) => {
@@ -55,21 +54,16 @@ export default component$((props: { kind: BuiltInCollectionKind }) => {
   })
 
   const playItem = $(async (index: number) => {
-    if (state.action) return
     const playback = builtInCollectionPlaybackAt(catalog, index)
     if (!playback) return
-    state.action = 'play'
     state.playbackError = ''
     try {
-      store.playlist = playback.playlist
-      await storeActions.playSong(playback.song, playback.playlistIndex, {
+      await storeActions.playTracks(playback.playlist, playback.playlistIndex, {
         kind: 'collection',
         label: definition.label,
       })
     } catch (error) {
       state.playbackError = getErrorMessage(error)
-    } finally {
-      state.action = ''
     }
   })
 
@@ -132,7 +126,6 @@ export default component$((props: { kind: BuiltInCollectionKind }) => {
                 <span class="flex items-center px-2 tabular-nums text-slate-500">{index + 1}</span>
                 <button
                   class="flex min-w-0 items-center border-l border-gray-800 px-3 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-slate-500"
-                  disabled={Boolean(state.action)}
                   onClick$={() => playItem(index)}
                   aria-label={`Play ${item.track.title} by ${item.track.artist || 'Unknown artist'}`}
                 >

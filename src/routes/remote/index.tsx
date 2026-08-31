@@ -81,7 +81,6 @@ export default component$(() => {
     <section class="workspace-page remote-workspace" aria-labelledby="remote-heading">
       <header class="workspace-header">
         <div>
-          <p class="workspace-eyebrow">Private access</p>
           <h1 id="remote-heading">Remote listening</h1>
           <p>Listen to this computer's Jukebox library from a phone or another device on your private network.</p>
         </div>
@@ -108,7 +107,6 @@ export default component$(() => {
           <div class="remote-step-body">
             <header>
               <div>
-                <p class="workspace-eyebrow">This computer</p>
                 <h2>Run the local player</h2>
                 <p>Serves Jukebox only to this computer until a private HTTPS route is connected.</p>
               </div>
@@ -147,7 +145,6 @@ export default component$(() => {
           <div class="remote-step-body">
             <header>
               <div>
-                <p class="workspace-eyebrow">Private HTTPS</p>
                 <h2>Connect with Tailscale</h2>
                 <p>Jukebox uses a dedicated Serve port so existing private routes remain untouched.</p>
               </div>

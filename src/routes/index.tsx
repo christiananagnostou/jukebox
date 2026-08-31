@@ -40,7 +40,6 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const state = useStore({
-    action: '',
     error: '',
     collections: {
       recently_played: emptyPreview(),
@@ -77,60 +76,34 @@ export default component$(() => {
   })
 
   const playPreview = $(async (kind: BuiltInCollectionKind, index: number) => {
-    if (state.action) return
     const definition = COLLECTIONS.find((collection) => collection.kind === kind)
     const items = state.collections[kind].items
     const item = items[index]
     if (!definition || !item) return
 
-    state.action = `${kind}:${index}`
     state.error = ''
     try {
-      const playlist = items.map(({ track }) => track)
-      store.playlist = playlist
-      await storeActions.playSong(item.track, index, { kind: 'collection', label: definition.label })
+      await storeActions.playTracks(
+        items.map(({ track }) => track),
+        index,
+        { kind: 'collection', label: definition.label }
+      )
     } catch {
       state.error = 'Jukebox could not play that track.'
-    } finally {
-      state.action = ''
     }
-  })
-
-  const toggleCurrent = $(() => {
-    if (store.player.isPaused) return storeActions.resumeSong()
-    return storeActions.pauseSong()
   })
 
   return (
     <section class="workspace-page" aria-labelledby="listen-heading">
       <header class="workspace-header">
         <div>
-          <p class="workspace-eyebrow">Local listening</p>
           <h1 id="listen-heading">Listen</h1>
-          <p>Resume a track or choose from useful views of the music already on this device.</p>
+          <p>Choose from useful views of the music already on this device.</p>
         </div>
         <Link class="workspace-link" href="/songs/">
           Browse all songs
         </Link>
       </header>
-
-      {store.player.currSong && (
-        <section class="workspace-current" aria-label="Continue listening">
-          <div class="min-w-0">
-            <p class="workspace-eyebrow">Continue listening</p>
-            <h2 class="truncate" title={store.player.currSong.title}>
-              {store.player.currSong.title}
-            </h2>
-            <p class="truncate">
-              {[store.player.currSong.artist, store.player.currSong.album].filter(Boolean).join(' · ') ||
-                'Unknown track'}
-            </p>
-          </div>
-          <button class="workspace-primary-action" type="button" onClick$={toggleCurrent}>
-            {store.player.isPaused ? 'Resume' : 'Pause'}
-          </button>
-        </section>
-      )}
 
       {state.error && (
         <p class="workspace-error" role="alert">
@@ -163,7 +136,6 @@ export default component$(() => {
                       <button
                         type="button"
                         onClick$={() => playPreview(definition.kind, index)}
-                        disabled={Boolean(state.action)}
                         title={`Play ${item.track.title}`}
                       >
                         <span class="workspace-row-number">{index + 1}</span>

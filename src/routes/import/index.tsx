@@ -74,7 +74,6 @@ export default component$(() => {
     <section class="workspace-page" aria-labelledby="import-heading">
       <header class="workspace-header">
         <div>
-          <p class="workspace-eyebrow">Library tool</p>
           <h1 id="import-heading">Import music</h1>
           <p>Add folders for continuous library updates, or drop individual audio files for a one-time import.</p>
         </div>
@@ -154,7 +153,6 @@ export default component$(() => {
       {hasSummary && (
         <section class="import-summary" aria-labelledby="import-summary-heading">
           <div>
-            <p class="workspace-eyebrow">Import complete</p>
             <h2 id="import-summary-heading">
               {state.imported || state.folders
                 ? 'Your library is updating'

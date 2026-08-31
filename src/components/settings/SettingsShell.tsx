@@ -14,7 +14,6 @@ export const SettingsShell = component$((props: { current: SettingsSection; desc
   <section class="workspace-page settings-workspace" aria-labelledby="settings-heading">
     <header class="workspace-header">
       <div>
-        <p class="workspace-eyebrow">Application</p>
         <h1 id="settings-heading">{props.title}</h1>
         <p>{props.description}</p>
       </div>

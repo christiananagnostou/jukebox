@@ -1,9 +1,10 @@
 import { $, component$, useContext, useOnWindow, useSignal } from '@builder.io/qwik'
-import { useNavigate } from '@builder.io/qwik-city'
+import { useLocation, useNavigate } from '@builder.io/qwik-city'
 import { StoreContext } from '~/routes/layout'
 
 export default component$(() => {
   const store = useContext(StoreContext)
+  const location = useLocation()
   const navigate = useNavigate()
   const searchInput = useSignal<HTMLInputElement>()
 
@@ -40,6 +41,17 @@ export default component$(() => {
     store.storageView.cursorIdx = 0
   })
 
+  const focusSearch = $(() => {
+    store.isTyping = true
+    if (location.url.pathname !== '/songs/') void navigate('/songs/')
+  })
+
+  const clearSearch = $(() => {
+    store.searchTerm = ''
+    store.libraryView.cursorIdx = 0
+    searchInput.value?.focus()
+  })
+
   const progress = store.sync.total ? ` ${store.sync.processed}/${store.sync.total}` : ''
   const syncStatus =
     store.sync.status === 'idle'
@@ -54,26 +66,36 @@ export default component$(() => {
     `${store.libraryCatalog.total} songs`
 
   return (
-    <footer
-      class="w-full flex gap-1 items-center border-t border-gray-700 sticky bottom-0 bg-[var(--body-bg-solid)]"
-      style={{ minHeight: 30 + 'px' }}
-    >
-      <input
-        ref={searchInput}
-        type="text"
-        name="Search"
-        id="search-input"
-        placeholder="Search"
-        value={store.searchTerm}
-        autoComplete="false"
-        autoCorrect="false"
-        aria-autocomplete="none"
-        onInput$={handleSearchInput}
-        onBlur$={() => (store.isTyping = false)}
-        onFocus$={() => (store.isTyping = true)}
-        class="bg-inherit h-full flex-1 px-2 text-sm placeholder:text-slate-600 focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)] focus:outline-none"
-      />
-      <span class="max-w-md px-2 text-right text-xs leading-tight text-slate-500" aria-live="polite">
+    <footer class="library-search-footer">
+      <div class="library-search-field">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m16 16 4 4" />
+        </svg>
+        <input
+          ref={searchInput}
+          type="search"
+          name="Search"
+          id="search-input"
+          placeholder="Search your library"
+          value={store.searchTerm}
+          autoComplete="off"
+          autoCorrect="off"
+          aria-autocomplete="none"
+          aria-label="Search your music library"
+          onInput$={handleSearchInput}
+          onBlur$={() => (store.isTyping = false)}
+          onFocus$={focusSearch}
+        />
+        {store.searchTerm ? (
+          <button type="button" onClick$={clearSearch} aria-label="Clear library search" title="Clear search">
+            ×
+          </button>
+        ) : (
+          <kbd aria-label="Press slash to search">/</kbd>
+        )}
+      </div>
+      <span class="library-search-status" aria-live="polite">
         {footerStatus}
       </span>
     </footer>

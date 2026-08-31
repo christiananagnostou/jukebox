@@ -134,9 +134,8 @@ export default component$(() => {
       const songs = await loadTrackSelection({ ...query, direction: 'asc', q: store.searchTerm })
       const playlistIndex = song ? songs.findIndex((item) => item.id === song.id) : 0
       if (playlistIndex < 0 || !songs[playlistIndex]) return
-      store.playlist = songs
       const selectedSong = songs[playlistIndex]
-      storeActions.playSong(selectedSong, playlistIndex, {
+      storeActions.playTracks(songs, playlistIndex, {
         kind: query.album ? 'album' : 'artist',
         label: query.album ? selectedSong.album : selectedSong.artist,
       })

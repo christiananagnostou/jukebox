@@ -34,7 +34,6 @@ export default component$(() => {
     >
       <section class="settings-control-group" aria-labelledby="window-behavior-heading">
         <header>
-          <p class="workspace-eyebrow">Application</p>
           <h2 id="window-behavior-heading">Window behavior</h2>
         </header>
 
