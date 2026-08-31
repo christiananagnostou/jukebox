@@ -1,7 +1,7 @@
 export type NavigationGroup = 'primary' | 'library' | 'tools' | 'utility'
 
 export type NavigationIconName =
-  'album' | 'artist' | 'folder' | 'import' | 'keyboard' | 'listen' | 'playlist' | 'settings' | 'songs'
+  'album' | 'artist' | 'folder' | 'import' | 'keyboard' | 'listen' | 'playlist' | 'remote' | 'settings' | 'songs'
 
 export interface NavigationCommand {
   group: NavigationGroup
@@ -26,6 +26,14 @@ export const NAVIGATION_COMMANDS: readonly NavigationCommand[] = [
   { group: 'library', href: '/playlists/', icon: 'playlist', id: 'playlists', label: 'Playlists', shortcut: 'P' },
   { group: 'library', href: '/storage/', icon: 'folder', id: 'folders', label: 'Folders', shortcut: 'F' },
   { group: 'tools', href: '/import/', icon: 'import', id: 'import', label: 'Import music', shortcut: 'I' },
+  {
+    group: 'tools',
+    href: '/remote/',
+    icon: 'remote',
+    id: 'remote',
+    label: 'Remote listening',
+    shortcut: 'R',
+  },
   { group: 'utility', href: '/settings/', icon: 'settings', id: 'settings', label: 'Settings', shortcut: 'S' },
   { group: 'utility', icon: 'keyboard', id: 'shortcuts', label: 'Shortcuts' },
 ] as const

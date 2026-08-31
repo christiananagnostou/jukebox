@@ -16,6 +16,7 @@ describe('navigation commands', () => {
       ['playlists', 'P'],
       ['folders', 'F'],
       ['import', 'I'],
+      ['remote', 'R'],
       ['settings', 'S'],
     ])
   })
