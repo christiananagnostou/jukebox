@@ -2,6 +2,7 @@ import {
   $,
   component$,
   noSerialize,
+  useComputed$,
   useContext,
   useSignal,
   useStore,
@@ -255,8 +256,8 @@ export default component$((props: SmartPlaylistViewProps) => {
     state.editorOpen = false
   })
 
-  const busy = Boolean(state.action)
-  const selectedError = state.error || catalog.error
+  const busy = useComputed$(() => Boolean(state.action))
+  const selectedError = useComputed$(() => state.error || catalog.error)
 
   return (
     <section class="flex min-h-0 flex-1 flex-col" aria-label={props.playlistId ? state.name : 'New smart playlist'}>
@@ -278,7 +279,7 @@ export default component$((props: SmartPlaylistViewProps) => {
                   state.editorOpen = !state.editorOpen
                   state.confirmDelete = false
                 }}
-                disabled={busy || !state.loaded}
+                disabled={busy.value || !state.loaded}
                 aria-expanded={state.editorOpen}
               >
                 {state.editorOpen ? 'Close editor' : 'Edit rules'}
@@ -289,7 +290,7 @@ export default component$((props: SmartPlaylistViewProps) => {
                   state.confirmDelete = !state.confirmDelete
                   state.editorOpen = false
                 }}
-                disabled={busy || !state.loaded}
+                disabled={busy.value || !state.loaded}
                 aria-expanded={state.confirmDelete}
               >
                 Delete
@@ -301,19 +302,19 @@ export default component$((props: SmartPlaylistViewProps) => {
         {state.confirmDelete && (
           <div class="mt-3 flex flex-wrap items-center gap-3 border border-red-900 bg-red-950 px-3 py-2 text-sm">
             <span>Delete this smart playlist? Library tracks and history will not be changed.</span>
-            <button class={`${BUTTON_CLASS} border-red-600 text-red-200`} onClick$={remove} disabled={busy}>
+            <button class={`${BUTTON_CLASS} border-red-600 text-red-200`} onClick$={remove} disabled={busy.value}>
               Confirm delete
             </button>
-            <button class={BUTTON_CLASS} onClick$={() => (state.confirmDelete = false)} disabled={busy}>
+            <button class={BUTTON_CLASS} onClick$={() => (state.confirmDelete = false)} disabled={busy.value}>
               Cancel
             </button>
           </div>
         )}
 
         <div class="mt-3 min-h-4 text-xs" aria-live="polite">
-          {selectedError ? (
+          {selectedError.value ? (
             <span role="alert" class="text-red-300">
-              {selectedError}
+              {selectedError.value}
             </span>
           ) : (
             <span class="text-slate-400">{state.notice}</span>
@@ -535,7 +536,7 @@ export default component$((props: SmartPlaylistViewProps) => {
                     class="self-end px-2 py-2 text-xs text-slate-400 hover:text-red-300 disabled:opacity-30"
                     type="button"
                     onClick$={() => removeRule(index)}
-                    disabled={draft.rules.length === 1 || busy}
+                    disabled={draft.rules.length === 1 || busy.value}
                     aria-label={`Remove rule ${index + 1}`}
                   >
                     Remove
@@ -547,18 +548,23 @@ export default component$((props: SmartPlaylistViewProps) => {
 
           {roots.error && <p class="mt-2 text-xs text-amber-300">{roots.error}</p>}
           <div class="mt-3 flex flex-wrap items-center gap-2">
-            <button class={BUTTON_CLASS} type="button" onClick$={addRule} disabled={draft.rules.length >= 32 || busy}>
+            <button
+              class={BUTTON_CLASS}
+              type="button"
+              onClick$={addRule}
+              disabled={draft.rules.length >= 32 || busy.value}
+            >
               Add rule
             </button>
             <button
               class={`${BUTTON_CLASS} playlist-primary-action`}
               type="submit"
-              disabled={!validName(state.name) || busy}
+              disabled={!validName(state.name) || busy.value}
             >
               {state.action === 'save' ? 'Saving…' : props.playlistId ? 'Save changes' : 'Create smart playlist'}
             </button>
             {props.playlistId && (
-              <button class={BUTTON_CLASS} type="button" onClick$={cancelEditor} disabled={busy}>
+              <button class={BUTTON_CLASS} type="button" onClick$={cancelEditor} disabled={busy.value}>
                 Cancel
               </button>
             )}
@@ -610,7 +616,7 @@ export default component$((props: SmartPlaylistViewProps) => {
                     <span class="flex items-center px-2 tabular-nums text-slate-500">{index + 1}</span>
                     <button
                       class="flex min-w-0 items-center border-l border-gray-800 px-3 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-slate-500"
-                      disabled={!available || busy}
+                      disabled={!available || busy.value}
                       onClick$={() => playItem(index)}
                       aria-label={
                         available

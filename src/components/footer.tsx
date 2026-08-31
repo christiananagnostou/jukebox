@@ -1,4 +1,4 @@
-import { $, component$, useContext, useOnWindow, useSignal } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useOnWindow, useSignal } from '@builder.io/qwik'
 import { useLocation, useNavigate } from '@builder.io/qwik-city'
 import { StoreContext } from '~/routes/layout'
 
@@ -52,18 +52,21 @@ export default component$(() => {
     searchInput.value?.focus()
   })
 
-  const progress = store.sync.total ? ` ${store.sync.processed}/${store.sync.total}` : ''
-  const syncStatus =
-    store.sync.status === 'idle'
-      ? ''
-      : store.sync.status === 'error'
-        ? store.sync.message || 'Library operation failed'
-        : `${store.sync.message || (store.sync.status === 'scanning' ? 'Scanning' : 'Importing')}${progress}`
-  const footerStatus =
-    syncStatus ||
-    store.bootstrap.libraryError ||
-    store.bootstrap.settingsWarning ||
-    `${store.libraryCatalog.total} songs`
+  const footerStatus = useComputed$(() => {
+    const progress = store.sync.total ? ` ${store.sync.processed}/${store.sync.total}` : ''
+    const syncStatus =
+      store.sync.status === 'idle'
+        ? ''
+        : store.sync.status === 'error'
+          ? store.sync.message || 'Library operation failed'
+          : `${store.sync.message || (store.sync.status === 'scanning' ? 'Scanning' : 'Importing')}${progress}`
+    return (
+      syncStatus ||
+      store.bootstrap.libraryError ||
+      store.bootstrap.settingsWarning ||
+      `${store.libraryCatalog.total} songs`
+    )
+  })
 
   return (
     <footer class="library-search-footer">
@@ -96,7 +99,7 @@ export default component$(() => {
         )}
       </div>
       <span class="library-search-status" aria-live="polite">
-        {footerStatus}
+        {footerStatus.value}
       </span>
     </footer>
   )

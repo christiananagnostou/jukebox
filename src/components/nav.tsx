@@ -1,4 +1,4 @@
-import { component$, useContext } from '@builder.io/qwik'
+import { component$, useComputed$, useContext } from '@builder.io/qwik'
 import { Link, useLocation } from '@builder.io/qwik-city'
 
 import { StoreContext } from '~/routes/layout'
@@ -15,24 +15,25 @@ const toolCommands = commandsFor('tools')
 const utilityCommands = commandsFor('utility')
 
 const NavigationLink = component$((props: { command: NavigationCommand; pathname: string }) => {
-  const { command, pathname } = props
-  if (!command.href) return null
-  const active = isNavigationRouteActive(pathname, command.href)
+  const active = useComputed$(() =>
+    props.command.href ? isNavigationRouteActive(props.pathname, props.command.href) : false
+  )
+  if (!props.command.href) return null
 
   return (
     <Link
-      href={command.href}
+      href={props.command.href}
       class="nav-index-link"
-      data-active={active ? 'true' : 'false'}
-      aria-current={active ? 'page' : undefined}
-      title={command.shortcut ? `${command.label} (Shift+${command.shortcut})` : command.label}
+      data-active={active.value ? 'true' : 'false'}
+      aria-current={active.value ? 'page' : undefined}
+      title={props.command.shortcut ? `${props.command.label} (Shift+${props.command.shortcut})` : props.command.label}
     >
       <span class="nav-index-marker" aria-hidden="true" />
       <span class="nav-index-icon">
-        <NavigationIcon name={command.icon} />
+        <NavigationIcon name={props.command.icon} />
       </span>
-      <span class="min-w-0 flex-1 truncate">{command.label}</span>
-      {command.shortcut && <kbd class="nav-index-shortcut">⇧{command.shortcut}</kbd>}
+      <span class="min-w-0 flex-1 truncate">{props.command.label}</span>
+      {props.command.shortcut && <kbd class="nav-index-shortcut">⇧{props.command.shortcut}</kbd>}
     </Link>
   )
 })
@@ -40,12 +41,17 @@ const NavigationLink = component$((props: { command: NavigationCommand; pathname
 export default component$(() => {
   const store = useContext(StoreContext)
   const location = useLocation()
-  const pathname = location.url.pathname
-  const libraryBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
-  const libraryNeedsAttention = store.sync.status === 'error' || Boolean(store.bootstrap.libraryError)
-  const statusLabel = libraryBusy
-    ? store.sync.message || (store.sync.status === 'scanning' ? 'Scanning library' : 'Importing music')
-    : 'Library needs attention'
+  const pathname = useComputed$(() => location.url.pathname)
+  const libraryStatus = useComputed$(() => {
+    const busy = store.sync.status === 'scanning' || store.sync.status === 'importing'
+    return {
+      busy,
+      label: busy
+        ? store.sync.message || (store.sync.status === 'scanning' ? 'Scanning library' : 'Importing music')
+        : 'Library needs attention',
+      needsAttention: store.sync.status === 'error' || Boolean(store.bootstrap.libraryError),
+    }
+  })
 
   return (
     <>
@@ -65,7 +71,7 @@ export default component$(() => {
         <div class="nav-index-scroll">
           <div class="nav-index-primary">
             {primaryCommands.map((command) => (
-              <NavigationLink command={command} pathname={pathname} key={command.id} />
+              <NavigationLink command={command} pathname={pathname.value} key={command.id} />
             ))}
           </div>
 
@@ -74,7 +80,7 @@ export default component$(() => {
               Library
             </h2>
             {libraryCommands.map((command) => (
-              <NavigationLink command={command} pathname={pathname} key={command.id} />
+              <NavigationLink command={command} pathname={pathname.value} key={command.id} />
             ))}
           </section>
 
@@ -83,22 +89,30 @@ export default component$(() => {
               Tools
             </h2>
             {toolCommands.map((command) => (
-              <NavigationLink command={command} pathname={pathname} key={command.id} />
+              <NavigationLink command={command} pathname={pathname.value} key={command.id} />
             ))}
           </section>
         </div>
 
         <footer class="nav-index-footer">
-          {(libraryBusy || libraryNeedsAttention) && (
-            <Link class="nav-index-status" href="/settings/library/" title={`${statusLabel}. Open Library settings.`}>
-              <span class="nav-index-status-dot" data-state={libraryBusy ? 'busy' : 'error'} aria-hidden="true" />
-              <span class="min-w-0 flex-1 truncate">{statusLabel}</span>
+          {(libraryStatus.value.busy || libraryStatus.value.needsAttention) && (
+            <Link
+              class="nav-index-status"
+              href="/settings/library/"
+              title={`${libraryStatus.value.label}. Open Library settings.`}
+            >
+              <span
+                class="nav-index-status-dot"
+                data-state={libraryStatus.value.busy ? 'busy' : 'error'}
+                aria-hidden="true"
+              />
+              <span class="min-w-0 flex-1 truncate">{libraryStatus.value.label}</span>
             </Link>
           )}
 
           {utilityCommands.map((command) =>
             command.href ? (
-              <NavigationLink command={command} pathname={pathname} key={command.id} />
+              <NavigationLink command={command} pathname={pathname.value} key={command.id} />
             ) : (
               <button
                 class="nav-index-link"

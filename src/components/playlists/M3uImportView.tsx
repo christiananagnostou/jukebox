@@ -2,6 +2,7 @@ import {
   $,
   component$,
   noSerialize,
+  useComputed$,
   useContext,
   useSignal,
   useStore,
@@ -54,7 +55,7 @@ export default component$((props: M3uImportViewProps) => {
     error: '',
     name: props.preview.suggestedName,
   })
-  const issueCount = m3uReviewIssueCount(props.preview)
+  const issueCount = useComputed$(() => m3uReviewIssueCount(props.preview))
 
   useVisibleTask$(({ cleanup, track }) => {
     const token = track(() => props.preview.token)
@@ -65,7 +66,7 @@ export default component$((props: M3uImportViewProps) => {
     state.name = props.preview.suggestedName
     lease.value = noSerialize(tokenLease)
     pager.value = noSerialize(controller)
-    if (issueCount) {
+    if (m3uReviewIssueCount(props.preview)) {
       void controller.reset(token)
     } else {
       controller.clear()
@@ -113,9 +114,9 @@ export default component$((props: M3uImportViewProps) => {
     }
   })
 
-  const busy = Boolean(state.action)
-  const error = state.error || catalog.error
-  const skipped = skippedM3uEntries(props.preview)
+  const busy = useComputed$(() => Boolean(state.action))
+  const error = useComputed$(() => state.error || catalog.error)
+  const skipped = useComputed$(() => skippedM3uEntries(props.preview))
 
   return (
     <section class="flex min-h-0 flex-1 flex-col" aria-label="Review playlist import">
@@ -155,23 +156,24 @@ export default component$((props: M3uImportViewProps) => {
           <button
             class={`${BUTTON_CLASS} playlist-primary-action`}
             type="submit"
-            disabled={!canApplyM3uImport(props.preview, state.name) || busy}
+            disabled={!canApplyM3uImport(props.preview, state.name) || busy.value}
           >
             {state.action === 'apply' ? 'Importing…' : `Import ${props.preview.matchedEntries} tracks`}
           </button>
-          <button class={BUTTON_CLASS} type="button" onClick$={discardImport} disabled={busy}>
+          <button class={BUTTON_CLASS} type="button" onClick$={discardImport} disabled={busy.value}>
             Discard
           </button>
         </form>
 
         <div class="mt-3 min-h-4 text-xs" aria-live="polite">
-          {error ? (
+          {error.value ? (
             <span role="alert" class="text-red-300">
-              {error}
+              {error.value}
             </span>
-          ) : skipped ? (
+          ) : skipped.value ? (
             <span class="text-amber-300">
-              {skipped} {skipped === 1 ? 'entry will' : 'entries will'} be skipped. Review the redacted issues below.
+              {skipped.value} {skipped.value === 1 ? 'entry will' : 'entries will'} be skipped. Review the redacted
+              issues below.
             </span>
           ) : (
             <span class="text-slate-400">Every entry is ready to import.</span>
@@ -179,7 +181,7 @@ export default component$((props: M3uImportViewProps) => {
         </div>
       </header>
 
-      {issueCount ? (
+      {issueCount.value ? (
         <>
           <div
             class="grid min-h-[30px] grid-cols-[80px_140px_minmax(0,1fr)] border-b border-gray-700 text-xs text-slate-400"
@@ -194,7 +196,7 @@ export default component$((props: M3uImportViewProps) => {
               <div class="grid h-full place-items-center p-8 text-sm text-slate-400">Loading import review…</div>
             )}
             <VirtualList
-              numItems={catalog.total || issueCount}
+              numItems={catalog.total || issueCount.value}
               itemHeight={ISSUE_ROW_HEIGHT}
               onRangeChange={$((startIndex, endIndex) => pager.value?.ensureRange(startIndex, endIndex))}
               renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {

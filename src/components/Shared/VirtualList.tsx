@@ -1,10 +1,10 @@
 import {
   type Component,
-  type JSXOutput,
   type QRL,
   $,
   Slot,
   component$,
+  useComputed$,
   useSignal,
   useTask$,
   useVisibleTask$,
@@ -36,32 +36,21 @@ export function computeVirtualRange(
 }
 
 export default component$((props: Props) => {
-  const { numItems, itemHeight, renderItem, overscan = 10, listWrapClass, scrollToRow } = props
   const scrollTop = useSignal(0)
   const viewportHeight = useSignal(0)
   const scrollRef = useSignal<HTMLDivElement>()
-
-  const innerHeight = numItems * itemHeight
-  const { startIndex, endIndex } = computeVirtualRange(
-    scrollTop.value,
-    viewportHeight.value,
-    itemHeight,
-    numItems,
-    overscan
-  )
-  const items: JSXOutput[] = []
-
-  for (let index = startIndex; index <= endIndex; index++) {
-    const item = renderItem(
-      {
-        index,
-        style: { position: 'absolute', top: `${index * itemHeight}px`, width: '100%' },
-      },
-      index.toString(),
-      0
+  const innerHeight = useComputed$(() => props.numItems * props.itemHeight)
+  const visibleIndexes = useComputed$(() => {
+    const range = computeVirtualRange(
+      scrollTop.value,
+      viewportHeight.value,
+      props.itemHeight,
+      props.numItems,
+      props.overscan ?? 10
     )
-    if (item) items.push(item)
-  }
+    if (range.endIndex < range.startIndex) return []
+    return Array.from({ length: range.endIndex - range.startIndex + 1 }, (_, offset) => range.startIndex + offset)
+  })
 
   useVisibleTask$(({ cleanup }) => {
     const scrollElement = scrollRef.value
@@ -78,8 +67,10 @@ export default component$((props: Props) => {
   })
 
   useTask$(({ track }) => {
-    const targetRow = track(() => scrollToRow)
+    const targetRow = track(() => props.scrollToRow)
     const height = track(() => viewportHeight.value)
+    const numItems = track(() => props.numItems)
+    const itemHeight = track(() => props.itemHeight)
     if (targetRow === undefined || targetRow < 0 || targetRow >= numItems || height === 0) return
 
     const visibleStart = Math.max(0, Math.floor(scrollTop.value / itemHeight))
@@ -99,6 +90,8 @@ export default component$((props: Props) => {
     const top = track(() => scrollTop.value)
     const height = track(() => viewportHeight.value)
     const count = track(() => props.numItems)
+    const itemHeight = track(() => props.itemHeight)
+    const overscan = track(() => props.overscan ?? 10)
     if (!props.onRangeChange || !count || !height) return
 
     const range = computeVirtualRange(top, height, itemHeight, count, overscan)
@@ -111,8 +104,17 @@ export default component$((props: Props) => {
 
   return (
     <div class="scroll min-h-0 h-full w-full overflow-y-auto overflow-x-hidden" onScroll$={onScroll} ref={scrollRef}>
-      <div class={['inner relative', listWrapClass]} style={{ height: `${innerHeight}px` }}>
-        {items}
+      <div class={['inner relative', props.listWrapClass]} style={{ height: `${innerHeight.value}px` }}>
+        {visibleIndexes.value.map((index) =>
+          props.renderItem(
+            {
+              index,
+              style: { position: 'absolute', top: `${index * props.itemHeight}px`, width: '100%' },
+            },
+            index.toString(),
+            0
+          )
+        )}
         <Slot />
       </div>
     </div>

@@ -59,12 +59,13 @@ export default component$<FocusedCollectionViewProps>((props) => {
   const observedRefreshKey = useSignal(store.libraryCatalog.refreshKey)
   const actionError = useSignal('')
   const headerSong = useComputed$(() => librarySongAt(catalog, 0))
-  const label = libraryDestinationLabel(props.destination)
-  const artistHref = libraryDestinationHref({ artist: props.destination.artist, kind: 'artist' })
-  const artworkSource =
+  const label = useComputed$(() => libraryDestinationLabel(props.destination))
+  const artistHref = useComputed$(() => libraryDestinationHref({ artist: props.destination.artist, kind: 'artist' }))
+  const artworkSource = useComputed$(() =>
     props.destination.kind === 'album' && headerSong.value?.visualsPath
       ? convertFileSrc(headerSong.value.visualsPath)
       : ''
+  )
 
   useVisibleTask$(({ cleanup }) => {
     const controller = new LibraryPager(catalog)
@@ -104,7 +105,7 @@ export default component$<FocusedCollectionViewProps>((props) => {
       }
       await storeActions.playTracks(playback.playlist, playback.playlistIndex, {
         kind: props.destination.kind,
-        label,
+        label: label.value,
       })
     } catch {
       actionError.value = `Jukebox could not play this ${props.destination.kind}.`
@@ -116,8 +117,8 @@ export default component$<FocusedCollectionViewProps>((props) => {
       <header class="focused-collection-header">
         {props.destination.kind === 'album' && (
           <div class="focused-collection-art" aria-hidden="true">
-            {artworkSource ? (
-              <img src={artworkSource} alt="" width={112} height={112} decoding="async" />
+            {artworkSource.value ? (
+              <img src={artworkSource.value} alt="" width={112} height={112} decoding="async" />
             ) : (
               <MusicNote width="34%" height="34%" />
             )}
@@ -132,7 +133,7 @@ export default component$<FocusedCollectionViewProps>((props) => {
             <span aria-hidden="true">/</span>
             {props.destination.kind === 'album' ? (
               <>
-                <Link href={artistHref}>{props.destination.artist}</Link>
+                <Link href={artistHref.value}>{props.destination.artist}</Link>
                 <span aria-hidden="true">/</span>
                 <span aria-current="page">{props.destination.album}</span>
               </>
@@ -141,9 +142,9 @@ export default component$<FocusedCollectionViewProps>((props) => {
             )}
           </nav>
 
-          <h1 title={label}>{label}</h1>
+          <h1 title={label.value}>{label.value}</h1>
           {props.destination.kind === 'album' && (
-            <Link class="focused-collection-artist" href={artistHref}>
+            <Link class="focused-collection-artist" href={artistHref.value}>
               {props.destination.artist}
             </Link>
           )}
@@ -189,13 +190,12 @@ export default component$<FocusedCollectionViewProps>((props) => {
               if (!song) {
                 return <div class="focused-track-row focused-track-row-loading" style={{ ...style, height: '40px' }} />
               }
-              const isPlaying = store.player.currSong?.id === song.id
               const albumDestination = trackMetadataDestinations(song).album
               return (
                 <div
-                  class={`focused-track-row ${isPlaying ? 'focused-track-row-playing' : ''}`}
+                  class={`focused-track-row ${store.playback.current?.id === song.id ? 'focused-track-row-playing' : ''}`}
                   style={{ ...style, height: '40px' }}
-                  aria-current={isPlaying ? 'true' : undefined}
+                  aria-current={store.playback.current?.id === song.id ? 'true' : undefined}
                 >
                   <span class="focused-track-number">{trackPosition(song)}</span>
                   <button
@@ -204,7 +204,7 @@ export default component$<FocusedCollectionViewProps>((props) => {
                     onClick$={() => playAt(index)}
                     aria-label={`Play ${song.title} by ${song.artist || 'Unknown artist'}`}
                   >
-                    <SoundBars show={isPlaying} />
+                    <SoundBars show={store.playback.current?.id === song.id} />
                     <span class="truncate">{song.title || '-'}</span>
                   </button>
                   {albumDestination ? (

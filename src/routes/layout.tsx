@@ -16,9 +16,10 @@ import AudioSidebar from '~/components/audio-sidebar'
 import { StorageStore } from '~/hooks/useStoragePage'
 import { ArtistPageState } from '~/hooks/useArtistPage'
 import { LibraryStore } from '~/hooks/useLibraryPage'
-import { AudioPlayerState, useAudioPlayer } from '~/hooks/useAudioPlayer'
+import { useAudioPlayer } from '~/hooks/useAudioPlayer'
 import { useLibraryCatalog } from '~/services/library-client'
 import { addLibraryRoot, listLibraryRoots, useLibraryRefreshEvents } from '~/services/library-refresh'
+import { createPlaybackViewState } from '~/services/playback-view'
 
 export const StoreContext = createContextId<Store>('store-context')
 export const StoreActionsContext = createContextId<StoreActions>('store-actions-context')
@@ -35,9 +36,7 @@ export default component$(() => {
         status: 'loading',
         total: 0,
       },
-      playlist: [],
-      playbackSource: undefined,
-      queue: [],
+      playback: createPlaybackViewState(),
       sorting: 'default',
       searchTerm: '',
       settings: {
@@ -60,7 +59,6 @@ export default component$(() => {
       ...LibraryStore,
       ...ArtistPageState,
       ...StorageStore,
-      ...AudioPlayerState,
       isTyping: false,
       showKeyShortcuts: false,
     },
@@ -118,7 +116,9 @@ export default component$(() => {
   return (
     <div
       class="app-shell"
-      data-player-open={store.player.currSong || store.queue.length || store.player.canUndoQueueEdit ? 'true' : 'false'}
+      data-player-open={
+        store.playback.current || store.playback.queue.length || store.playback.canUndoQueueEdit ? 'true' : 'false'
+      }
     >
       <Nav />
 

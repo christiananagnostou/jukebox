@@ -1,4 +1,4 @@
-import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { Link, type DocumentHead } from '@builder.io/qwik-city'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -75,7 +75,7 @@ export default component$(() => {
     }
   })
 
-  const privateAccessReady = state.remoteAccess.running && state.tailscale.serveConfigured
+  const privateAccessReady = useComputed$(() => state.remoteAccess.running && state.tailscale.serveConfigured)
 
   return (
     <section class="workspace-page remote-workspace" aria-labelledby="remote-heading">
@@ -89,12 +89,14 @@ export default component$(() => {
         </Link>
       </header>
 
-      <div class="remote-status-line" data-ready={privateAccessReady ? 'true' : 'false'}>
+      <div class="remote-status-line" data-ready={privateAccessReady.value ? 'true' : 'false'}>
         <span aria-hidden="true" />
         <div>
-          <strong>{privateAccessReady ? 'Private listening is ready' : 'Private listening is not connected'}</strong>
+          <strong>
+            {privateAccessReady.value ? 'Private listening is ready' : 'Private listening is not connected'}
+          </strong>
           <p>
-            {privateAccessReady
+            {privateAccessReady.value
               ? 'Open the private address on another signed-in device.'
               : 'Complete the two steps below. Jukebox never enables public Tailscale Funnel access.'}
           </p>

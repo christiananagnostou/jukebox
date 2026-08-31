@@ -1,4 +1,4 @@
-import { $, component$, useContext } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext } from '@builder.io/qwik'
 import type { ListItemStyle, Store } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { LibraryRow } from '~/components/library/LibraryRow'
@@ -31,12 +31,12 @@ const SortButton = component$(({ label, type, store }: { label: string; type: So
     store.sorting = store.sorting === ascending ? descending : ascending
   })
 
-  const isSorting = store.sorting === `${type}-desc` || store.sorting === `${type}-asc`
+  const isSorting = useComputed$(() => store.sorting === `${type}-desc` || store.sorting === `${type}-asc`)
 
   return (
     <button
       class={`not-nth-[2]:border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative ${
-        isSorting ? 'text-yellow-500' : ''
+        isSorting.value ? 'text-yellow-500' : ''
       }`}
       onClick$={handleClick}
     >

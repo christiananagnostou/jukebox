@@ -1,4 +1,4 @@
-import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { Link, type DocumentHead } from '@builder.io/qwik-city'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -66,9 +66,11 @@ export default component$(() => {
     cleanup(() => unlisten?.())
   })
 
-  const busy = Boolean(state.action) || store.sync.status === 'importing'
-  const hasSummary = !busy && Boolean(state.selectionCount) && !state.error
-  const progress = store.sync.total ? Math.min(100, (store.sync.processed / store.sync.total) * 100) : 0
+  const busy = useComputed$(() => Boolean(state.action) || store.sync.status === 'importing')
+  const hasSummary = useComputed$(() => !busy.value && Boolean(state.selectionCount) && !state.error)
+  const progress = useComputed$(() =>
+    store.sync.total ? Math.min(100, (store.sync.processed / store.sync.total) * 100) : 0
+  )
 
   return (
     <section class="workspace-page" aria-labelledby="import-heading">
@@ -83,7 +85,11 @@ export default component$(() => {
       </header>
 
       <div class="import-layout">
-        <section class="import-drop-zone" aria-labelledby="choose-music-heading" data-busy={busy ? 'true' : 'false'}>
+        <section
+          class="import-drop-zone"
+          aria-labelledby="choose-music-heading"
+          data-busy={busy.value ? 'true' : 'false'}
+        >
           <span class="import-drop-mark" aria-hidden="true">
             +
           </span>
@@ -94,8 +100,8 @@ export default component$(() => {
               onto this window.
             </p>
           </div>
-          <button class="workspace-primary-action" type="button" onClick$={chooseFolders} disabled={busy}>
-            {state.action === 'picker' ? 'Opening…' : busy ? 'Importing…' : 'Choose folders'}
+          <button class="workspace-primary-action" type="button" onClick$={chooseFolders} disabled={busy.value}>
+            {state.action === 'picker' ? 'Opening…' : busy.value ? 'Importing…' : 'Choose folders'}
           </button>
           <p class="import-formats">MP3 · FLAC · ALAC/M4A · AAC · OGG · WAV</p>
         </section>
@@ -128,7 +134,7 @@ export default component$(() => {
         </aside>
       </div>
 
-      {busy && (
+      {busy.value && (
         <section class="import-status" aria-live="polite" aria-label="Import progress">
           <div>
             <strong>{store.sync.message || 'Preparing import'}</strong>
@@ -139,7 +145,7 @@ export default component$(() => {
             </span>
           </div>
           <progress value={store.sync.total ? store.sync.processed : undefined} max={store.sync.total || undefined}>
-            {progress}%
+            {progress.value}%
           </progress>
         </section>
       )}
@@ -150,7 +156,7 @@ export default component$(() => {
         </p>
       )}
 
-      {hasSummary && (
+      {hasSummary.value && (
         <section class="import-summary" aria-labelledby="import-summary-heading">
           <div>
             <h2 id="import-summary-heading">

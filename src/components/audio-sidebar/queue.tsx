@@ -46,11 +46,13 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const state = useStore({ action: '', error: '' })
-  const upcomingSelections = getUpcomingSongSelections(store.playlist, store.player.currSongIndex)
-  const sourceCopy = useComputed$(() => playbackSourceCopy(store.playbackSource, store.playlist))
-  const hasExplicitQueue = store.queue.length > 0
-  const visibleQueue = store.queue.slice(0, VISIBLE_QUEUE_LIMIT)
-  const busy = Boolean(state.action)
+  const upcomingSelections = useComputed$(() =>
+    getUpcomingSongSelections(store.playback.context, store.playback.currentContextIndex)
+  )
+  const sourceCopy = useComputed$(() => playbackSourceCopy(store.playback.source, store.playback.context))
+  const hasExplicitQueue = useComputed$(() => store.playback.queue.length > 0)
+  const visibleQueue = useComputed$(() => store.playback.queue.slice(0, VISIBLE_QUEUE_LIMIT))
+  const busy = useComputed$(() => Boolean(state.action))
 
   const clearQueue = $(async () => {
     if (state.action) return
@@ -107,40 +109,40 @@ export default component$(() => {
   const playUpcoming = $(async (song: Song, contextIndex: number) => {
     state.error = ''
     try {
-      await storeActions.playSong(song, contextIndex, store.playbackSource)
+      await storeActions.playSong(song, contextIndex, store.playback.source)
     } catch {
       state.error = PLAYBACK_ERROR_MESSAGE
     }
   })
 
   return (
-    <section class="p-3" aria-label={hasExplicitQueue ? 'Queued tracks' : 'Upcoming tracks'}>
+    <section class="p-3" aria-label={hasExplicitQueue.value ? 'Queued tracks' : 'Upcoming tracks'}>
       <div class="flex min-h-8 items-center justify-between gap-2 border-b border-slate-800 pb-2">
         <div class="min-w-0">
           <h2
             class="truncate text-xs font-semibold text-slate-200"
-            title={hasExplicitQueue ? 'Up next' : `Browse ${sourceCopy.value.heading}`}
+            title={hasExplicitQueue.value ? 'Up next' : `Browse ${sourceCopy.value.heading}`}
           >
-            {hasExplicitQueue ? (
+            {hasExplicitQueue.value ? (
               'Up next'
             ) : (
               <PlaybackLink href={sourceCopy.value.href}>{sourceCopy.value.heading}</PlaybackLink>
             )}
           </h2>
           <p class="mt-0.5 text-[10px] text-slate-500">
-            {hasExplicitQueue
-              ? `${store.queue.length} manually queued ${store.queue.length === 1 ? 'track' : 'tracks'}`
+            {hasExplicitQueue.value
+              ? `${store.playback.queue.length} manually queued ${store.playback.queue.length === 1 ? 'track' : 'tracks'}`
               : sourceCopy.value.description}
           </p>
         </div>
         <div class="flex shrink-0 items-center gap-1">
-          {store.player.canUndoQueueEdit && (
-            <button class={`${ACTION_CLASS} playback-accent-text`} onClick$={undoQueueEdit} disabled={busy}>
+          {store.playback.canUndoQueueEdit && (
+            <button class={`${ACTION_CLASS} playback-accent-text`} onClick$={undoQueueEdit} disabled={busy.value}>
               Undo
             </button>
           )}
-          {hasExplicitQueue && (
-            <button class={ACTION_CLASS} onClick$={clearQueue} disabled={busy}>
+          {hasExplicitQueue.value && (
+            <button class={ACTION_CLASS} onClick$={clearQueue} disabled={busy.value}>
               Clear
             </button>
           )}
@@ -153,9 +155,9 @@ export default component$(() => {
         </p>
       )}
 
-      {hasExplicitQueue ? (
+      {hasExplicitQueue.value ? (
         <ol class="divide-y divide-slate-800/80">
-          {visibleQueue.map((entry, index) => (
+          {visibleQueue.value.map((entry, index) => (
             <li class="group py-2.5" key={entry.entryId}>
               <div class="flex min-w-0 items-start gap-2">
                 <span
@@ -183,23 +185,23 @@ export default component$(() => {
                   <div class="mt-1 flex justify-end gap-1" aria-label={`Queue actions for ${entry.song.title}`}>
                     <button
                       class={ACTION_CLASS}
-                      disabled={busy || index === 0}
-                      onClick$={() => moveEntry(entry.entryId, store.queue[index - 1]?.entryId)}
+                      disabled={busy.value || index === 0}
+                      onClick$={() => moveEntry(entry.entryId, store.playback.queue[index - 1]?.entryId)}
                       aria-label={`Move ${entry.song.title} up`}
                     >
                       Up
                     </button>
                     <button
                       class={ACTION_CLASS}
-                      disabled={busy || index === store.queue.length - 1}
-                      onClick$={() => moveEntry(entry.entryId, store.queue[index + 2]?.entryId || null)}
+                      disabled={busy.value || index === store.playback.queue.length - 1}
+                      onClick$={() => moveEntry(entry.entryId, store.playback.queue[index + 2]?.entryId || null)}
                       aria-label={`Move ${entry.song.title} down`}
                     >
                       Down
                     </button>
                     <button
                       class={`${ACTION_CLASS} hover:text-red-300`}
-                      disabled={busy}
+                      disabled={busy.value}
                       onClick$={() => removeEntry(entry.entryId)}
                       aria-label={`Remove ${entry.song.title} from the queue`}
                     >
@@ -211,12 +213,12 @@ export default component$(() => {
             </li>
           ))}
         </ol>
-      ) : upcomingSelections.length ? (
+      ) : upcomingSelections.value.length ? (
         <ol class="divide-y divide-slate-800/70">
-          {upcomingSelections.map(({ contextIndex, song }, index) => (
+          {upcomingSelections.value.map(({ contextIndex, song }, index) => (
             <li
               class="playback-upcoming-row flex min-w-0 items-center gap-2 px-1 py-2.5"
-              key={`upcoming-song-${contextIndex}`}
+              key={`upcoming-song-${song.id}-${contextIndex}`}
               tabIndex={0}
               title={`Double-click to play ${song.title}`}
               onDblClick$={() => playUpcoming(song, contextIndex)}
@@ -231,7 +233,10 @@ export default component$(() => {
                 {index + 1}
               </span>
               <div class="min-w-0 flex-1">
-                <span class="block truncate text-xs leading-5 text-slate-300" title={song.title}>
+                <span
+                  class="playback-upcoming-title block truncate text-xs leading-5 text-slate-300"
+                  title={song.title}
+                >
                   {song.title}
                 </span>
                 <QueueArtist song={song} />
@@ -244,9 +249,9 @@ export default component$(() => {
         <p class="py-5 text-center text-xs leading-5 text-slate-500">Choose a track to build an upcoming list.</p>
       )}
 
-      {store.queue.length > VISIBLE_QUEUE_LIMIT && (
+      {store.playback.queue.length > VISIBLE_QUEUE_LIMIT && (
         <p class="border-t border-slate-800 py-2 text-center text-[10px] text-slate-500">
-          Showing the first {VISIBLE_QUEUE_LIMIT} of {store.queue.length} queued tracks.
+          Showing the first {VISIBLE_QUEUE_LIMIT} of {store.playback.queue.length} queued tracks.
         </p>
       )}
     </section>
