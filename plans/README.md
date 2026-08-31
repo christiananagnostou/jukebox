@@ -59,7 +59,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [055](055-focused-artist-album-workspaces.md)      | Add exact bounded artist and album workspaces                       | P1       | M      | 054        | DONE   |
 | [056](056-adopt-metadata-deep-links.md)            | Link artist and album metadata throughout the app                   | P1       | M      | 055        | DONE   |
 | [057](057-windows-release-parity.md)               | Add Windows CI and installer portability parity                     | P1       | M      | —          | DONE   |
-| [058](058-testable-private-pwa-playback-core.md)   | Establish a testable private-PWA playback core                      | P1       | M      | —          | TODO   |
+| [058](058-testable-private-pwa-playback-core.md)   | Establish a testable private-PWA playback core                      | P1       | M      | —          | DONE   |
 | [059](059-durable-blue-private-pwa.md)             | Make private iPhone listening durable, blue, and recoverable        | P1       | M      | 058        | TODO   |
 | [060](060-native-output-real-device-gate.md)       | Prove native audio output on supported desktop platforms            | P1       | L      | 057        | TODO   |
 | [061](061-windows-test-portability.md)             | Fix Windows test portability exposed by desktop parity              | P1       | S      | 057        | DONE   |
@@ -68,7 +68,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
-Plans 057-060 are the next evidence-backed phase. Plan 057 establishes Windows compile/package parity before any native-output choice. Plan 058 characterizes the private PWA's device-local playback semantics; plan 059 then adds bounded paused restore, queue recovery, and steel-blue mobile polish without making the remote API mutable. Plan 060 is a reversible native-output gate that may not replace production playback until real-device evidence exists on macOS, Windows, and Linux.
+Plans 057-060 are the next evidence-backed phase. Plan 057 establishes Windows compile/package parity before any native-output choice. Plan 058 now directly tests the private PWA's bounded device-local playback semantics; plan 059 adds bounded paused restore, queue recovery, and steel-blue mobile polish without making the remote API mutable. Plan 060 is a reversible native-output gate that may not replace production playback until real-device evidence exists on macOS, Windows, and Linux.
 
 Plan 062 is a corrective prerequisite discovered during native playback QA. It hardens the desktop renderer's atomic and reactive playback projections before plans 058-059 reuse or extend playback state for the private PWA.
 

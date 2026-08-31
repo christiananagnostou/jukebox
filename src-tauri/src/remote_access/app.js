@@ -1,3 +1,17 @@
+import {
+  MAX_QUEUE_LENGTH,
+  appendQueue,
+  clampSeekTarget,
+  createPlayerState,
+  currentTrack as getCurrentTrack,
+  endTrack,
+  mediaSessionPositionState,
+  nextTrack,
+  previousTrack,
+  replaceQueue,
+  selectTrack,
+} from './player-core.js'
+
 const PAGE_SIZE = 50
 const form = document.querySelector('#search-form')
 const input = document.querySelector('#search')
@@ -19,8 +33,10 @@ let offset = 0
 let total = 0
 let revision = ''
 let generation = 0
-let playQueue = []
-let playingIndex = -1
+let playback = createPlayerState()
+let endedHandled = false
+let playbackError = false
+let activeTrack = null
 
 const detail = (values, fallback) => values.filter(Boolean).join(' · ') || fallback
 
@@ -34,31 +50,77 @@ const updateNavigation = () => {
 }
 
 const setMediaMetadata = (track) => {
-  if (!('mediaSession' in navigator)) return
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: track.title || track.file,
-    artist: track.artist,
-    album: track.album,
-  })
-}
-
-const playAt = async (index) => {
-  const track = playQueue[index]
-  if (!track) return
-  playingIndex = index
-  player.src = `/api/tracks/${encodeURIComponent(track.id)}/stream`
-  nowPlaying.textContent = `${track.title || track.file} — ${track.artist || 'Unknown artist'}`
-  setMediaMetadata(track)
+  if (!('mediaSession' in navigator) || !('MediaMetadata' in window)) return
   try {
-    await player.play()
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title || track.file,
+      artist: track.artist,
+      album: track.album,
+    })
   } catch {
-    status.textContent = 'Tap play to start audio.'
+    // Media metadata is an enhancement; audio remains available without it.
   }
 }
 
-const playAdjacent = (direction) => {
-  const next = playingIndex + direction
-  if (next >= 0 && next < playQueue.length) playAt(next)
+const selectedTrackLabel = () => {
+  const track = activeTrack
+  return track ? track.title || track.file : 'this track'
+}
+
+const playSelected = async () => {
+  try {
+    await player.play()
+    return true
+  } catch {
+    playbackError = true
+    status.textContent = 'Tap play to start audio.'
+    return false
+  }
+}
+
+const updateMediaPosition = () => {
+  if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return
+  const positionState = mediaSessionPositionState(player.duration, player.currentTime, player.playbackRate)
+  if (!positionState) return
+  try {
+    navigator.mediaSession.setPositionState(positionState)
+  } catch {
+    // Older WebKit versions may reject position state while metadata changes.
+  }
+}
+
+const seekTo = (target) => {
+  const next = clampSeekTarget(target, player.duration)
+  if (next === null) return false
+  try {
+    player.currentTime = next
+    updateMediaPosition()
+    return true
+  } catch {
+    return false
+  }
+}
+
+const playAt = async (index, { fromEnded = false } = {}) => {
+  const selected = selectTrack(playback, index)
+  if (selected === playback && playback.currentIndex !== index) return false
+  playback = selected
+  const track = getCurrentTrack(playback)
+  if (!track) return false
+  activeTrack = track
+  if (!fromEnded) endedHandled = false
+  playbackError = false
+  player.src = `/api/tracks/${encodeURIComponent(track.id)}/stream`
+  nowPlaying.textContent = `${track.title || track.file} — ${track.artist || 'Unknown artist'}`
+  setMediaMetadata(track)
+  return playSelected()
+}
+
+const playAdjacent = async (transition, options) => {
+  const next = transition(playback)
+  if (next === playback || next.currentIndex === null) return false
+  await playAt(next.currentIndex, options)
+  return true
 }
 
 const itemButton = (primary, secondary, onClick) => {
@@ -74,13 +136,13 @@ const itemButton = (primary, secondary, onClick) => {
 }
 
 const renderTracks = (tracks, append) => {
-  if (!append) playQueue = []
-  const start = playQueue.length
-  playQueue.push(...tracks)
-  tracks.forEach((track, index) => {
+  const start = append ? playback.queue.length : 0
+  playback = append ? appendQueue(playback, tracks) : replaceQueue(playback, tracks)
+  const retained = playback.queue.slice(start)
+  retained.forEach((track, index) => {
     items.append(
       itemButton(track.title || track.file, detail([track.artist, track.album, track.duration], 'Unknown artist'), () =>
-        playAt(start + index)
+        runTransport(() => playAt(start + index))
       )
     )
   })
@@ -156,7 +218,7 @@ const load = async ({ append = false } = {}) => {
       revision = response.headers.get('x-jukebox-catalog-revision') || ''
       offset += body.length
       total = offset
-      loadMore.hidden = !cursor
+      loadMore.hidden = !cursor || playback.queue.length >= MAX_QUEUE_LENGTH
     } else {
       if (append && revision && revision !== String(body.revision)) return load()
       if (view === 'artists') renderArtists(body.items)
@@ -202,14 +264,53 @@ back.addEventListener('click', () => {
   input.value = ''
   load()
 })
-player.addEventListener('ended', () => playAdjacent(1))
+const runTransport = (operation) => {
+  Promise.resolve()
+    .then(operation)
+    .catch(() => {
+      status.textContent = 'This track could not be played. Tap play to retry.'
+    })
+}
+
+player.addEventListener('error', () => {
+  playbackError = true
+  status.textContent = 'This track could not be played. Tap play to retry.'
+})
+player.addEventListener('stalled', () => {
+  status.textContent = 'Audio stalled. Waiting to recover…'
+})
+player.addEventListener('waiting', () => {
+  status.textContent = 'Buffering audio…'
+})
+player.addEventListener('playing', () => {
+  endedHandled = false
+  playbackError = false
+  status.textContent = `Playing ${selectedTrackLabel()}.`
+  updateMediaPosition()
+})
+player.addEventListener('pause', () => {
+  if (!playbackError && !player.ended && player.currentSrc) status.textContent = 'Paused. Tap play to continue.'
+})
+player.addEventListener('ended', () => {
+  if (endedHandled) return
+  endedHandled = true
+  runTransport(async () => {
+    const advanced = await playAdjacent(endTrack, { fromEnded: true })
+    if (!advanced) status.textContent = 'End of queue.'
+  })
+})
+player.addEventListener('durationchange', updateMediaPosition)
+player.addEventListener('timeupdate', updateMediaPosition)
 
 if ('mediaSession' in navigator) {
   const handlers = {
-    play: () => player.play(),
+    play: () => runTransport(playSelected),
     pause: () => player.pause(),
-    previoustrack: () => playAdjacent(-1),
-    nexttrack: () => playAdjacent(1),
+    previoustrack: () => runTransport(() => playAdjacent(previousTrack)),
+    nexttrack: () => runTransport(() => playAdjacent(nextTrack)),
+    seekbackward: ({ seekOffset = 10 } = {}) => seekTo(player.currentTime - seekOffset),
+    seekforward: ({ seekOffset = 10 } = {}) => seekTo(player.currentTime + seekOffset),
+    seekto: ({ seekTime } = {}) => seekTo(seekTime),
   }
   for (const [action, handler] of Object.entries(handlers)) {
     try {

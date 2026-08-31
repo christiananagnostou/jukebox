@@ -30,6 +30,7 @@ use tokio_util::io::ReaderStream;
 const INDEX_HTML: &str = include_str!("remote_access/index.html");
 const APP_CSS: &str = include_str!("remote_access/app.css");
 const APP_JS: &str = include_str!("remote_access/app.js");
+const PLAYER_CORE_JS: &str = include_str!("remote_access/player-core.js");
 const MANIFEST: &str = include_str!("remote_access/manifest.webmanifest");
 const SERVICE_WORKER: &str = include_str!("remote_access/sw.js");
 const ICON_192: &[u8] = include_bytes!("remote_access/icon-192.png");
@@ -385,6 +386,7 @@ fn router(state: HttpState) -> Router {
         .route("/", get(index))
         .route("/app.css", get(stylesheet))
         .route("/app.js", get(script))
+        .route("/player-core.js", get(player_core))
         .route("/manifest.webmanifest", get(manifest))
         .route("/sw.js", get(service_worker))
         .route("/icons/icon-192.png", get(icon_192))
@@ -420,6 +422,10 @@ async fn stylesheet() -> impl IntoResponse {
 
 async fn script() -> impl IntoResponse {
     static_asset(APP_JS, "text/javascript; charset=utf-8")
+}
+
+async fn player_core() -> impl IntoResponse {
+    static_asset(PLAYER_CORE_JS, "text/javascript; charset=utf-8")
 }
 
 async fn manifest() -> impl IntoResponse {
@@ -892,7 +898,25 @@ mod tests {
             assert_eq!(shell.status(), StatusCode::OK);
             assert_eq!(shell.headers()[CACHE_CONTROL], "no-store");
             assert!(shell.headers().contains_key("content-security-policy"));
+            let content_security_policy = shell.headers()["content-security-policy"]
+                .to_str()
+                .expect("content security policy");
+            assert!(content_security_policy.contains("script-src 'self'"));
+            assert!(!content_security_policy.contains("'unsafe-inline'"));
+            assert!(!content_security_policy.contains("'unsafe-eval'"));
             assert_eq!(shell.headers()["x-content-type-options"], "nosniff");
+
+            let player_core = request(&app, "/player-core.js", None).await;
+            assert_eq!(player_core.status(), StatusCode::OK);
+            assert_eq!(
+                player_core.headers()[CONTENT_TYPE],
+                "text/javascript; charset=utf-8"
+            );
+            assert_eq!(
+                player_core.headers()[CACHE_CONTROL],
+                "private, max-age=3600"
+            );
+            assert_eq!(response_bytes(player_core).await, PLAYER_CORE_JS.as_bytes());
 
             let escaped_search = request(&app, "/api/tracks?q=100%25&limit=100", None).await;
             assert_eq!(escaped_search.status(), StatusCode::OK);
@@ -1167,12 +1191,14 @@ mod tests {
             assert!(INDEX_HTML.contains(&format!("data-view=\"{view}\"")));
             assert!(APP_JS.contains(&format!("view = '{view}'")));
         }
+        assert!(INDEX_HTML.contains("<script type=\"module\" src=\"/app.js\"></script>"));
+        assert!(APP_JS.contains("from './player-core.js'"));
         assert!(APP_JS.contains("/api/${view}"));
-        for action in ["play", "pause", "previoustrack", "nexttrack"] {
-            assert!(APP_JS.contains(action));
-        }
         assert!(APP_JS.contains("x-jukebox-next-cursor"));
         assert!(!APP_JS.contains("visualsPath"));
+        assert!(!PLAYER_CORE_JS.contains("document."));
+        assert!(!PLAYER_CORE_JS.contains("localStorage"));
+        assert!(!PLAYER_CORE_JS.contains("/api/"));
     }
 
     fn png_dimensions(bytes: &[u8]) -> (u32, u32) {

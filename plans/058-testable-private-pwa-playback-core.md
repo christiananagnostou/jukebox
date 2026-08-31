@@ -7,6 +7,7 @@
 
 ## Status
 
+- **State**: DONE
 - **Priority**: P1
 - **Effort**: M
 - **Risk**: MED
@@ -120,13 +121,21 @@ Run the full pre-push gate and build the application bundle to prove the embedde
 
 ## Done criteria
 
-- [ ] Private-PWA queue/selection/seek rules have direct unit tests, not string-presence tests.
-- [ ] Vitest imports the same `player-core.js` file the PWA loads.
-- [ ] Duplicate tracks remain distinct occurrences; queue/index state is bounded and valid.
-- [ ] Audio failures never skip the selected track or create an unhandled rejection.
-- [ ] No new mutable HTTP endpoint, filesystem field, account, or runtime framework exists.
-- [ ] `npm run pre-push` and app bundling pass.
-- [ ] `plans/README.md` marks plan 058 DONE.
+- [x] Private-PWA queue/selection/seek rules have direct unit tests, not string-presence tests.
+- [x] Vitest imports the same `player-core.js` file the PWA loads.
+- [x] Duplicate tracks remain distinct occurrences; queue/index state is bounded and valid.
+- [x] Audio failures never skip the selected track or create an unhandled rejection.
+- [x] No new mutable HTTP endpoint, filesystem field, account, or runtime framework exists.
+- [x] `npm run pre-push` and app bundling pass.
+- [x] `plans/README.md` marks plan 058 DONE.
+
+## Delivered
+
+- One dependency-free production ES module now owns the bounded device-session queue, occurrence-preserving selection transitions, versioned path-free persistence parser, seek clamping, and Media Session position validation.
+- Thirty-nine direct Vitest cases import that production module and cover empty/replacement/append transitions, duplicate IDs, every queue boundary, 500-entry runtime and persistence policies, malformed/stale session recovery, and finite seek/position rules.
+- The browser shell consumes the tested core and explicitly handles playback errors, stalls, buffering, playing, pause, ended, duration, time, previous/next, and Media Session seek actions without adding storage or a mutable server endpoint.
+- The Rust router serves the exact embedded module under the existing self-only CSP and asserts source parity, cache headers, and module loading without behavior-by-string tests.
+- The complete pre-push gate passed with 193 frontend/PWA tests, 187 ordinary Rust unit tests, three native decoder tests, strict Clippy, and production builds. The macOS application bundle and 10-file portability scan also passed.
 
 ## STOP conditions
 
