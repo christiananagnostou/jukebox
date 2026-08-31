@@ -8,10 +8,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::Emitter;
 use tokio::sync::mpsc;
+use tokio::sync::Notify;
+use tokio::time::Instant as TokioInstant;
 
 const DISCOVERY_BUFFER: usize = 256;
 const WRITE_BATCH_SIZE: usize = 100;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+const DISCOVERY_STALL_TIMEOUT: Duration = Duration::from_secs(30);
 const PROGRESS_EVENT: &str = "library-scan-progress";
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -42,9 +45,46 @@ struct DiscoveryOutcome {
     failed: i64,
 }
 
+enum DiscoveryMessage {
+    Observation(FileObservation),
+    Activity,
+    Complete(DiscoveryOutcome),
+}
+
+trait DiscoverySource: Send + Sync {
+    fn discover(
+        &self,
+        root: &Path,
+        sender: &mpsc::Sender<DiscoveryMessage>,
+        cancelled: &AtomicBool,
+    ) -> DiscoveryOutcome;
+}
+
+struct FilesystemDiscovery;
+
+impl DiscoverySource for FilesystemDiscovery {
+    fn discover(
+        &self,
+        root: &Path,
+        sender: &mpsc::Sender<DiscoveryMessage>,
+        cancelled: &AtomicBool,
+    ) -> DiscoveryOutcome {
+        discover_files(root, sender, cancelled)
+    }
+}
+
+#[derive(Clone)]
+struct ScanCancellation {
+    flag: Arc<AtomicBool>,
+    wake: Arc<Notify>,
+}
+
 #[derive(Clone)]
 pub struct ScannerService {
-    active: Arc<Mutex<HashMap<i64, Arc<AtomicBool>>>>,
+    active: Arc<Mutex<HashMap<i64, ScanCancellation>>>,
+    discovery: Arc<dyn DiscoverySource>,
+    discovery_worker_available: Arc<AtomicBool>,
+    stall_timeout: Duration,
     pool: SqlitePool,
 }
 
@@ -52,12 +92,31 @@ pub(crate) struct ScanTask {
     pub scan: LibraryScan,
     root: PathBuf,
     cancelled: Arc<AtomicBool>,
+    cancellation_wake: Arc<Notify>,
 }
 
 impl ScannerService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
+            discovery: Arc::new(FilesystemDiscovery),
+            discovery_worker_available: Arc::new(AtomicBool::new(true)),
+            stall_timeout: DISCOVERY_STALL_TIMEOUT,
+            pool,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_discovery(
+        pool: SqlitePool,
+        discovery: Arc<dyn DiscoverySource>,
+        stall_timeout: Duration,
+    ) -> Self {
+        Self {
+            active: Arc::new(Mutex::new(HashMap::new())),
+            discovery,
+            discovery_worker_available: Arc::new(AtomicBool::new(true)),
+            stall_timeout,
             pool,
         }
     }
@@ -105,15 +164,23 @@ impl ScannerService {
         .map_err(|_| LibraryError::database())?
         .ok_or_else(LibraryError::root_not_found)?;
         let scan = self.create_scan(root_id).await?;
+        let cancellation_wake = Arc::new(Notify::new());
         self.active
             .lock()
             .map_err(|_| LibraryError::database())?
-            .insert(scan.id, cancelled.clone());
+            .insert(
+                scan.id,
+                ScanCancellation {
+                    flag: cancelled.clone(),
+                    wake: cancellation_wake.clone(),
+                },
+            );
 
         Ok(ScanTask {
             scan,
             root: PathBuf::from(root_path),
             cancelled,
+            cancellation_wake,
         })
     }
 
@@ -123,7 +190,14 @@ impl ScannerService {
         app: Option<tauri::AppHandle>,
     ) -> Result<LibraryScan, LibraryError> {
         let scan_id = task.scan.id;
-        self.run(scan_id, task.root, task.cancelled, app).await;
+        self.run(
+            scan_id,
+            task.root,
+            task.cancelled,
+            task.cancellation_wake,
+            app,
+        )
+        .await;
         if let Ok(mut active) = self.active.lock() {
             active.remove(&scan_id);
         }
@@ -137,8 +211,10 @@ impl ScannerService {
             .map_err(|_| LibraryError::database())?
             .get(&scan_id)
             .cloned();
-        if let Some(cancelled) = cancelled {
-            cancelled.store(true, Ordering::Release);
+        if let Some(cancellation) = cancelled {
+            cancellation.flag.store(true, Ordering::Release);
+            cancellation.wake.notify_one();
+            self.finish(scan_id, "cancelled", 0).await?;
         }
         self.get(scan_id).await
     }
@@ -184,61 +260,106 @@ impl ScannerService {
         scan_id: i64,
         root: PathBuf,
         cancelled: Arc<AtomicBool>,
+        cancellation_wake: Arc<Notify>,
         app: Option<tauri::AppHandle>,
     ) {
         if self.mark_running(scan_id).await.is_err() {
             return;
         }
+        if self
+            .discovery_worker_available
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            let _ = self.finish(scan_id, "failed", 1).await;
+            return;
+        }
+
         let (sender, mut receiver) = mpsc::channel(DISCOVERY_BUFFER);
         let producer_cancelled = cancelled.clone();
-        let producer_root = root.clone();
-        let producer = tauri::async_runtime::spawn_blocking(move || {
-            discover_files(&producer_root, sender, &producer_cancelled)
-        });
+        let producer_root = root;
+        let discovery = self.discovery.clone();
+        let worker_available = self.discovery_worker_available.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("jukebox-library-discovery".to_owned())
+            .spawn(move || {
+                let outcome = discovery.discover(&producer_root, &sender, &producer_cancelled);
+                let _ = sender.blocking_send(DiscoveryMessage::Complete(outcome));
+                worker_available.store(true, Ordering::Release);
+            });
+        if spawn_result.is_err() {
+            self.discovery_worker_available
+                .store(true, Ordering::Release);
+            let _ = self.finish(scan_id, "failed", 1).await;
+            return;
+        }
 
         let mut discovered = 0_i64;
         let mut batch = Vec::with_capacity(WRITE_BATCH_SIZE);
         let mut last_progress = Instant::now();
-        while let Some(observation) = receiver.recv().await {
-            batch.push(observation);
-            if batch.len() == WRITE_BATCH_SIZE {
-                if self.write_batch(scan_id, &batch).await.is_err() {
-                    cancelled.store(true, Ordering::Release);
-                    let _ = self.finish(scan_id, "failed", discovered, 1).await;
-                    return;
+        let stall = tokio::time::sleep(self.stall_timeout);
+        tokio::pin!(stall);
+        let outcome = loop {
+            tokio::select! {
+                biased;
+                _ = cancellation_wake.notified() => {
+                    if cancelled.load(Ordering::Acquire) {
+                        break DiscoveryOutcome { cancelled: true, failed: 0 };
+                    }
                 }
-                discovered += batch.len() as i64;
-                batch.clear();
-                self.emit_progress(&app, scan_id, discovered, 0, &mut last_progress)
-                    .await;
+                _ = &mut stall => {
+                    cancelled.store(true, Ordering::Release);
+                    break DiscoveryOutcome { cancelled: false, failed: 1 };
+                }
+                message = receiver.recv() => {
+                    stall.as_mut().reset(TokioInstant::now() + self.stall_timeout);
+                    match message {
+                        Some(DiscoveryMessage::Activity) => {}
+                        Some(DiscoveryMessage::Observation(observation)) => {
+                            batch.push(observation);
+                            if batch.len() == WRITE_BATCH_SIZE {
+                                if self.write_batch(scan_id, &batch).await.is_err() {
+                                    cancelled.store(true, Ordering::Release);
+                                    break DiscoveryOutcome { cancelled: false, failed: 1 };
+                                }
+                                discovered += batch.len() as i64;
+                                batch.clear();
+                                self.emit_progress(
+                                    &app,
+                                    scan_id,
+                                    discovered,
+                                    0,
+                                    &mut last_progress,
+                                )
+                                .await;
+                            }
+                        }
+                        Some(DiscoveryMessage::Complete(outcome)) => break outcome,
+                        None => break DiscoveryOutcome { cancelled: false, failed: 1 },
+                    }
+                }
             }
-        }
-        if !batch.is_empty() {
-            if self.write_batch(scan_id, &batch).await.is_err() {
-                cancelled.store(true, Ordering::Release);
-                let _ = self.finish(scan_id, "failed", discovered, 1).await;
-                return;
-            }
-            discovered += batch.len() as i64;
-        }
-
-        let outcome = match producer.await {
-            Ok(outcome) => outcome,
-            Err(_) => DiscoveryOutcome {
-                cancelled: false,
-                failed: 1,
-            },
         };
-        let status = if outcome.cancelled || cancelled.load(Ordering::Acquire) {
+        drop(receiver);
+
+        if !outcome.cancelled
+            && outcome.failed == 0
+            && !batch.is_empty()
+            && self.write_batch(scan_id, &batch).await.is_err()
+        {
+            let _ = self.finish(scan_id, "failed", 1).await;
+            return;
+        }
+        let status = if outcome.cancelled {
             "cancelled"
         } else if outcome.failed > 0 {
             "failed"
+        } else if cancelled.load(Ordering::Acquire) {
+            "cancelled"
         } else {
             "completed"
         };
-        let _ = self
-            .finish(scan_id, status, discovered, outcome.failed)
-            .await;
+        let _ = self.finish(scan_id, status, outcome.failed).await;
         if let Ok(scan) = self.get(scan_id).await {
             if let Some(app) = app {
                 let _ = app.emit(PROGRESS_EVENT, scan);
@@ -267,6 +388,22 @@ impl ScannerService {
             .begin()
             .await
             .map_err(|_| LibraryError::database())?;
+        let running = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(
+               SELECT 1 FROM library_scans WHERE id = ? AND status = 'running'
+             )",
+        )
+        .bind(scan_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| LibraryError::database())?;
+        if !running {
+            transaction
+                .rollback()
+                .await
+                .map_err(|_| LibraryError::database())?;
+            return Err(LibraryError::database());
+        }
         let mut query = QueryBuilder::<Sqlite>::new(
             "INSERT INTO library_scan_files
              (scan_id, normalized_path, file_size, modified_at_ns) ",
@@ -295,33 +432,40 @@ impl ScannerService {
         Ok(())
     }
 
-    async fn finish(
-        &self,
-        scan_id: i64,
-        status: &str,
-        discovered: i64,
-        failed: i64,
-    ) -> Result<(), LibraryError> {
+    async fn finish(&self, scan_id: i64, status: &str, failed: i64) -> Result<(), LibraryError> {
         let error_summary = match status {
             "failed" => Some("Jukebox could not discover files in this library folder."),
             "cancelled" => Some("Library discovery was cancelled."),
             _ if failed > 0 => Some("Some folders or files could not be inspected."),
             _ => None,
         };
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| LibraryError::database())?;
         sqlx::query(
             "UPDATE library_scans
-             SET status = ?, completed_at = CURRENT_TIMESTAMP, discovered = ?, failed = ?,
-                 error_summary = ?
-             WHERE id = ?",
+             SET status = ?, completed_at = CURRENT_TIMESTAMP, failed = ?, error_summary = ?
+             WHERE id = ? AND status IN ('pending', 'running')",
         )
         .bind(status)
-        .bind(discovered)
         .bind(failed)
         .bind(error_summary)
         .bind(scan_id)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await
         .map_err(|_| LibraryError::database())?;
+        if status != "completed" {
+            let _ = sqlx::query("DELETE FROM library_scan_files WHERE scan_id = ?")
+                .bind(scan_id)
+                .execute(&mut *transaction)
+                .await;
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LibraryError::database())?;
         Ok(())
     }
 
@@ -349,7 +493,7 @@ impl ScannerService {
 
 fn discover_files(
     root: &Path,
-    sender: mpsc::Sender<FileObservation>,
+    sender: &mpsc::Sender<DiscoveryMessage>,
     cancelled: &AtomicBool,
 ) -> DiscoveryOutcome {
     let mut outcome = DiscoveryOutcome::default();
@@ -373,6 +517,7 @@ fn discover_files(
                 continue;
             }
         };
+        let _ = sender.try_send(DiscoveryMessage::Activity);
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => {
@@ -431,7 +576,10 @@ fn discover_files(
             file_size: metadata.len().min(i64::MAX as u64) as i64,
             modified_at_ns,
         };
-        if sender.blocking_send(observation).is_err() {
+        if sender
+            .blocking_send(DiscoveryMessage::Observation(observation))
+            .is_err()
+        {
             outcome.cancelled = cancelled.load(Ordering::Acquire);
             return outcome;
         }
@@ -496,7 +644,40 @@ fn scan_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<LibraryScan, LibraryEr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::playback_assets::PlaybackAssetServer;
     use sqlx::sqlite::SqlitePoolOptions;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::{mpsc as std_mpsc, Condvar};
+
+    struct BlockingDiscovery {
+        calls: Arc<AtomicUsize>,
+        release: Arc<(Mutex<bool>, Condvar)>,
+        started: std_mpsc::SyncSender<()>,
+    }
+
+    impl DiscoverySource for BlockingDiscovery {
+        fn discover(
+            &self,
+            _root: &Path,
+            _sender: &mpsc::Sender<DiscoveryMessage>,
+            _cancelled: &AtomicBool,
+        ) -> DiscoveryOutcome {
+            self.calls.fetch_add(1, Ordering::AcqRel);
+            let _ = self.started.send(());
+            let (lock, wake) = &*self.release;
+            let mut released = lock.lock().expect("lock blocked discovery");
+            while !*released {
+                released = wake.wait(released).expect("wait for discovery release");
+            }
+            DiscoveryOutcome::default()
+        }
+    }
+
+    fn release_discovery(release: &Arc<(Mutex<bool>, Condvar)>) {
+        let (lock, wake) = &**release;
+        *lock.lock().expect("lock discovery release") = true;
+        wake.notify_all();
+    }
 
     async fn fixture() -> (SqlitePool, ScannerService, tempfile::TempDir, i64) {
         let pool = SqlitePoolOptions::new()
@@ -541,14 +722,22 @@ mod tests {
             let cancelled = Arc::new(AtomicBool::new(false));
             let producer_cancelled = cancelled.clone();
             let producer = tauri::async_runtime::spawn_blocking(move || {
-                discover_files(&root, sender, &producer_cancelled)
+                let outcome = discover_files(&root, &sender, &producer_cancelled);
+                let _ = sender.blocking_send(DiscoveryMessage::Complete(outcome));
             });
             let mut paths = Vec::new();
-            while let Some(observation) = receiver.recv().await {
-                paths.push(observation.normalized_path);
-            }
+            let outcome = loop {
+                match receiver.recv().await {
+                    Some(DiscoveryMessage::Observation(observation)) => {
+                        paths.push(observation.normalized_path)
+                    }
+                    Some(DiscoveryMessage::Activity) => {}
+                    Some(DiscoveryMessage::Complete(outcome)) => break outcome,
+                    None => panic!("discovery worker closed without an outcome"),
+                }
+            };
             paths.sort();
-            let outcome = producer.await.expect("join discovery");
+            producer.await.expect("join discovery");
 
             assert_eq!(outcome, DiscoveryOutcome::default());
             assert_eq!(paths, vec!["Album/one.FLAC", "two.mp3"]);
@@ -562,7 +751,7 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(DISCOVERY_BUFFER);
         let cancelled = AtomicBool::new(true);
 
-        let outcome = discover_files(directory.path(), sender, &cancelled);
+        let outcome = discover_files(directory.path(), &sender, &cancelled);
 
         assert!(outcome.cancelled);
         assert!(receiver.try_recv().is_err());
@@ -585,6 +774,7 @@ mod tests {
                     scan.id,
                     directory.path().to_path_buf(),
                     Arc::new(AtomicBool::new(false)),
+                    Arc::new(Notify::new()),
                     None,
                 )
                 .await;
@@ -685,6 +875,7 @@ mod tests {
                     scan.id,
                     directory.path().to_path_buf(),
                     Arc::new(AtomicBool::new(false)),
+                    Arc::new(Notify::new()),
                     None,
                 )
                 .await;
@@ -692,6 +883,177 @@ mod tests {
             let finished = service.get(scan.id).await.expect("read failed scan");
             assert_eq!(finished.status, "failed");
             assert!(finished.completed_at.is_some());
+        });
+    }
+
+    #[test]
+    fn cancellation_settles_without_waiting_for_a_blocked_worker_and_bounds_restarts() {
+        tauri::async_runtime::block_on(async {
+            let (pool, _, directory, root_id) = fixture().await;
+            let (started_tx, started_rx) = std_mpsc::sync_channel(1);
+            let calls = Arc::new(AtomicUsize::new(0));
+            let release = Arc::new((Mutex::new(false), Condvar::new()));
+            let service = ScannerService::with_discovery(
+                pool.clone(),
+                Arc::new(BlockingDiscovery {
+                    calls: calls.clone(),
+                    release: release.clone(),
+                    started: started_tx,
+                }),
+                Duration::from_secs(5),
+            );
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let task = service
+                .begin(root_id, cancelled)
+                .await
+                .expect("begin blocked discovery");
+            let scan_id = task.scan.id;
+            let completing_service = service.clone();
+            let completion = tokio::spawn(async move {
+                completing_service
+                    .complete(task, None)
+                    .await
+                    .expect("settle cancelled discovery")
+            });
+            started_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("blocked discovery started");
+
+            let playable = directory.path().join("playable.flac");
+            std::fs::write(&playable, b"playable").expect("write playable track");
+            let playback = PlaybackAssetServer::for_test(Duration::from_millis(250));
+            tokio::time::timeout(
+                Duration::from_millis(250),
+                playback.verify_test_access(playable),
+            )
+            .await
+            .expect("playback stayed responsive during blocked discovery")
+            .expect("playback access succeeded during blocked discovery");
+
+            let started = Instant::now();
+            let cancelled_scan = service
+                .cancel(scan_id)
+                .await
+                .expect("cancel blocked discovery");
+            assert_eq!(cancelled_scan.status, "cancelled");
+            assert!(started.elapsed() < Duration::from_millis(250));
+            let completed = tokio::time::timeout(Duration::from_millis(250), completion)
+                .await
+                .expect("cancelled completion stayed bounded")
+                .expect("join cancelled completion");
+            assert_eq!(completed.status, "cancelled");
+
+            let retry = service
+                .begin(root_id, Arc::new(AtomicBool::new(false)))
+                .await
+                .expect("begin bounded retry");
+            let retry =
+                tokio::time::timeout(Duration::from_millis(250), service.complete(retry, None))
+                    .await
+                    .expect("bounded retry settled")
+                    .expect("read bounded retry");
+            assert_eq!(retry.status, "failed");
+            assert_eq!(calls.load(Ordering::Acquire), 1);
+
+            release_discovery(&release);
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            assert_eq!(
+                service
+                    .get(scan_id)
+                    .await
+                    .expect("read cancelled scan after late worker")
+                    .status,
+                "cancelled"
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM library_scan_files WHERE scan_id = ?",
+                )
+                .bind(scan_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count cancelled staging"),
+                0
+            );
+            drop(directory);
+        });
+    }
+
+    #[test]
+    fn stalled_discovery_times_out_without_publishing_late_state() {
+        tauri::async_runtime::block_on(async {
+            let (pool, _, directory, root_id) = fixture().await;
+            let (started_tx, started_rx) = std_mpsc::sync_channel(1);
+            let release = Arc::new((Mutex::new(false), Condvar::new()));
+            let service = ScannerService::with_discovery(
+                pool.clone(),
+                Arc::new(BlockingDiscovery {
+                    calls: Arc::new(AtomicUsize::new(0)),
+                    release: release.clone(),
+                    started: started_tx,
+                }),
+                Duration::from_millis(25),
+            );
+            let task = service
+                .begin(root_id, Arc::new(AtomicBool::new(false)))
+                .await
+                .expect("begin timed discovery");
+            let scan_id = task.scan.id;
+            let completing_service = service.clone();
+            let completion = tokio::spawn(async move {
+                completing_service
+                    .complete(task, None)
+                    .await
+                    .expect("settle timed discovery")
+            });
+            started_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("timed discovery started");
+            let failed = tokio::time::timeout(Duration::from_millis(250), completion)
+                .await
+                .expect("discovery deadline stayed bounded")
+                .expect("join timed discovery");
+            assert_eq!(failed.status, "failed");
+
+            let restarted = ScannerService::new(pool.clone());
+            restarted
+                .recover_interrupted()
+                .await
+                .expect("recover scans after restart");
+            let restarted_task = restarted
+                .begin(root_id, Arc::new(AtomicBool::new(false)))
+                .await
+                .expect("begin discovery after restart");
+            let restarted_scan = tokio::time::timeout(
+                Duration::from_millis(250),
+                restarted.complete(restarted_task, None),
+            )
+            .await
+            .expect("restart recovery stayed responsive")
+            .expect("complete discovery after restart");
+            assert_eq!(restarted_scan.status, "completed");
+
+            release_discovery(&release);
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            assert_eq!(
+                service
+                    .get(scan_id)
+                    .await
+                    .expect("read failed scan after late worker")
+                    .status,
+                "failed"
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM library_scan_files WHERE scan_id = ?",
+                )
+                .bind(scan_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count timed-out staging"),
+                0
+            );
+            drop(directory);
         });
     }
 }

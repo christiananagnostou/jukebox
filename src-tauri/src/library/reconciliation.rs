@@ -8,14 +8,18 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
+use tokio::time::Instant as TokioInstant;
 
 pub(super) const METADATA_VERSION: i64 = 2;
 const QUERY_BATCH_SIZE: i64 = 1_000;
 const WRITE_BATCH_SIZE: usize = 100;
 const FINGERPRINT_SAMPLE_SIZE: usize = 64 * 1024;
 const MAX_METADATA_WORKERS: usize = 4;
+const METADATA_CANCEL_POLL: Duration = Duration::from_millis(50);
+const METADATA_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +70,28 @@ struct PreparedMetadata {
     visuals_path: String,
 }
 
+trait MetadataSource: Send + Sync {
+    fn prepare(
+        &self,
+        root: &Path,
+        observation: ObservedFile,
+        app: Option<&tauri::AppHandle>,
+    ) -> Result<PreparedMetadata, ()>;
+}
+
+struct FilesystemMetadata;
+
+impl MetadataSource for FilesystemMetadata {
+    fn prepare(
+        &self,
+        root: &Path,
+        observation: ObservedFile,
+        app: Option<&tauri::AppHandle>,
+    ) -> Result<PreparedMetadata, ()> {
+        prepare_file(root, observation, app)
+    }
+}
+
 #[derive(Debug)]
 struct ScanContext {
     root_id: i64,
@@ -76,6 +102,8 @@ struct ScanContext {
 #[derive(Clone)]
 pub struct ReconciliationService {
     active: Arc<Mutex<HashMap<i64, Arc<AtomicBool>>>>,
+    metadata: Arc<dyn MetadataSource>,
+    metadata_worker_slots: Arc<Semaphore>,
     pool: SqlitePool,
 }
 
@@ -89,6 +117,8 @@ impl ReconciliationService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
+            metadata: Arc::new(FilesystemMetadata),
+            metadata_worker_slots: Arc::new(Semaphore::new(MAX_METADATA_WORKERS)),
             pool,
         }
     }
@@ -711,29 +741,51 @@ impl ReconciliationService {
                 }
                 while workers.len() >= worker_count {
                     if !self
-                        .collect_worker(scan_id, &mut workers, &mut staged)
+                        .collect_worker(scan_id, &mut workers, &mut staged, &cancelled)
                         .await
                     {
                         workers.abort_all();
-                        let _ = self.finish_unsuccessful(scan_id, "failed").await;
+                        let status = if cancelled.load(Ordering::Acquire) {
+                            "cancelled"
+                        } else {
+                            "failed"
+                        };
+                        let _ = self.finish_unsuccessful(scan_id, status).await;
                         return;
                     }
                 }
+                let Some(permit) = self.acquire_metadata_worker(&cancelled).await else {
+                    workers.abort_all();
+                    let status = if cancelled.load(Ordering::Acquire) {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    };
+                    let _ = self.finish_unsuccessful(scan_id, status).await;
+                    return;
+                };
                 let worker_root = root.clone();
                 let worker_app = app.clone();
+                let metadata = self.metadata.clone();
                 workers.spawn_blocking(move || {
-                    prepare_file(&worker_root, observation, worker_app.as_ref())
+                    let _permit = permit;
+                    metadata.prepare(&worker_root, observation, worker_app.as_ref())
                 });
             }
         }
 
         while !workers.is_empty() {
             if !self
-                .collect_worker(scan_id, &mut workers, &mut staged)
+                .collect_worker(scan_id, &mut workers, &mut staged, &cancelled)
                 .await
             {
                 workers.abort_all();
-                let _ = self.finish_unsuccessful(scan_id, "failed").await;
+                let status = if cancelled.load(Ordering::Acquire) {
+                    "cancelled"
+                } else {
+                    "failed"
+                };
+                let _ = self.finish_unsuccessful(scan_id, status).await;
                 return;
             }
         }
@@ -755,11 +807,26 @@ impl ReconciliationService {
         scan_id: i64,
         workers: &mut JoinSet<Result<PreparedMetadata, ()>>,
         staged: &mut Vec<PreparedMetadata>,
+        cancelled: &AtomicBool,
     ) -> bool {
-        match workers.join_next().await {
-            Some(Ok(Ok(metadata))) => staged.push(metadata),
-            _ => return false,
-        }
+        let deadline = TokioInstant::now() + METADATA_OPERATION_TIMEOUT;
+        let metadata = loop {
+            if cancelled.load(Ordering::Acquire) {
+                return false;
+            }
+            let remaining = deadline.saturating_duration_since(TokioInstant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            match tokio::time::timeout(METADATA_CANCEL_POLL.min(remaining), workers.join_next())
+                .await
+            {
+                Ok(Some(Ok(Ok(metadata)))) => break metadata,
+                Ok(_) => return false,
+                Err(_) => {}
+            }
+        };
+        staged.push(metadata);
         if staged.len() == WRITE_BATCH_SIZE {
             if self.write_metadata(scan_id, staged).await.is_err() {
                 return false;
@@ -767,6 +834,32 @@ impl ReconciliationService {
             staged.clear();
         }
         true
+    }
+
+    async fn acquire_metadata_worker(
+        &self,
+        cancelled: &AtomicBool,
+    ) -> Option<OwnedSemaphorePermit> {
+        let deadline = TokioInstant::now() + METADATA_OPERATION_TIMEOUT;
+        loop {
+            if cancelled.load(Ordering::Acquire) {
+                return None;
+            }
+            let remaining = deadline.saturating_duration_since(TokioInstant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            match tokio::time::timeout(
+                METADATA_CANCEL_POLL.min(remaining),
+                self.metadata_worker_slots.clone().acquire_owned(),
+            )
+            .await
+            {
+                Ok(Ok(permit)) => return Some(permit),
+                Ok(Err(_)) => return None,
+                Err(_) => {}
+            }
+        }
     }
 
     async fn load_page(
@@ -844,6 +937,23 @@ impl ReconciliationService {
             .begin()
             .await
             .map_err(|_| LibraryError::database())?;
+        let preparing = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(
+               SELECT 1 FROM library_reconciliations
+               WHERE scan_id = ? AND status = 'preparing'
+             )",
+        )
+        .bind(scan_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|_| LibraryError::database())?;
+        if !preparing {
+            transaction
+                .rollback()
+                .await
+                .map_err(|_| LibraryError::database())?;
+            return Err(LibraryError::database());
+        }
         let mut query = QueryBuilder::<Sqlite>::new(
             "INSERT INTO library_scan_metadata (
                scan_id, normalized_path, candidate_id, quick_fingerprint, path, file,
@@ -1143,6 +1253,29 @@ fn reconciliation_from_row(
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+    use std::sync::{mpsc as std_mpsc, Condvar};
+
+    struct BlockingMetadata {
+        release: Arc<(Mutex<bool>, Condvar)>,
+        started: std_mpsc::SyncSender<()>,
+    }
+
+    impl MetadataSource for BlockingMetadata {
+        fn prepare(
+            &self,
+            _root: &Path,
+            _observation: ObservedFile,
+            _app: Option<&tauri::AppHandle>,
+        ) -> Result<PreparedMetadata, ()> {
+            let _ = self.started.send(());
+            let (lock, wake) = &*self.release;
+            let mut released = lock.lock().expect("lock blocked metadata");
+            while !*released {
+                released = wake.wait(released).expect("wait for metadata release");
+            }
+            Err(())
+        }
+    }
 
     #[test]
     fn reconciliation_windows_bound_database_and_metadata_work() {
@@ -1486,6 +1619,92 @@ mod tests {
             assert_eq!(failed.status, "failed");
             assert_eq!(failed.failed, 1);
             assert_eq!(staged, 0);
+        });
+    }
+
+    #[test]
+    fn cancellation_settles_while_metadata_worker_is_blocked_and_rejects_late_results() {
+        tauri::async_runtime::block_on(async {
+            let (pool, _, directory, root_id) = fixture().await;
+            let root = directory.path().canonicalize().expect("canonical root");
+            write_wav(&root.join("blocked.wav"), 1);
+            let observations = vec![observation(&root, "blocked.wav")];
+            let scan_id = completed_scan(&pool, root_id, &observations).await;
+            let (started_tx, started_rx) = std_mpsc::sync_channel(1);
+            let release = Arc::new((Mutex::new(false), Condvar::new()));
+            let service = ReconciliationService {
+                active: Arc::new(Mutex::new(HashMap::new())),
+                metadata: Arc::new(BlockingMetadata {
+                    release: release.clone(),
+                    started: started_tx,
+                }),
+                metadata_worker_slots: Arc::new(Semaphore::new(MAX_METADATA_WORKERS)),
+                pool: pool.clone(),
+            };
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let task = service
+                .begin(scan_id, cancelled)
+                .await
+                .expect("begin blocked metadata preparation");
+            let completing_service = service.clone();
+            let completion = tokio::spawn(async move {
+                completing_service
+                    .complete(task, None)
+                    .await
+                    .expect("settle blocked metadata preparation")
+            });
+            started_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("blocked metadata worker started");
+
+            let started = std::time::Instant::now();
+            service
+                .cancel(scan_id)
+                .await
+                .expect("signal metadata cancellation");
+            service
+                .settle_cancelled(scan_id)
+                .await
+                .expect("settle metadata cancellation");
+            assert!(started.elapsed() < Duration::from_millis(250));
+            let cancelled = tokio::time::timeout(Duration::from_millis(250), completion)
+                .await
+                .expect("metadata completion stayed bounded")
+                .expect("join metadata completion");
+            assert_eq!(cancelled.status, "cancelled");
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM library_scan_metadata WHERE scan_id = ?",
+                )
+                .bind(scan_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count cancelled metadata staging"),
+                0
+            );
+
+            let (lock, wake) = &*release;
+            *lock.lock().expect("release metadata worker") = true;
+            wake.notify_all();
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            assert_eq!(
+                service
+                    .get(scan_id)
+                    .await
+                    .expect("read cancelled metadata after late worker")
+                    .status,
+                "cancelled"
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM library_scan_metadata WHERE scan_id = ?",
+                )
+                .bind(scan_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count late metadata staging"),
+                0
+            );
         });
     }
 

@@ -2,17 +2,19 @@
 
 ## Status
 
-TODO
+DONE
 
 ## Outcome
 
 Keep playback responsive when a library filesystem call stalls, and make refresh cancellation settle promptly without weakening catalog safety.
 
-## Evidence
+## Delivered
 
-- Native QA observed refresh runs remain at zero discovered files while the underlying blocking discovery call stayed active.
-- During those runs, otherwise readable tracks hit the playback access timeout; after refresh recovery, the same catalog and files were healthy.
-- The current Cancel refresh action signals cancellation but cannot publish a terminal state until the blocked worker returns.
+- Discovery and changed-metadata work now run through explicitly bounded workers with activity-aware deadlines and cancellation wakeups.
+- Cancellation publishes terminal scan and reconciliation state immediately; transactional guards reject staging writes from late workers.
+- Playback access probes use an independent two-slot worker budget, so one stalled filesystem probe cannot suppress the next readable track and repeated stalls cannot create an unbounded backlog.
+- Injected blocking-operation tests prove prompt cancellation, late-worker isolation, restart recovery, bounded retry ownership, and successful playback authorization while discovery is stalled.
+- Installed macOS QA refreshed the real 1,135-track watched folder from failed to completed, advanced audio playback, changed title/artist/album together on Next, and activated an upcoming track by double-click without a playback error.
 
 ## Scope
 
@@ -24,8 +26,8 @@ Keep playback responsive when a library filesystem call stalls, and make refresh
 
 ## Done criteria
 
-- [ ] Playback authorization remains responsive while discovery is blocked.
-- [ ] Cancel refresh reaches a terminal state within a bounded interval.
-- [ ] A late worker cannot mutate scan, staging, or catalog state after cancellation.
-- [ ] Repeated timeouts do not create an unbounded thread or task backlog.
-- [ ] Native macOS QA proves playback and cancellation against an injected stalled discovery operation.
+- [x] Playback authorization remains responsive while discovery is blocked.
+- [x] Cancel refresh reaches a terminal state within a bounded interval.
+- [x] A late worker cannot mutate scan, staging, or catalog state after cancellation.
+- [x] Repeated timeouts do not create an unbounded thread or task backlog.
+- [x] Deterministic injected-stall tests cover the uncooperative-worker cases, and installed macOS QA proves the corresponding real refresh and playback paths without shipping a test-only native hook.
