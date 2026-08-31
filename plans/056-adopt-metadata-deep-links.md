@@ -8,6 +8,7 @@
 ## Status
 
 - **Priority**: P1
+- **Status**: DONE
 - **Effort**: M
 - **Risk**: MED
 - **Depends on**: plan 055
@@ -131,14 +132,14 @@ Use Computer Use on the packaged app to verify Library playback versus artist/al
 
 ## Done criteria
 
-- [ ] Every meaningful artist/album link uses one exact destination helper.
-- [ ] Player and queue artist/album navigation no longer mutates global search state.
-- [ ] Library rows contain no nested interactive controls and retain instant playback/favorite behavior.
-- [ ] Manual, smart, and built-in metadata links do not inherit playback busy state.
-- [ ] Album cards expose separate exact navigation and explicit playback.
-- [ ] Link journeys work by keyboard and preserve playback during navigation.
-- [ ] Frontend suite, full pre-push gate, app packaging, and portability pass.
-- [ ] No large animation, machine-specific content, raw path, or unrelated refactor is introduced.
+- [x] Every meaningful artist/album link uses one exact destination helper.
+- [x] Player and queue artist/album navigation no longer mutates global search state.
+- [x] Library rows contain no nested interactive controls and retain instant playback/favorite behavior.
+- [x] Manual, smart, and built-in metadata links do not inherit playback busy state.
+- [x] Album cards expose separate exact navigation and explicit playback.
+- [x] Link journeys work by keyboard and preserve playback during navigation.
+- [x] Frontend suite, full pre-push gate, app packaging, and portability pass.
+- [x] No large animation, machine-specific content, raw path, or unrelated refactor is introduced.
 
 ## STOP conditions
 

@@ -1,8 +1,10 @@
 import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { Link, type DocumentHead } from '@builder.io/qwik-city'
 
+import MetadataLink from '~/components/library/MetadataLink'
 import type { BuiltInCollectionItem, BuiltInCollectionKind } from '~/services/library-client'
 import { queryBuiltInCollection } from '~/services/library-client'
+import { trackMetadataDestinations } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from './layout'
 
 interface CollectionPreview {
@@ -131,24 +133,39 @@ export default component$(() => {
                 </p>
               ) : preview.items.length ? (
                 <ol>
-                  {preview.items.map((item, index) => (
-                    <li key={`${definition.kind}:${item.track.id}`}>
-                      <button
-                        type="button"
-                        onClick$={() => playPreview(definition.kind, index)}
-                        title={`Play ${item.track.title}`}
-                      >
-                        <span class="workspace-row-number">{index + 1}</span>
-                        <span class="min-w-0 flex-1 text-left">
-                          <strong class="block truncate">{item.track.title}</strong>
-                          <span class="mt-1 block truncate">{item.track.artist || 'Unknown artist'}</span>
-                        </span>
-                        {definition.kind === 'most_played' && (
-                          <span class="workspace-row-meta">{item.playCount} plays</span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
+                  {preview.items.map((item, index) => {
+                    const artistDestination = trackMetadataDestinations(item.track).artist
+                    return (
+                      <li key={`${definition.kind}:${item.track.id}`}>
+                        <div class="workspace-track-row">
+                          <span class="workspace-row-number">{index + 1}</span>
+                          <span class="min-w-0 flex-1 text-left">
+                            <button
+                              type="button"
+                              class="workspace-track-play block w-full truncate text-left"
+                              onClick$={() => playPreview(definition.kind, index)}
+                              title={`Play ${item.track.title}`}
+                            >
+                              {item.track.title}
+                            </button>
+                            {artistDestination ? (
+                              <MetadataLink
+                                destination={artistDestination}
+                                class="workspace-track-artist mt-1 block truncate"
+                              >
+                                {item.track.artist}
+                              </MetadataLink>
+                            ) : (
+                              <span class="workspace-track-artist mt-1 block truncate">Unknown artist</span>
+                            )}
+                          </span>
+                          {definition.kind === 'most_played' && (
+                            <span class="workspace-row-meta">{item.playCount} plays</span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ol>
               ) : (
                 <p class="workspace-collection-empty">{definition.emptyMessage}</p>

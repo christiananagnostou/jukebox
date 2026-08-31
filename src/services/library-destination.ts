@@ -4,6 +4,11 @@ const MAX_EXACT_METADATA_LENGTH = 1_024
 
 export type LibraryDestination = { kind: 'artist'; artist: string } | { kind: 'album'; album: string; artist: string }
 
+export interface TrackMetadataDestinations {
+  album?: LibraryDestination
+  artist?: LibraryDestination
+}
+
 function isValidExactMetadata(value: string): boolean {
   const length = [...value].length
   return Boolean(value.trim()) && length <= MAX_EXACT_METADATA_LENGTH
@@ -23,10 +28,21 @@ export function albumDestination(artist: string, album: string): LibraryDestinat
   return isValidExactMetadata(artist) && isValidExactMetadata(album) ? { kind: 'album', album, artist } : undefined
 }
 
+export function trackMetadataDestinations(track: { album: string; artist: string }): TrackMetadataDestinations {
+  return {
+    album: albumDestination(track.artist, track.album),
+    artist: artistDestination(track.artist),
+  }
+}
+
 export function libraryDestinationHref(destination: LibraryDestination): string {
   const parameters = new URLSearchParams({ artist: destination.artist })
   if (destination.kind === 'album') parameters.set('album', destination.album)
-  return `/${destination.kind === 'album' ? 'albums' : 'artists'}/view/?${parameters.toString()}`
+  return `/${destination.kind === 'album' ? 'albums' : 'artists'}/view/#${parameters.toString()}`
+}
+
+export function libraryDestinationParameters(url: URL): URLSearchParams {
+  return url.hash ? new URLSearchParams(url.hash.slice(1)) : url.searchParams
 }
 
 export function parseLibraryDestination(

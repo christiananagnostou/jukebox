@@ -3,9 +3,11 @@ import { Link } from '@builder.io/qwik-city'
 import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { Song } from '~/App'
+import MetadataLink from '~/components/library/MetadataLink'
 import { PLAYBACK_ACCESS_ERROR_MESSAGE } from '~/hooks/useAudioPlayer'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { updateFavoriteRating } from '~/services/library-db'
+import { trackMetadataDestinations } from '~/services/library-destination'
 import PlaybackLink from './playback-link'
 import { MusicNote } from '../svg/MusicNote'
 import { NextTrack } from '../svg/NextTrack'
@@ -41,6 +43,16 @@ function repeatLabel(mode: 'off' | 'one' | 'all'): string {
   return 'Repeat off'
 }
 
+const PlayerArtwork = component$<{ src: string }>(({ src }) =>
+  src ? (
+    <img src={src} alt="" width={240} height={240} decoding="async" class="aspect-square w-full object-contain" />
+  ) : (
+    <span class="aspect-square w-full grid place-items-center bg-slate-800 text-slate-600">
+      <MusicNote height="18%" width="18%" />
+    </span>
+  )
+)
+
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
@@ -75,6 +87,7 @@ export default component$(() => {
   })
 
   const current = store.player.currSong
+  const destinations = current ? trackMetadataDestinations(current) : {}
   const nextFavorite = current ? (((current.favorRating + 1) % 3) as Song['favorRating']) : 0
   return (
     <section aria-label="Now playing" class="border-b border-slate-700/80">
@@ -93,28 +106,25 @@ export default component$(() => {
 
       <div class="px-4">
         {current ? (
-          <PlaybackLink
-            href={current.album ? '/albums/' : '/'}
-            ariaLabel={current.album ? `Browse album ${current.album}` : `Find ${current.title} in the library`}
-            title={current.album ? `Browse ${current.album}` : 'Find in library'}
-            searchTerm={current.album || current.title}
-            class="playback-artwork-link mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]"
-          >
-            {albumArt.value ? (
-              <img
-                src={albumArt.value}
-                alt=""
-                width={240}
-                height={240}
-                decoding="async"
-                class="aspect-square w-full object-contain"
-              />
-            ) : (
-              <span class="aspect-square w-full grid place-items-center bg-slate-800 text-slate-600">
-                <MusicNote height="18%" width="18%" />
-              </span>
-            )}
-          </PlaybackLink>
+          destinations.album ? (
+            <MetadataLink
+              destination={destinations.album}
+              ariaLabel={`Open album ${current.album}`}
+              title={`Open ${current.album}`}
+              class="playback-artwork-link mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]"
+            >
+              <PlayerArtwork src={albumArt.value} />
+            </MetadataLink>
+          ) : (
+            <PlaybackLink
+              href="/songs/"
+              ariaLabel={`Find ${current.title} in the library`}
+              title="Find in library"
+              class="playback-artwork-link mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]"
+            >
+              <PlayerArtwork src={albumArt.value} />
+            </PlaybackLink>
+          )
         ) : (
           <div class="mx-auto max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]">
             <div class="aspect-square w-full grid place-items-center bg-slate-800 text-slate-600">
@@ -126,27 +136,29 @@ export default component$(() => {
         <div class="min-w-0 pb-1 pt-4 text-center">
           {current ? (
             <h2 class="truncate text-base font-semibold leading-6 text-slate-100" title={current.title}>
-              <PlaybackLink href="/songs/" searchTerm={current.title}>
-                {current.title}
-              </PlaybackLink>
+              <PlaybackLink href="/songs/">{current.title}</PlaybackLink>
             </h2>
           ) : (
             <h2 class="truncate text-base font-semibold leading-6 text-slate-100">Nothing playing</h2>
           )}
           {current?.artist ? (
             <p class="truncate text-xs leading-5 text-slate-400" title={current.artist}>
-              <PlaybackLink href="/artists/" searchTerm={current.artist}>
-                {current.artist}
-              </PlaybackLink>
+              {destinations.artist ? (
+                <MetadataLink destination={destinations.artist}>{current.artist}</MetadataLink>
+              ) : (
+                current.artist
+              )}
             </p>
           ) : (
             <p class="truncate text-xs leading-5 text-slate-400">Choose a track from your library</p>
           )}
           {current?.album && (
             <p class="truncate text-[11px] leading-4 text-slate-500" title={current.album}>
-              <PlaybackLink href="/albums/" searchTerm={current.album}>
-                {current.album}
-              </PlaybackLink>
+              {destinations.album ? (
+                <MetadataLink destination={destinations.album}>{current.album}</MetadataLink>
+              ) : (
+                current.album
+              )}
             </p>
           )}
         </div>

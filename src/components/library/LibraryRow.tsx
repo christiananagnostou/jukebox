@@ -4,7 +4,9 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Song } from '~/App'
 import { libraryPlaybackAt } from '~/services/library-client'
 import { updateFavoriteRating } from '~/services/library-db'
+import { trackMetadataDestinations } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
+import MetadataLink from './MetadataLink'
 import { SoundBars } from '../Shared/SoundBars'
 import { Star0 } from '../svg/Star0'
 import { Star1 } from '../svg/Star1'
@@ -29,6 +31,7 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
   const storeActions = useContext(StoreActionsContext)
 
   const isPlaying = store.player.currSong?.id === song.id
+  const destinations = trackMetadataDestinations(song)
 
   const playTrack = $(async () => {
     void invoke('record_playback_client_event', { event: 'activation_requested' }).catch(() => undefined)
@@ -63,15 +66,6 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
   return (
     <div
       key={song.title}
-      aria-label={`Play ${song.title} by ${song.artist || 'Unknown artist'}`}
-      onClick$={playTrack}
-      onKeyDown$={(event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        void playTrack()
-      }}
-      role="button"
-      tabIndex={0}
       style={style}
       class={
         classes +
@@ -81,11 +75,30 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
     >
       <SoundBars show={isPlaying} />
 
-      <span class="truncate pl-1 relative">{song.title}</span>
+      <button
+        type="button"
+        class="relative truncate pl-1 text-left hover:text-white focus-visible:text-white"
+        aria-label={`Play ${song.title} by ${song.artist || 'Unknown artist'}`}
+        onClick$={playTrack}
+      >
+        {song.title}
+      </button>
 
-      <span class="truncate pl-2">{song.artist}</span>
+      {destinations.artist ? (
+        <MetadataLink destination={destinations.artist} class="truncate pl-2" title={`Open ${song.artist}`}>
+          {song.artist}
+        </MetadataLink>
+      ) : (
+        <span class="truncate pl-2">{song.artist}</span>
+      )}
 
-      <span class="truncate pl-2">{song.album}</span>
+      {destinations.album ? (
+        <MetadataLink destination={destinations.album} class="truncate pl-2" title={`Open ${song.album}`}>
+          {song.album}
+        </MetadataLink>
+      ) : (
+        <span class="truncate pl-2">{song.album}</span>
+      )}
 
       <span class="truncate pl-2">{song.trackNumber}</span>
 

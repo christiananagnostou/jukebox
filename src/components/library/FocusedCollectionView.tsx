@@ -14,6 +14,7 @@ import { Link } from '@builder.io/qwik-city'
 import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { LibraryCatalogState, ListItemStyle, Song } from '~/App'
+import MetadataLink from '~/components/library/MetadataLink'
 import VirtualList from '~/components/Shared/VirtualList'
 import { SoundBars } from '~/components/Shared/SoundBars'
 import { MusicNote } from '~/components/svg/MusicNote'
@@ -21,6 +22,7 @@ import {
   focusedCollectionQuery,
   libraryDestinationHref,
   libraryDestinationLabel,
+  trackMetadataDestinations,
   type LibraryDestination,
 } from '~/services/library-destination'
 import { LibraryPager, libraryPlaybackAt, librarySongAt } from '~/services/library-client'
@@ -110,7 +112,7 @@ export default component$<FocusedCollectionViewProps>((props) => {
   })
 
   return (
-    <section class="focused-collection">
+    <section class="focused-collection" data-kind={props.destination.kind}>
       <header class="focused-collection-header">
         {props.destination.kind === 'album' && (
           <div class="focused-collection-art" aria-hidden="true">
@@ -188,6 +190,7 @@ export default component$<FocusedCollectionViewProps>((props) => {
                 return <div class="focused-track-row focused-track-row-loading" style={{ ...style, height: '40px' }} />
               }
               const isPlaying = store.player.currSong?.id === song.id
+              const albumDestination = trackMetadataDestinations(song).album
               return (
                 <div
                   class={`focused-track-row ${isPlaying ? 'focused-track-row-playing' : ''}`}
@@ -204,9 +207,19 @@ export default component$<FocusedCollectionViewProps>((props) => {
                     <SoundBars show={isPlaying} />
                     <span class="truncate">{song.title || '-'}</span>
                   </button>
-                  <span class="focused-track-album" title={song.album}>
-                    {song.album || '-'}
-                  </span>
+                  {albumDestination ? (
+                    <MetadataLink
+                      destination={albumDestination}
+                      class="focused-track-album"
+                      title={`Open ${song.album}`}
+                    >
+                      {song.album}
+                    </MetadataLink>
+                  ) : (
+                    <span class="focused-track-album" title={song.album}>
+                      {song.album || '-'}
+                    </span>
+                  )}
                   <span class="focused-track-duration">{song.duration || '-'}</span>
                 </div>
               )

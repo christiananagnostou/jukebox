@@ -6,7 +6,9 @@ import {
   focusedCollectionQuery,
   libraryDestinationHref,
   libraryDestinationLabel,
+  libraryDestinationParameters,
   parseLibraryDestination,
+  trackMetadataDestinations,
 } from './library-destination'
 
 describe('library destinations', () => {
@@ -41,14 +43,14 @@ describe('library destinations', () => {
   it('encodes Unicode and URL punctuation through URLSearchParams', () => {
     const destination = albumDestination('AC/DC & Friends', '¿Dónde? / 東京')
     expect(destination && libraryDestinationHref(destination)).toBe(
-      '/albums/view/?artist=AC%2FDC+%26+Friends&album=%C2%BFD%C3%B3nde%3F+%2F+%E6%9D%B1%E4%BA%AC'
+      '/albums/view/#artist=AC%2FDC+%26+Friends&album=%C2%BFD%C3%B3nde%3F+%2F+%E6%9D%B1%E4%BA%AC'
     )
   })
 
   it('round trips an artist URL', () => {
     const destination = artistDestination('Sigur Rós')!
     const url = new URL(libraryDestinationHref(destination), 'https://jukebox.invalid')
-    expect(parseLibraryDestination(url.searchParams, 'artist')).toEqual(destination)
+    expect(parseLibraryDestination(libraryDestinationParameters(url), 'artist')).toEqual(destination)
   })
 
   it('round trips an album URL without collapsing same-named albums', () => {
@@ -57,14 +59,22 @@ describe('library destinations', () => {
     const firstUrl = new URL(libraryDestinationHref(first), 'https://jukebox.invalid')
     const secondUrl = new URL(libraryDestinationHref(second), 'https://jukebox.invalid')
 
-    expect(parseLibraryDestination(firstUrl.searchParams, 'album')).toEqual(first)
-    expect(parseLibraryDestination(secondUrl.searchParams, 'album')).toEqual(second)
+    expect(parseLibraryDestination(libraryDestinationParameters(firstUrl), 'album')).toEqual(first)
+    expect(parseLibraryDestination(libraryDestinationParameters(secondUrl), 'album')).toEqual(second)
     expect(libraryDestinationHref(first)).not.toBe(libraryDestinationHref(second))
   })
 
   it('rejects repeated identity parameters', () => {
     expect(parseLibraryDestination(new URLSearchParams('artist=One&artist=Two'), 'artist')).toBeUndefined()
     expect(parseLibraryDestination(new URLSearchParams('artist=One&album=First&album=Second'), 'album')).toBeUndefined()
+  })
+
+  it('falls back to standard query parameters for compatible web hosts', () => {
+    const url = new URL('https://jukebox.invalid/artists/view/?artist=Bj%C3%B6rk')
+    expect(parseLibraryDestination(libraryDestinationParameters(url), 'artist')).toEqual({
+      artist: 'Björk',
+      kind: 'artist',
+    })
   })
 
   it('rejects an album parameter on an artist route', () => {
@@ -99,5 +109,19 @@ describe('library destinations', () => {
   it('uses the visible entity as the destination label', () => {
     expect(libraryDestinationLabel({ artist: 'Björk', kind: 'artist' })).toBe('Björk')
     expect(libraryDestinationLabel({ album: 'Homogenic', artist: 'Björk', kind: 'album' })).toBe('Homogenic')
+  })
+
+  it('derives exact artist and album links from track metadata', () => {
+    expect(trackMetadataDestinations({ album: 'Homogenic', artist: 'Björk' })).toEqual({
+      album: { album: 'Homogenic', artist: 'Björk', kind: 'album' },
+      artist: { artist: 'Björk', kind: 'artist' },
+    })
+  })
+
+  it('does not create a misleading album link without artist identity', () => {
+    expect(trackMetadataDestinations({ album: 'Greatest Hits', artist: '' })).toEqual({
+      album: undefined,
+      artist: undefined,
+    })
   })
 })

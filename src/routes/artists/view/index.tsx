@@ -2,11 +2,11 @@ import { component$ } from '@builder.io/qwik'
 import { Link, type DocumentHead, useLocation } from '@builder.io/qwik-city'
 
 import FocusedCollectionView from '~/components/library/FocusedCollectionView'
-import { parseLibraryDestination } from '~/services/library-destination'
+import { libraryDestinationParameters, parseLibraryDestination } from '~/services/library-destination'
 
 export default component$(() => {
   const location = useLocation()
-  const destination = parseLibraryDestination(location.url.searchParams, 'artist')
+  const destination = parseLibraryDestination(libraryDestinationParameters(location.url), 'artist')
 
   if (!destination) {
     return (

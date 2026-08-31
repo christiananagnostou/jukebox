@@ -8,7 +8,7 @@
 ## Status
 
 - **Priority**: P1
-- **Status**: IN PROGRESS
+- **Status**: DONE
 - **Effort**: M
 - **Risk**: MED
 - **Depends on**: plan 054
@@ -151,14 +151,14 @@ Computer Use acceptance on the packaged app must cover direct URL navigation to 
 
 ## Done criteria
 
-- [ ] Exact artist and album URLs round-trip without using global search state.
-- [ ] Both focused routes are statically generated and use one shared component.
-- [ ] Tracks remain paged with at most five retained 100-row pages.
-- [ ] Playback uses exact native filters and the shared `playTracks` boundary.
-- [ ] Invalid or unavailable entities fail path-free with a useful route back.
-- [ ] Frontend suite, build, public-source check, and full pre-push gate pass.
-- [ ] No file outside the in-scope list changed apart from ignored build artifacts.
-- [ ] Packaged native QA results are recorded honestly in the PR.
+- [x] Exact artist and album URLs round-trip without using global search state.
+- [x] Both focused routes are statically generated and use one shared component.
+- [x] Tracks remain paged with at most five retained 100-row pages.
+- [x] Playback uses exact native filters and the shared `playTracks` boundary.
+- [x] Invalid or unavailable entities fail path-free with a useful route back.
+- [x] Frontend suite, build, public-source check, and full pre-push gate pass.
+- [x] No file outside the in-scope list changed apart from ignored build artifacts.
+- [x] Packaged native QA results are recorded honestly in the PR.
 
 ## STOP conditions
 
