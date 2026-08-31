@@ -17,6 +17,12 @@ Jukebox is a compact desktop music player for local libraries. It is built with 
 - Rust 1.93 or newer
 - Platform dependencies required by [Tauri v2](https://v2.tauri.app/start/prerequisites/)
 
+## Platform status
+
+Required CI builds and checks Jukebox on Windows x64, macOS, and Ubuntu. Windows CI produces at least one MSI or NSIS installer and scans the raw executable plus bundle files for build-machine paths. Compressed installer payloads are not recursively unpacked, so signed installer launch tests remain part of the release roadmap.
+
+Published installers are not yet signed, notarized, or delivered through an automatic updater.
+
 ## Development
 
 ```sh
@@ -29,12 +35,7 @@ npm run tauri dev
 Useful checks:
 
 ```sh
-npm test -- --run
-npm run lint
-npm run build.types
-npm run build
-npm run fmt.check
-cd src-tauri && cargo check --locked && cargo fmt --all -- --check
+npm run pre-push
 ```
 
 Build a desktop bundle with:

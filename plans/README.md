@@ -58,7 +58,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [054](054-instant-playback-interaction-polish.md)  | Make track activation instant and simplify interaction hierarchy    | P1       | M      | 053        | DONE   |
 | [055](055-focused-artist-album-workspaces.md)      | Add exact bounded artist and album workspaces                       | P1       | M      | 054        | DONE   |
 | [056](056-adopt-metadata-deep-links.md)            | Link artist and album metadata throughout the app                   | P1       | M      | 055        | DONE   |
-| [057](057-windows-release-parity.md)               | Add Windows CI and installer portability parity                     | P1       | M      | —          | TODO   |
+| [057](057-windows-release-parity.md)               | Add Windows CI and installer portability parity                     | P1       | M      | —          | DONE   |
 | [058](058-testable-private-pwa-playback-core.md)   | Establish a testable private-PWA playback core                      | P1       | M      | —          | TODO   |
 | [059](059-durable-blue-private-pwa.md)             | Make private iPhone listening durable, blue, and recoverable        | P1       | M      | 058        | TODO   |
 | [060](060-native-output-real-device-gate.md)       | Prove native audio output on supported desktop platforms            | P1       | L      | 057        | TODO   |
