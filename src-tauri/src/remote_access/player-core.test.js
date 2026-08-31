@@ -2,19 +2,28 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MAX_QUEUE_LENGTH,
+  MAX_SESSION_AGE_MILLISECONDS,
   PLAYER_SESSION_VERSION,
   appendQueue,
   clampSeekTarget,
+  clearPersistedSession,
+  clearQueue,
+  createPersistedSession,
   createPlayerState,
   currentTrack,
   endTrack,
+  loadPersistedSession,
   mediaSessionPositionState,
   nextTrack,
   parsePersistedSession,
   previousTrack,
+  removeQueueOccurrence,
   replaceQueue,
+  savePersistedSession,
   selectTrack,
 } from './player-core.js'
+
+const NOW = 1_800_000_000_000
 
 const track = (id, overrides = {}) => ({
   id,
@@ -32,7 +41,9 @@ const persisted = (overrides = {}) => ({
   catalogRevision: '42',
   queue: [track('one'), track('two')],
   currentIndex: 0,
-  positionSeconds: 12,
+  positionMilliseconds: 12_000,
+  savedAtMilliseconds: NOW - 1_000,
+  paused: true,
   ...overrides,
 })
 
@@ -128,13 +139,34 @@ describe('private PWA player state', () => {
     expectValidIndex(state)
     expect(state.currentIndex).toBeNull()
   })
+
+  it('removes one duplicate occurrence and preserves a later selection index', () => {
+    const queue = [track('same'), track('same'), track('other')]
+
+    expect(removeQueueOccurrence({ queue, currentIndex: 2 }, 0)).toEqual({
+      queue: [queue[1], queue[2]],
+      currentIndex: 1,
+    })
+  })
+
+  it('repairs an unavailable current occurrence without losing the remaining queue', () => {
+    const queue = [track('one'), track('two')]
+    expect(removeQueueOccurrence({ queue, currentIndex: 0 }, 0)).toEqual({ queue: [queue[1]], currentIndex: null })
+    expect(removeQueueOccurrence({ queue, currentIndex: 0 }, 5)).toEqual({ queue, currentIndex: 0 })
+  })
+
+  it('clears a non-empty queue without reallocating an empty state', () => {
+    const empty = createPlayerState()
+    expect(clearQueue(empty)).toBe(empty)
+    expect(clearQueue({ queue: [track('one')], currentIndex: 0 })).toEqual(empty)
+  })
 })
 
 describe('persisted private PWA sessions', () => {
   it('parses the versioned path-free shape and preserves duplicate occurrences', () => {
     const value = persisted({ queue: [track('same'), track('same')], currentIndex: 1 })
 
-    expect(parsePersistedSession(JSON.stringify(value), '42')).toEqual(value)
+    expect(parsePersistedSession(JSON.stringify(value), '42', NOW)).toEqual(value)
   })
 
   it.each([
@@ -149,27 +181,101 @@ describe('persisted private PWA sessions', () => {
     ['stream URL field', persisted({ queue: [{ ...track('one'), streamUrl: '/api/tracks/one/stream' }] })],
     ['out-of-range current index', persisted({ currentIndex: 2 })],
     ['negative current index', persisted({ currentIndex: -1 })],
-    ['position without a selection', persisted({ currentIndex: null, positionSeconds: 1 })],
-    ['negative position', persisted({ positionSeconds: -1 })],
-    ['non-finite position', persisted({ positionSeconds: Number.POSITIVE_INFINITY })],
+    ['position without a selection', persisted({ currentIndex: null, positionMilliseconds: 1 })],
+    ['fractional position', persisted({ positionMilliseconds: 1.5 })],
+    ['negative position', persisted({ positionMilliseconds: -1 })],
+    ['non-finite position', persisted({ positionMilliseconds: Number.POSITIVE_INFINITY })],
+    ['autoplay restore state', persisted({ paused: false })],
+    ['missing saved timestamp', { ...persisted(), savedAtMilliseconds: undefined }],
     ['unknown session field', { ...persisted(), source: '/api/tracks/one/stream' }],
   ])('rejects %s', (_label, value) => {
-    expect(parsePersistedSession(value, '42')).toBeNull()
+    expect(parsePersistedSession(value, '42', NOW)).toBeNull()
   })
 
   it('rejects persisted queues over the bound instead of truncating them', () => {
     const queue = Array.from({ length: MAX_QUEUE_LENGTH + 1 }, (_, index) => track(`id_${index}`))
 
-    expect(parsePersistedSession(persisted({ queue }), '42')).toBeNull()
+    expect(parsePersistedSession(persisted({ queue }), '42', NOW)).toBeNull()
   })
 
   it('rejects a stale catalog revision so the caller can recover with a fresh session', () => {
-    expect(parsePersistedSession(persisted(), '43')).toBeNull()
-    expect(parsePersistedSession(persisted(), '42')?.catalogRevision).toBe('42')
+    expect(parsePersistedSession(persisted(), '43', NOW)).toBeNull()
+    expect(parsePersistedSession(persisted(), '42', NOW)?.catalogRevision).toBe('42')
   })
 
   it('keeps a path-free display filename containing a colon', () => {
-    expect(parsePersistedSession(persisted({ queue: [track('one', { file: 'Track:One.mp3' })] }), '42')).not.toBeNull()
+    expect(
+      parsePersistedSession(persisted({ queue: [track('one', { file: 'Track:One.mp3' })] }), '42', NOW)
+    ).not.toBeNull()
+  })
+
+  it('rejects expired and implausibly future sessions', () => {
+    expect(
+      parsePersistedSession(persisted({ savedAtMilliseconds: NOW - MAX_SESSION_AGE_MILLISECONDS - 1 }), '42', NOW)
+    ).toBeNull()
+    expect(parsePersistedSession(persisted({ savedAtMilliseconds: NOW + 5 * 60 * 1000 + 1 }), '42', NOW)).toBeNull()
+  })
+
+  it('creates only a paused, whole-millisecond session', () => {
+    const state = { queue: [track('one')], currentIndex: 0 }
+    expect(createPersistedSession(state, '42', 12_000, NOW)).toEqual(
+      persisted({ queue: state.queue, positionMilliseconds: 12_000, savedAtMilliseconds: NOW })
+    )
+    expect(createPersistedSession(state, '42', 12.5, NOW)).toBeNull()
+  })
+
+  it('loads, saves, and clears through a storage boundary', () => {
+    const values = new Map()
+    const storage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: (key) => values.delete(key),
+    }
+    const session = persisted()
+
+    expect(savePersistedSession(storage, 'session', session)).toBe(true)
+    expect(loadPersistedSession(storage, 'session', null, NOW)).toEqual(session)
+    expect(loadPersistedSession(storage, 'session', '42', NOW)).toEqual(session)
+    expect(clearPersistedSession(storage, 'session')).toBe(true)
+    expect(loadPersistedSession(storage, 'session', '42', NOW)).toBeNull()
+  })
+
+  it('discards malformed or stale storage without throwing', () => {
+    let value = '{'
+    let removed = 0
+    const storage = {
+      getItem: () => value,
+      setItem: () => {
+        throw new Error('quota')
+      },
+      removeItem: () => {
+        removed += 1
+        value = null
+      },
+    }
+
+    expect(loadPersistedSession(storage, 'session', '42', NOW)).toBeNull()
+    expect(removed).toBe(1)
+    expect(savePersistedSession(storage, 'session', persisted())).toBe(false)
+    expect(savePersistedSession(storage, 'session', null)).toBe(false)
+  })
+
+  it('contains storage access failures', () => {
+    const storage = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      },
+      removeItem: () => {
+        throw new Error('blocked')
+      },
+    }
+
+    expect(loadPersistedSession(storage, 'session', '42', NOW)).toBeNull()
+    expect(savePersistedSession(storage, 'session', persisted())).toBe(false)
+    expect(clearPersistedSession(storage, 'session')).toBe(false)
   })
 })
 

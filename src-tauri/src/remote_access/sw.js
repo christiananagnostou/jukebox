@@ -1,15 +1,21 @@
-const CACHE_NAME = 'jukebox-shell-v2'
+const CACHE_NAME = 'jukebox-shell-v5'
 const SHELL_PATHS = new Set([
   '/',
   '/app.css',
   '/app.js',
+  '/player-core.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ])
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll([...SHELL_PATHS])))
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll([...SHELL_PATHS].map((path) => new Request(path, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  )
 })
 
 self.addEventListener('activate', (event) => {
@@ -26,7 +32,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || !SHELL_PATHS.has(url.pathname)) return
 
   event.respondWith(
-    fetch(event.request)
+    fetch(new Request(event.request, { cache: 'reload' }))
       .then((response) => {
         if (response.ok) {
           const copy = response.clone()

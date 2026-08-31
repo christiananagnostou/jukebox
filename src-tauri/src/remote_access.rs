@@ -1186,15 +1186,27 @@ mod tests {
         assert_eq!(png_dimensions(ICON_192), (192, 192));
         assert_eq!(png_dimensions(ICON_512), (512, 512));
         assert!(!SERVICE_WORKER.contains("/api/"));
-        assert!(SERVICE_WORKER.contains("jukebox-shell-v2"));
+        assert!(SERVICE_WORKER.contains("jukebox-shell-v5"));
+        assert!(SERVICE_WORKER.contains("'/player-core.js'"));
+        assert!(SERVICE_WORKER.contains("new Request(path, { cache: 'reload' })"));
+        assert!(SERVICE_WORKER.contains("new Request(event.request, { cache: 'reload' })"));
+        assert!(SERVICE_WORKER.contains("self.skipWaiting()"));
         for view in ["tracks", "albums", "artists"] {
             assert!(INDEX_HTML.contains(&format!("data-view=\"{view}\"")));
             assert!(APP_JS.contains(&format!("view = '{view}'")));
         }
         assert!(INDEX_HTML.contains("<script type=\"module\" src=\"/app.js\"></script>"));
+        assert!(INDEX_HTML.contains("id=\"queue-panel\""));
+        assert!(INDEX_HTML.contains("id=\"playback-actions\""));
         assert!(APP_JS.contains("from './player-core.js'"));
         assert!(APP_JS.contains("/api/${view}"));
         assert!(APP_JS.contains("x-jukebox-next-cursor"));
+        assert!(APP_JS.contains("window.localStorage"));
+        assert!(APP_JS.contains("visibilitychange"));
+        assert!(APP_JS.contains("POSITION_CHECKPOINT_MILLISECONDS = 5_000"));
+        assert!(APP_JS.contains("PROBE_TIMEOUT_MILLISECONDS = 5_000"));
+        assert!(APP_JS.contains("const controller = new AbortController()"));
+        assert!(APP_JS.contains("restoreDeviceSession()"));
         assert!(!APP_JS.contains("visualsPath"));
         assert!(!PLAYER_CORE_JS.contains("document."));
         assert!(!PLAYER_CORE_JS.contains("localStorage"));
