@@ -135,8 +135,12 @@ impl M3uState {
 }
 
 fn prune_expired(imports: &mut VecDeque<PendingImport>) {
-    let now = Instant::now();
-    imports.retain(|pending| now.duration_since(pending.created_at) <= PENDING_IMPORT_TTL);
+    prune_expired_at(imports, Instant::now());
+}
+
+fn prune_expired_at(imports: &mut VecDeque<PendingImport>, now: Instant) {
+    imports
+        .retain(|pending| now.saturating_duration_since(pending.created_at) <= PENDING_IMPORT_TTL);
 }
 
 fn import_plan_unavailable() -> LibraryError {
@@ -1026,12 +1030,17 @@ mod tests {
     fn pending_plans_are_expiring_bounded_token_addressed_and_pageable() {
         let state = M3uState::default();
         let expired_token = "00000000000000000000000000000000";
+        let created_at = Instant::now();
         state.pending.lock().unwrap().push_back(pending(
             expired_token,
-            Instant::now() - PENDING_IMPORT_TTL - Duration::from_secs(1),
+            created_at,
             Vec::new(),
             vec!["one".to_owned()],
         ));
+        prune_expired_at(
+            &mut state.pending.lock().unwrap(),
+            created_at + PENDING_IMPORT_TTL + Duration::from_secs(1),
+        );
         for index in 1..=5 {
             let token = format!("{index:032x}");
             state
@@ -1223,11 +1232,12 @@ mod tests {
             assert_eq!(document.paths.len(), 3);
             assert_eq!(document.skipped, 1);
             let rendered = render_m3u8(&document.paths, &base);
+            let portable_outside = outside.to_string_lossy().replace('\\', "/");
             assert_eq!(
                 rendered,
                 format!(
                     "#EXTM3U\nArtist/#song.flac\n{}\nArtist/#song.flac\n",
-                    outside.to_string_lossy()
+                    portable_outside
                 )
             );
             assert_eq!(safe_export_name(&document.name), "Export - Mix");
