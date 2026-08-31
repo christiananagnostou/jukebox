@@ -13,6 +13,7 @@
 - **Depends on**: plan 058
 - **Category**: direction / UX
 - **Planned at**: commit `331967f`, 2026-08-30
+- **State**: DONE, 2026-08-31
 
 ## Why this matters
 
@@ -130,14 +131,24 @@ If a real iPhone is available through the existing private URL, manually confirm
 
 ## Done criteria
 
-- [ ] Reload/process eviction restores a bounded queue and position paused.
-- [ ] The PWA has actionable retry/skip/remove states and no silent playback failure.
-- [ ] Queue/search/navigation do not interrupt current playback.
-- [ ] All PWA accent/focus/control colors use shared remote CSS variables and steel-blue values.
-- [ ] Media Session seek/position handlers are capability-safe and tested at the pure boundary.
-- [ ] No API/audio caching, server mutation, account, Funnel, machine URL, or path persistence exists.
-- [ ] Full gate, app build, and packaged Computer Use acceptance pass.
-- [ ] `plans/README.md` marks plan 059 DONE.
+- [x] Reload/process eviction restores a bounded queue and position paused.
+- [x] The PWA has actionable retry/skip/remove states and no silent playback failure.
+- [x] Queue/search/navigation do not interrupt current playback.
+- [x] All PWA accent/focus/control colors use shared remote CSS variables and steel-blue values.
+- [x] Media Session seek/position handlers are capability-safe and tested at the pure boundary.
+- [x] No API/audio caching, server mutation, account, Funnel, machine URL, or path persistence exists.
+- [x] Full gate, app build, and packaged Computer Use acceptance pass.
+- [x] `plans/README.md` marks plan 059 DONE.
+
+## Completion evidence
+
+- `npm run pre-push` passes with 26 frontend files / 204 tests, 187 Rust tests plus one ignored release benchmark, three native-decoder fixture tests, formatting, public-source portability, identity/security checks, build, lint, typecheck, Rust formatting, and Clippy.
+- `npm run tauri build -- --bundles app` produces the packaged macOS app, and `npm run check:bundle-portability -- src-tauri/target/release/Jukebox src-tauri/target/release/bundle/macos/Jukebox.app` passes for all four inspected files.
+- The pure player suite has 50 cases covering bounded parsing, paused-only restore, expiry/revision rejection, storage failures, duplicate occurrences, removal/clear transitions, seek bounds, and Media Session position bounds. Remote-router tests retain byte-range, root-authorization, CSP/static-asset, and shell-only cache coverage.
+- Computer Use against the exact packaged app and loopback origin loaded the 1,135-track library in a phone-shaped Chrome window. Search/view changes preserved the device queue; direct activation and occurrence removal worked; the full-row Upcoming disclosure exposed current plus bounded upcoming items; steel-blue focus was visibly retained on keyboard navigation.
+- A nine-track queue and its selected `Scatterlings Of Africa` identity survived a fresh client plus consecutive reloads without autoplay. A blocked local media-file read settled after the five-second probe bound with a visible Retry action instead of leaving library validation pending.
+- The service worker now bypasses the browser HTTP cache while installing and refreshing shell assets. This was required because Chrome could otherwise populate a newly versioned cache with an older `app.js`; `/api/` and audio responses remain excluded.
+- Audible playback for the sampled ALAC files could not be asserted on this Mac because even a direct one-byte filesystem read of those files did not return. Real-iPhone Add to Home Screen, audible playback, and lock-screen Media Session acceptance remain unverified as required by Step 5; no success is inferred from desktop Chromium.
 
 ## STOP conditions
 

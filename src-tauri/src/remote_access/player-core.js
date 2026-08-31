@@ -1,13 +1,23 @@
 export const MAX_QUEUE_LENGTH = 500
 export const PLAYER_SESSION_VERSION = 1
+export const MAX_SESSION_AGE_MILLISECONDS = 30 * 24 * 60 * 60 * 1000
 
 const MAX_TRACK_ID_LENGTH = 128
 const MAX_DISPLAY_LENGTH = 1024
 const MAX_FILE_LENGTH = 512
 const MAX_DURATION_LENGTH = 64
-const MAX_POSITION_SECONDS = Number.MAX_SAFE_INTEGER
+const MAX_POSITION_MILLISECONDS = Number.MAX_SAFE_INTEGER
+const MAX_FUTURE_CLOCK_SKEW_MILLISECONDS = 5 * 60 * 1000
 const TRACK_FIELDS = new Set(['id', 'file', 'title', 'album', 'artist', 'duration', 'codec'])
-const SESSION_FIELDS = new Set(['version', 'catalogRevision', 'queue', 'currentIndex', 'positionSeconds'])
+const SESSION_FIELDS = new Set([
+  'version',
+  'catalogRevision',
+  'queue',
+  'currentIndex',
+  'positionMilliseconds',
+  'savedAtMilliseconds',
+  'paused',
+])
 
 /**
  * @typedef {object} PlayerTrack
@@ -32,7 +42,9 @@ const SESSION_FIELDS = new Set(['version', 'catalogRevision', 'queue', 'currentI
  * @property {string} catalogRevision
  * @property {PlayerTrack[]} queue
  * @property {number | null} currentIndex
- * @property {number} positionSeconds
+ * @property {number} positionMilliseconds
+ * @property {number} savedAtMilliseconds
+ * @property {true} paused
  */
 
 /** @returns {PlayerState} */
@@ -104,6 +116,34 @@ export const previousTrack = (state) => {
 /** @param {PlayerState} state @returns {PlayerState} */
 export const endTrack = (state) => nextTrack(state)
 
+/**
+ * Remove one queue occurrence without conflating duplicate track IDs. Removing
+ * the selected occurrence clears selection so the caller can choose whether to
+ * stop, skip, or wait for another explicit activation.
+ *
+ * @param {PlayerState} state
+ * @param {number} index
+ * @returns {PlayerState}
+ */
+export const removeQueueOccurrence = (state, index) => {
+  assertPlayerState(state)
+  if (!Number.isInteger(index) || index < 0 || index >= state.queue.length) return state
+  const queue = [...state.queue.slice(0, index), ...state.queue.slice(index + 1)]
+  const currentIndex =
+    state.currentIndex === null || state.currentIndex === index
+      ? null
+      : state.currentIndex > index
+        ? state.currentIndex - 1
+        : state.currentIndex
+  return { queue, currentIndex }
+}
+
+/** @param {PlayerState} state @returns {PlayerState} */
+export const clearQueue = (state) => {
+  assertPlayerState(state)
+  return state.queue.length === 0 ? state : createPlayerState()
+}
+
 /** @param {PlayerState} state @returns {PlayerTrack | null} */
 export const currentTrack = (state) => {
   assertPlayerState(state)
@@ -117,9 +157,10 @@ export const currentTrack = (state) => {
  *
  * @param {unknown} value
  * @param {string | null} [expectedCatalogRevision]
+ * @param {number} [nowMilliseconds]
  * @returns {PersistedPlayerSession | null}
  */
-export const parsePersistedSession = (value, expectedCatalogRevision = null) => {
+export const parsePersistedSession = (value, expectedCatalogRevision = null, nowMilliseconds = Date.now()) => {
   let candidate = value
   if (typeof value === 'string') {
     try {
@@ -147,23 +188,109 @@ export const parsePersistedSession = (value, expectedCatalogRevision = null) => 
   }
   if (queue.length === 0 && currentIndex !== null) return null
 
-  const positionSeconds = candidate.positionSeconds
+  const positionMilliseconds = candidate.positionMilliseconds
   if (
-    typeof positionSeconds !== 'number' ||
-    !Number.isFinite(positionSeconds) ||
-    positionSeconds < 0 ||
-    positionSeconds > MAX_POSITION_SECONDS ||
-    (currentIndex === null && positionSeconds !== 0)
+    !Number.isSafeInteger(positionMilliseconds) ||
+    positionMilliseconds < 0 ||
+    positionMilliseconds > MAX_POSITION_MILLISECONDS ||
+    (currentIndex === null && positionMilliseconds !== 0)
   ) {
     return null
   }
+
+  const savedAtMilliseconds = candidate.savedAtMilliseconds
+  if (
+    !Number.isSafeInteger(savedAtMilliseconds) ||
+    savedAtMilliseconds < 0 ||
+    !Number.isFinite(nowMilliseconds) ||
+    savedAtMilliseconds > nowMilliseconds + MAX_FUTURE_CLOCK_SKEW_MILLISECONDS ||
+    nowMilliseconds - savedAtMilliseconds > MAX_SESSION_AGE_MILLISECONDS
+  ) {
+    return null
+  }
+  if (candidate.paused !== true) return null
 
   return {
     version: PLAYER_SESSION_VERSION,
     catalogRevision: candidate.catalogRevision,
     queue,
     currentIndex,
-    positionSeconds,
+    positionMilliseconds,
+    savedAtMilliseconds,
+    paused: true,
+  }
+}
+
+/**
+ * @param {PlayerState} state
+ * @param {string} catalogRevision
+ * @param {number} positionMilliseconds
+ * @param {number} savedAtMilliseconds
+ * @returns {PersistedPlayerSession | null}
+ */
+export const createPersistedSession = (state, catalogRevision, positionMilliseconds, savedAtMilliseconds) =>
+  parsePersistedSession(
+    {
+      version: PLAYER_SESSION_VERSION,
+      catalogRevision,
+      queue: state.queue,
+      currentIndex: state.currentIndex,
+      positionMilliseconds,
+      savedAtMilliseconds,
+      paused: true,
+    },
+    catalogRevision,
+    savedAtMilliseconds
+  )
+
+/**
+ * @param {{ getItem: (key: string) => string | null, removeItem: (key: string) => void }} storage
+ * @param {string} key
+ * @param {string | null} expectedCatalogRevision
+ * @param {number} [nowMilliseconds]
+ * @returns {PersistedPlayerSession | null}
+ */
+export const loadPersistedSession = (storage, key, expectedCatalogRevision, nowMilliseconds = Date.now()) => {
+  try {
+    const raw = storage.getItem(key)
+    if (raw === null) return null
+    const parsed = parsePersistedSession(raw, expectedCatalogRevision, nowMilliseconds)
+    if (parsed) return parsed
+    storage.removeItem(key)
+  } catch {
+    return null
+  }
+  return null
+}
+
+/**
+ * @param {{ setItem: (key: string, value: string) => void }} storage
+ * @param {string} key
+ * @param {PersistedPlayerSession} session
+ * @returns {boolean}
+ */
+export const savePersistedSession = (storage, key, session) => {
+  if (!isRecord(session)) return false
+  if (!parsePersistedSession(session, session.catalogRevision, session.savedAtMilliseconds)) return false
+  try {
+    storage.setItem(key, JSON.stringify(session))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * @param {{ removeItem: (key: string) => void }} storage
+ * @param {string} key
+ * @returns {boolean}
+ */
+export const clearPersistedSession = (storage, key) => {
+  try {
+    storage.removeItem(key)
+    return true
+  } catch {
+    return false
   }
 }
 

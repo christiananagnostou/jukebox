@@ -30,14 +30,36 @@
           <button id="back" type="button">Back</button>
           <strong id="context-label"></strong>
         </div>
-        <p id="status" role="status">Loading library…</p>
+        <div class="status-row">
+          <p id="status" role="status">Loading library…</p>
+          <button id="library-retry" class="quiet-action" type="button" hidden>Retry</button>
+        </div>
       </header>
       <section id="items" aria-label="Tracks"></section>
       <button id="load-more" type="button" hidden>Load more</button>
     </main>
     <footer>
-      <div id="now-playing" aria-live="polite">Nothing playing</div>
-      <audio id="player" controls preload="metadata"></audio>
+      <details id="queue-panel">
+        <summary>
+          <span id="queue-summary-label">Upcoming</span>
+          <span id="queue-count">Queue empty</span>
+        </summary>
+        <div id="queue-content">
+          <div id="queue-items" aria-label="Playback queue"></div>
+          <button id="clear-queue" class="quiet-action danger-action" type="button" hidden>Clear queue</button>
+        </div>
+      </details>
+      <section class="player-card" aria-label="Player">
+        <div class="playing-copy" aria-live="polite">
+          <strong id="now-playing">Nothing playing</strong>
+          <span id="now-playing-detail">Choose a track to begin.</span>
+        </div>
+        <div class="playback-feedback">
+          <p id="playback-status" role="status">Queue empty.</p>
+          <div id="playback-actions"></div>
+        </div>
+        <audio id="player" controls preload="metadata"></audio>
+      </section>
     </footer>
     <script type="module" src="/app.js"></script>
   </body>
