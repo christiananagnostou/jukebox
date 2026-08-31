@@ -78,7 +78,7 @@ export default component$(() => {
           <h1 id="import-heading">Import music</h1>
           <p>Add folders for continuous library updates, or drop individual audio files for a one-time import.</p>
         </div>
-        <Link class="workspace-link" href="/settings/">
+        <Link class="workspace-link" href="/settings/library/">
           Manage music folders
         </Link>
       </header>
