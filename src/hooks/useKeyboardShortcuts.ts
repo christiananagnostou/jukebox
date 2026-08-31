@@ -2,6 +2,7 @@ import { $, useOnWindow } from '@builder.io/qwik'
 import { useLocation, useNavigate } from '@builder.io/qwik-city'
 
 import type { Store, StoreActions } from '~/App'
+import { matchesNavigationShortcut, NAVIGATION_COMMANDS } from '~/services/app-commands'
 import { lastLoadedLibraryIndex, librarySongAt, storageNodeAt } from '~/services/library-client'
 
 import { useArtistPage } from './useArtistPage'
@@ -13,56 +14,6 @@ import {
   useStorageOpenParent,
   useStoragePlayNode,
 } from './useStoragePage'
-
-export const KeyboardCommands = [
-  {
-    type: 'header',
-    title: 'Movement',
-    commands: [
-      { key: 'j', command: 'Down' },
-      { key: 'k', command: 'Move Up' },
-      { key: 'h', command: 'Left' },
-      { key: 'l', command: 'Right' },
-      { key: 'g', command: 'To List Top' },
-      { key: 'G', command: 'To List Bottom' },
-    ],
-  },
-
-  {
-    type: 'header',
-    title: 'Audio Control',
-    commands: [
-      { key: 'Enter', command: 'Play Song' },
-      { key: 'n', command: 'Next Song' },
-      { key: '⇧ N', command: 'Prev Song' },
-      { key: 'p', command: 'Pause/Play' },
-      { key: 'q', command: 'Add Song to Queue' },
-    ],
-  },
-
-  {
-    type: 'header',
-    title: 'Pages',
-    commands: [
-      { key: '⇧ L', command: 'Library' },
-      { key: '⇧ A', command: 'Artists' },
-      { key: '⇧ O', command: 'Storage' },
-      { key: '⇧ M', command: 'Albums' },
-      { key: '⇧ P', command: 'Playlists' },
-      { key: '⇧ S', command: 'Settings' },
-    ],
-  },
-
-  {
-    type: 'header',
-    title: 'Utility',
-    commands: [
-      { key: '/', command: 'Search' },
-      { key: '⇧ I', command: 'Import Music' },
-      { key: '?', command: 'Toggle Shortcuts' },
-    ],
-  },
-]
 
 export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
   const nav = useNavigate()
@@ -79,10 +30,11 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
     'keydown',
     $((e: Event) => {
       if (store.isTyping) return
-      const { key, code } = e as KeyboardEvent
+      const keyboardEvent = e as KeyboardEvent
+      const { key, code } = keyboardEvent
       const pathname = location.url.pathname
 
-      if (pathname === '/') {
+      if (pathname === '/songs/' || pathname === '/songs') {
         if (key === 'j') libraryActions.highlightDown()
         if (key === 'k') libraryActions.highlightUp()
         if (key === 'Enter') libraryActions.playHighlighted()
@@ -129,12 +81,13 @@ export function useKeyboardShortcuts(store: Store, storeActions: StoreActions) {
         }
       }
 
-      if (key === 'L') nav('/')
-      if (key === 'A') nav('/artists')
-      if (key === 'O') nav('/storage')
-      if (key === 'M') nav('/albums')
-      if (key === 'P') nav('/playlists')
-      if (key === 'S') nav('/settings')
+      for (const command of NAVIGATION_COMMANDS) {
+        if (command.href && command.shortcut && matchesNavigationShortcut(keyboardEvent, command.shortcut)) {
+          e.preventDefault()
+          void nav(command.href)
+          return
+        }
+      }
       if (key === '?') store.showKeyShortcuts = !store.showKeyShortcuts
       if (key === 'Escape' && store.showKeyShortcuts) store.showKeyShortcuts = false
     })

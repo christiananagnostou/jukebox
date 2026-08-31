@@ -53,6 +53,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [049](049-m3u-workspace.md)                        | Surface bounded review-first M3U import and manual export workflows | P1       | M      | 048        | ACTIVE |
 | [050](050-playback-workspace-foundation.md)        | Establish a compact authoritative playback workspace                | P1       | M      | 030, 043   | DONE   |
 | [051](051-blue-playback-drawer.md)                 | Refine the playback drawer palette and upcoming activation          | P1       | S      | 050        | DONE   |
+| [052](052-navigation-command-import-foundation.md) | Establish Library Index navigation, commands, Listen, and import    | P1       | L      | 051        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 

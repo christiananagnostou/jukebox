@@ -80,7 +80,7 @@ export default component$(() => {
     <section class="min-h-0 w-full flex flex-col flex-1 relative">
       <div class="flex h-[30px] shrink-0 items-center gap-1 border-b border-gray-700 px-2 text-sm">
         {store.storageView.rootId === null ? (
-          <span class="text-gray-400">Library folders</span>
+          <span class="text-gray-400">Folders</span>
         ) : (
           <>
             <button class="text-gray-400 hover:text-white" onClick$={openParent} aria-label="Go up one folder">
@@ -120,7 +120,7 @@ export default component$(() => {
             aria-live="polite"
           >
             {store.storageView.nodes.status === 'loading'
-              ? 'Loading storage…'
+              ? 'Loading folders…'
               : store.searchTerm
                 ? 'No files or folders match this search.'
                 : store.storageView.rootId === null
