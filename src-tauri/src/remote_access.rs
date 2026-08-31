@@ -1069,6 +1069,7 @@ mod tests {
 
             drop(app);
             pool.close().await;
+            drop(pool);
             std::fs::remove_dir_all(fixture).expect("remove router fixture");
         });
     }

@@ -62,6 +62,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [058](058-testable-private-pwa-playback-core.md)   | Establish a testable private-PWA playback core                      | P1       | M      | —          | TODO   |
 | [059](059-durable-blue-private-pwa.md)             | Make private iPhone listening durable, blue, and recoverable        | P1       | M      | 058        | TODO   |
 | [060](060-native-output-real-device-gate.md)       | Prove native audio output on supported desktop platforms            | P1       | L      | 057        | TODO   |
+| [061](061-windows-test-portability.md)             | Fix Windows test portability exposed by desktop parity              | P1       | S      | 057        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
