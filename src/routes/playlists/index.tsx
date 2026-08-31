@@ -2,6 +2,7 @@ import {
   $,
   component$,
   noSerialize,
+  useComputed$,
   useContext,
   useSignal,
   useStore,
@@ -311,7 +312,7 @@ export default component$(() => {
   })
 
   const addCurrentTrack = $(async () => {
-    const song = store.player.currSong
+    const song = store.playback.current
     if (!state.selectedId || !isManualPlaylistKind(state.selectedKind) || !song || state.action) return
     state.action = 'add'
     state.error = ''
@@ -412,8 +413,8 @@ export default component$(() => {
     }
   })
 
-  const busy = Boolean(state.action)
-  const selectedStatus = entries.error || state.error
+  const busy = useComputed$(() => Boolean(state.action))
+  const selectedStatus = useComputed$(() => entries.error || state.error)
 
   return (
     <section class="grid min-h-0 flex-1 grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
@@ -434,18 +435,23 @@ export default component$(() => {
               onFocus$={() => (store.isTyping = true)}
               onBlur$={() => (store.isTyping = false)}
             />
-            <button class={BUTTON_CLASS} type="submit" disabled={!state.createName.trim() || busy}>
+            <button class={BUTTON_CLASS} type="submit" disabled={!state.createName.trim() || busy.value}>
               Create
             </button>
           </form>
-          <button class={`${BUTTON_CLASS} mt-2 w-full`} type="button" onClick$={beginSmartPlaylist} disabled={busy}>
+          <button
+            class={`${BUTTON_CLASS} mt-2 w-full`}
+            type="button"
+            onClick$={beginSmartPlaylist}
+            disabled={busy.value}
+          >
             New smart playlist
           </button>
           <button
             class={`${BUTTON_CLASS} mt-2 w-full`}
             type="button"
             onClick$={beginM3uImport}
-            disabled={busy || Boolean(state.importPreview)}
+            disabled={busy.value || Boolean(state.importPreview)}
           >
             {state.action === 'import-picker' ? 'Opening…' : 'Import M3U playlist'}
           </button>
@@ -476,7 +482,7 @@ export default component$(() => {
                 <button
                   key={collection.kind}
                   class={`min-h-10 px-2 text-left text-sm hover:bg-gray-800 ${selected ? 'bg-gray-700' : ''}`}
-                  disabled={busy}
+                  disabled={busy.value}
                   onClick$={() => selectBuiltIn(collection.kind)}
                   aria-current={selected ? 'page' : undefined}
                 >
@@ -521,7 +527,7 @@ export default component$(() => {
                     }`}
                     style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }}
                     onClick$={() => selectPlaylist(playlist)}
-                    disabled={busy}
+                    disabled={busy.value}
                     aria-current={selected ? 'page' : undefined}
                   >
                     <span class="truncate">{playlist.name}</span>
@@ -580,12 +586,12 @@ export default component$(() => {
                   <button
                     class={BUTTON_CLASS}
                     onClick$={addCurrentTrack}
-                    disabled={!store.player.currSong || busy}
-                    title={store.player.currSong ? `Add ${store.player.currSong.title}` : 'Play a track first'}
+                    disabled={!store.playback.current || busy.value}
+                    title={store.playback.current ? `Add ${store.playback.current.title}` : 'Play a track first'}
                   >
                     Add current track
                   </button>
-                  <button class={BUTTON_CLASS} onClick$={exportPlaylistRecord} disabled={busy}>
+                  <button class={BUTTON_CLASS} onClick$={exportPlaylistRecord} disabled={busy.value}>
                     {state.action === 'export' ? 'Exporting…' : 'Export M3U8'}
                   </button>
                   <button
@@ -596,7 +602,7 @@ export default component$(() => {
                       state.duplicating = false
                       state.confirmDelete = false
                     }}
-                    disabled={busy}
+                    disabled={busy.value}
                   >
                     Rename
                   </button>
@@ -608,7 +614,7 @@ export default component$(() => {
                       state.editing = false
                       state.confirmDelete = false
                     }}
-                    disabled={busy}
+                    disabled={busy.value}
                   >
                     Duplicate
                   </button>
@@ -619,7 +625,7 @@ export default component$(() => {
                       state.editing = false
                       state.duplicating = false
                     }}
-                    disabled={busy}
+                    disabled={busy.value}
                   >
                     Delete
                   </button>
@@ -640,10 +646,15 @@ export default component$(() => {
                     onFocus$={() => (store.isTyping = true)}
                     onBlur$={() => (store.isTyping = false)}
                   />
-                  <button class={BUTTON_CLASS} type="submit" disabled={!state.renameName.trim() || busy}>
+                  <button class={BUTTON_CLASS} type="submit" disabled={!state.renameName.trim() || busy.value}>
                     Save
                   </button>
-                  <button class={BUTTON_CLASS} type="button" onClick$={() => (state.editing = false)} disabled={busy}>
+                  <button
+                    class={BUTTON_CLASS}
+                    type="button"
+                    onClick$={() => (state.editing = false)}
+                    disabled={busy.value}
+                  >
                     Cancel
                   </button>
                 </form>
@@ -663,14 +674,14 @@ export default component$(() => {
                     onFocus$={() => (store.isTyping = true)}
                     onBlur$={() => (store.isTyping = false)}
                   />
-                  <button class={BUTTON_CLASS} type="submit" disabled={!state.duplicateName.trim() || busy}>
+                  <button class={BUTTON_CLASS} type="submit" disabled={!state.duplicateName.trim() || busy.value}>
                     Create copy
                   </button>
                   <button
                     class={BUTTON_CLASS}
                     type="button"
                     onClick$={() => (state.duplicating = false)}
-                    disabled={busy}
+                    disabled={busy.value}
                   >
                     Cancel
                   </button>
@@ -683,20 +694,20 @@ export default component$(() => {
                   <button
                     class={`${BUTTON_CLASS} border-red-600 text-red-200`}
                     onClick$={deletePlaylistRecord}
-                    disabled={busy}
+                    disabled={busy.value}
                   >
                     Confirm delete
                   </button>
-                  <button class={BUTTON_CLASS} onClick$={() => (state.confirmDelete = false)} disabled={busy}>
+                  <button class={BUTTON_CLASS} onClick$={() => (state.confirmDelete = false)} disabled={busy.value}>
                     Cancel
                   </button>
                 </div>
               )}
 
               <div class="mt-3 min-h-4 text-xs" aria-live="polite">
-                {selectedStatus ? (
+                {selectedStatus.value ? (
                   <span role="alert" class="text-red-300">
-                    {selectedStatus}
+                    {selectedStatus.value}
                   </span>
                 ) : (
                   <span class="text-slate-400">{state.notice}</span>
@@ -760,7 +771,7 @@ export default component$(() => {
                           <button
                             class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
                             onClick$={() => moveEntry(entry, 'up')}
-                            disabled={busy || index === 0}
+                            disabled={busy.value || index === 0}
                             aria-label={`Move ${entry.title} up`}
                           >
                             Up
@@ -768,7 +779,7 @@ export default component$(() => {
                           <button
                             class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
                             onClick$={() => moveEntry(entry, 'down')}
-                            disabled={busy || index === entries.total - 1}
+                            disabled={busy.value || index === entries.total - 1}
                             aria-label={`Move ${entry.title} down`}
                           >
                             Down
@@ -776,7 +787,7 @@ export default component$(() => {
                           <button
                             class="px-1 py-2 text-xs text-slate-400 hover:text-red-300 disabled:opacity-40"
                             onClick$={() => removeEntry(entry)}
-                            disabled={busy}
+                            disabled={busy.value}
                             aria-label={`Remove ${entry.title} from ${state.selectedName}`}
                             title="Remove entry"
                           >

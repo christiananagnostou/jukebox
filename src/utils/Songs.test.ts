@@ -46,6 +46,15 @@ describe('getUpcomingSongSelections', () => {
     expect(getUpcomingSongSelections(playlist, 5)).toEqual([{ contextIndex: 0, song: playlist[0] }])
   })
 
+  it('starts at the beginning when playback has no current context selection', () => {
+    const playlist = [song({ id: 'one' }), song({ id: 'two' })]
+
+    expect(getUpcomingSongSelections(playlist, null)).toEqual([
+      { contextIndex: 0, song: playlist[0] },
+      { contextIndex: 1, song: playlist[1] },
+    ])
+  })
+
   it('preserves the exact context index when track IDs repeat', () => {
     const repeated = song({ id: 'repeated' })
     const playlist = [repeated, song({ id: 'middle' }), { ...repeated }]

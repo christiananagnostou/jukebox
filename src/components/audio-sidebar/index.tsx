@@ -9,7 +9,9 @@ export default component$(() => {
   return (
     <aside
       class="app-audio-sidebar h-screen min-w-0 flex z-20 flex-col overflow-y-auto overflow-x-hidden border-l border-slate-700/80 text-sm"
-      data-open={store.player.currSong || store.queue.length || store.player.canUndoQueueEdit ? 'true' : 'false'}
+      data-open={
+        store.playback.current || store.playback.queue.length || store.playback.canUndoQueueEdit ? 'true' : 'false'
+      }
     >
       <div class="mt-[29px] flex h-full flex-col border-t border-slate-700/80">
         <Player />

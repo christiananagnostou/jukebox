@@ -2,6 +2,7 @@ import {
   $,
   component$,
   noSerialize,
+  useComputed$,
   useContext,
   useSignal,
   useTask$,
@@ -29,7 +30,7 @@ export default component$(() => {
   const pager = useSignal<NoSerialize<StoragePager>>()
   const observedRefreshKey = useSignal(store.libraryCatalog.refreshKey)
   const direction = store.sorting.endsWith('-desc') ? 'desc' : 'asc'
-  const segments = store.storageView.parent ? store.storageView.parent.split('/') : []
+  const segments = useComputed$(() => (store.storageView.parent ? store.storageView.parent.split('/') : []))
 
   useVisibleTask$(({ cleanup }) => {
     const controller = new StoragePager(store.storageView.nodes, queryStorage)
@@ -73,7 +74,8 @@ export default component$(() => {
 
   const openBreadcrumb = $((index: number) => {
     store.storageView.cursorIdx = 0
-    store.storageView.parent = index < 0 ? '' : segments.slice(0, index + 1).join('/')
+    const parentSegments = store.storageView.parent ? store.storageView.parent.split('/') : []
+    store.storageView.parent = index < 0 ? '' : parentSegments.slice(0, index + 1).join('/')
   })
 
   return (
@@ -90,7 +92,7 @@ export default component$(() => {
             <button class="max-w-48 truncate hover:text-white" onClick$={() => openBreadcrumb(-1)}>
               {store.storageView.rootName}
             </button>
-            {segments.map((segment, index) => (
+            {segments.value.map((segment, index) => (
               <span class="contents" key={`${segment}-${index}`}>
                 <span class="text-gray-600">/</span>
                 <button class="max-w-48 truncate hover:text-white" onClick$={() => openBreadcrumb(index)}>
@@ -137,7 +139,6 @@ export default component$(() => {
             const node = storageNodeAt(store.storageView.nodes, index)
             if (!node) return <div class="bg-gray-900" style={{ ...style, height: `${ROW_HEIGHT}px` }} />
             const highlighted = store.storageView.cursorIdx === index
-            const isPlaying = Boolean(node.songId && store.player.currSong?.id === node.songId)
             const isContainer = node.kind !== 'track'
 
             return (
@@ -153,7 +154,9 @@ export default component$(() => {
                   {node.kind === 'root' ? <OpenFolder /> : node.kind === 'directory' ? <ClosedFolder /> : null}
                 </span>
                 <span class="relative min-w-0 flex-1 truncate">
-                  <span class="absolute right-full pr-4">{isPlaying && <SoundBars show />}</span>
+                  <span class="absolute right-full pr-4">
+                    {node.songId && store.playback.current?.id === node.songId && <SoundBars show />}
+                  </span>
                   {node.name}
                 </span>
                 <span class="shrink-0 text-xs text-slate-500">

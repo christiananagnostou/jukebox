@@ -12,10 +12,18 @@ import {
   type PlaybackSelection,
   type PlaybackSnapshot,
 } from '~/services/playback-client'
+import {
+  commitPlaybackView,
+  PLAYBACK_ACCESS_ERROR_MESSAGE,
+  PLAYBACK_ERROR_MESSAGE,
+  projectPlaybackView,
+} from '~/services/playback-view'
 
-export const PLAYBACK_ERROR_MESSAGE = 'This track could not be played'
-export const PLAYBACK_ACCESS_ERROR_MESSAGE = 'Music folder access is required. Reconnect the folder in Settings.'
-export const PLAYBACK_PERSISTENCE_WARNING_MESSAGE = 'Playback progress may not be saved'
+export {
+  PLAYBACK_ACCESS_ERROR_MESSAGE,
+  PLAYBACK_ERROR_MESSAGE,
+  PLAYBACK_PERSISTENCE_WARNING_MESSAGE,
+} from '~/services/playback-view'
 
 const POSITION_OBSERVATION_INTERVAL_MS = 250
 let queueSequence = 0
@@ -29,7 +37,7 @@ type PlaybackClientEvent =
   | 'ready'
   | 'source_authorization_failed'
 
-type PlaybackStore = Pick<Store, 'player' | 'playlist' | 'queue'>
+type PlaybackStore = Pick<Store, 'playback'>
 type QueueIdFactory = () => string
 type SourceResolver = (song: Song) => Promise<string>
 type TrackResolver = (trackIds: string[]) => Promise<Song[]>
@@ -37,6 +45,7 @@ type TrackResolver = (trackIds: string[]) => Promise<Song[]>
 interface ScheduledTransition {
   command: PlaybackCommand
   context?: Song[]
+  source?: PlaybackSource
   reject(error: unknown): void
   resolve(): void
 }
@@ -52,8 +61,8 @@ export interface PlaybackController {
   nextSong(): Promise<void>
   observePosition(): Promise<void>
   pauseSong(): Promise<void>
-  playSong(song: Song, index: number): Promise<void>
-  playTracks(songs: Song[], index: number): Promise<void>
+  playSong(song: Song, index: number, source?: PlaybackSource): Promise<void>
+  playTracks(songs: Song[], index: number, source?: PlaybackSource): Promise<void>
   prevSong(): Promise<void>
   resumeSong(): Promise<void>
   removeQueuedSong(entryId: string): Promise<void>
@@ -75,14 +84,14 @@ function milliseconds(seconds: number): number {
 }
 
 function recordPlaybackFailure(store: PlaybackStore): void {
-  store.player.error = PLAYBACK_ERROR_MESSAGE
-  store.player.isPaused = true
+  store.playback.error = PLAYBACK_ERROR_MESSAGE
+  store.playback.isPaused = true
 }
 
 function recordSourceFailure(store: PlaybackStore, error: unknown): void {
-  store.player.error =
+  store.playback.error =
     error instanceof PlaybackSourceAccessError ? PLAYBACK_ACCESS_ERROR_MESSAGE : PLAYBACK_ERROR_MESSAGE
-  store.player.isPaused = true
+  store.playback.isPaused = true
 }
 
 function recordPlaybackClientEvent(event: PlaybackClientEvent): void {
@@ -106,51 +115,50 @@ export function createPlaybackController(
     transport.load(await resolveSource(song), song.id)
   }
 
-  const songForSelection = (selection?: PlaybackSelection | null): Song | undefined => {
+  const songForSelection = (
+    selection?: PlaybackSelection | null,
+    context: Song[] = store.playback.context
+  ): Song | undefined => {
     if (!selection) return undefined
     if (selection.queueEntryId) {
       const queued = queuedSongs.get(selection.queueEntryId)
       if (queued) return queued
     }
     if (selection.contextIndex !== null && selection.contextIndex !== undefined) {
-      const contextual = store.playlist[selection.contextIndex]
+      const contextual = context[selection.contextIndex]
       if (contextual?.id === selection.trackId) return contextual
     }
-    if (store.player.currSong?.id === selection.trackId) return store.player.currSong
+    if (store.playback.current?.id === selection.trackId) return store.playback.current
     return (
-      store.playlist.find((song) => song.id === selection.trackId) ||
+      context.find((song) => song.id === selection.trackId) ||
       [...queuedSongs.values()].find((song) => song.id === selection.trackId)
     )
   }
 
-  const mirrorSnapshot = (snapshot: PlaybackSnapshot): void => {
-    const currentSong = songForSelection(snapshot.current)
-    store.player.currSong = currentSong
-    store.player.canUndoQueueEdit = snapshot.canUndoQueueEdit
-    if (snapshot.current?.contextIndex !== null && snapshot.current?.contextIndex !== undefined) {
-      store.player.currSongIndex = snapshot.current.contextIndex
-    } else if (snapshot.current?.resumeContextIndex !== null && snapshot.current?.resumeContextIndex !== undefined) {
-      store.player.currSongIndex = snapshot.current.resumeContextIndex
-    }
-    store.player.currentTime = snapshot.positionMs / 1000
-    store.player.duration = snapshot.durationMs / 1000
-    store.player.error = snapshot.error
-      ? PLAYBACK_ERROR_MESSAGE
-      : snapshot.persistenceWarning
-        ? PLAYBACK_PERSISTENCE_WARNING_MESSAGE
-        : ''
-    store.player.isPaused = snapshot.status !== 'playing'
-    store.player.muted = snapshot.muted
-    store.player.repeatMode = snapshot.repeatMode
-    store.player.shuffleEnabled = snapshot.shuffle.enabled
-    store.player.shuffleSeed = snapshot.shuffle.seed
-    store.player.volumePercent = snapshot.volumePercent
-    transport.muted = snapshot.muted
-    transport.volume = snapshot.volumePercent / 100
-    store.queue = snapshot.queue.flatMap((entry) => {
+  const mirrorSnapshot = (
+    snapshot: PlaybackSnapshot,
+    projection: { context?: Song[]; replaceContext?: boolean; source?: PlaybackSource } = {}
+  ): void => {
+    const context = projection.context ?? store.playback.context
+    const source = projection.replaceContext ? projection.source : store.playback.source
+    const current = songForSelection(snapshot.current, context)
+    const queue = snapshot.queue.flatMap((entry) => {
       const song = queuedSongs.get(entry.entryId)
       return song ? [{ entryId: entry.entryId, song }] : []
     })
+
+    const playback = projectPlaybackView(snapshot, { context, current, queue, source })
+    if (
+      current &&
+      transport.loadedSongId === current.id &&
+      Number.isFinite(transport.duration) &&
+      transport.duration > 0
+    ) {
+      playback.duration = transport.duration
+    }
+    commitPlaybackView(store.playback, playback)
+    transport.muted = snapshot.muted
+    transport.volume = snapshot.volumePercent / 100
 
     const retainedEntryIds = new Set(
       [snapshot.current, ...snapshot.history]
@@ -177,13 +185,16 @@ export function createPlaybackController(
     return rejected
   }
 
-  const playPreparedTransition = async (snapshot: PlaybackSnapshot): Promise<void> => {
+  const playPreparedTransition = async (
+    snapshot: PlaybackSnapshot,
+    projection: { context?: Song[]; replaceContext?: boolean; source?: PlaybackSource } = {}
+  ): Promise<void> => {
     if (!snapshot.current) {
-      mirrorSnapshot(snapshot)
+      mirrorSnapshot(snapshot, projection)
       return
     }
 
-    const song = songForSelection(snapshot.current)
+    const song = songForSelection(snapshot.current, projection.context)
     if (!song) {
       await rejectPreparedTransition(snapshot, 'unavailable')
       throw new Error(PLAYBACK_ERROR_MESSAGE)
@@ -208,7 +219,7 @@ export function createPlaybackController(
       const committed = snapshot.transitionPending
         ? await bridge.dispatch({ type: 'commitTransition' })
         : await bridge.dispatch({ type: 'play' })
-      mirrorSnapshot(committed)
+      mirrorSnapshot(committed, projection)
     } catch {
       recordPlaybackClientEvent('media_play_failed')
       try {
@@ -220,18 +231,22 @@ export function createPlaybackController(
     }
   }
 
-  const executeTransition = async (command: PlaybackCommand, context?: Song[]): Promise<void> => {
-    if (context) store.playlist = context
+  const executeTransition = async (
+    command: PlaybackCommand,
+    context?: Song[],
+    source?: PlaybackSource
+  ): Promise<void> => {
+    const projection = { context, replaceContext: context !== undefined, source }
     const snapshot = await bridge.dispatch(command)
-    if (snapshot.transitionPending) await playPreparedTransition(snapshot)
+    if (snapshot.transitionPending) await playPreparedTransition(snapshot, projection)
     else if (
       snapshot.current &&
       (command.type === 'next' || command.type === 'ended' || command.type === 'replaceContext')
     ) {
       transport.currentTime = snapshot.positionMs / 1000
-      await playPreparedTransition(snapshot)
+      await playPreparedTransition(snapshot, projection)
     } else {
-      mirrorSnapshot(snapshot)
+      mirrorSnapshot(snapshot, projection)
       if (!snapshot.current) transport.pause()
       else if (command.type === 'previous') transport.currentTime = snapshot.positionMs / 1000
     }
@@ -241,7 +256,7 @@ export function createPlaybackController(
     let request: ScheduledTransition | undefined = initial
     while (request) {
       try {
-        await executeTransition(request.command, request.context)
+        await executeTransition(request.command, request.context, request.source)
         request.resolve()
       } catch (error) {
         request.reject(error)
@@ -251,10 +266,10 @@ export function createPlaybackController(
     }
   }
 
-  const runTransition = (command: PlaybackCommand, context?: Song[]): Promise<void> => {
+  const runTransition = (command: PlaybackCommand, context?: Song[], source?: PlaybackSource): Promise<void> => {
     if (transitionTask && command.type !== 'replaceContext') return transitionTask
     return new Promise((resolve, reject) => {
-      const request: ScheduledTransition = { command, context, reject, resolve }
+      const request: ScheduledTransition = { command, context, source, reject, resolve }
       if (transitionTask) {
         scheduledTransition?.resolve()
         scheduledTransition = request
@@ -279,7 +294,7 @@ export function createPlaybackController(
 
   const dispatchQueueEdit = async (command: PlaybackCommand): Promise<void> => {
     const previousUndoEntryIds = undoEntryIds
-    const previousQueueEntryIds = store.queue.map((entry) => entry.entryId)
+    const previousQueueEntryIds = store.playback.queue.map((entry) => entry.entryId)
     undoEntryIds = new Set(previousQueueEntryIds)
     try {
       const snapshot = await bridge.dispatch(command)
@@ -306,11 +321,12 @@ export function createPlaybackController(
       ...snapshot.queue.map((entry) => entry.trackId),
       ...(snapshot.current ? [snapshot.current.trackId] : []),
     ].filter((trackId, index, all) => all.indexOf(trackId) === index)
+    let context = snapshot.context.trackIds.length ? [] : store.playback.context
     if (trackIds.length) {
       const resolved = await resolveTracks(trackIds)
       const byId = new Map(resolved.map((track) => [track.id, track]))
-      const context = snapshot.context.trackIds.map((trackId) => byId.get(trackId))
-      if (context.every((track): track is Song => Boolean(track))) store.playlist = context
+      const resolvedContext = snapshot.context.trackIds.map((trackId) => byId.get(trackId))
+      if (resolvedContext.every((track): track is Song => Boolean(track))) context = resolvedContext
       for (const entry of snapshot.queue) {
         const track = byId.get(entry.trackId)
         if (track) queuedSongs.set(entry.entryId, track)
@@ -320,10 +336,10 @@ export function createPlaybackController(
         if (track) queuedSongs.set(snapshot.current.queueEntryId, track)
       }
     }
-    mirrorSnapshot(snapshot)
+    mirrorSnapshot(snapshot, { context, replaceContext: true })
   }
 
-  const playTracks = async (songs: Song[], index: number) => {
+  const playTracks = async (songs: Song[], index: number, source?: PlaybackSource) => {
     if (!songs[index]) return
     const context = [...songs]
     await runTransition(
@@ -333,22 +349,23 @@ export function createPlaybackController(
         startIndex: index,
         trackIds: context.map((track) => track.id),
       },
-      context
+      context,
+      source
     )
   }
 
-  const playSong = async (song: Song, index: number) => {
-    const validContext = store.playlist[index]?.id === song.id
-    await playTracks(validContext ? store.playlist : [song], validContext ? index : 0)
+  const playSong = async (song: Song, index: number, source?: PlaybackSource) => {
+    const validContext = store.playback.context[index]?.id === song.id
+    await playTracks(validContext ? store.playback.context : [song], validContext ? index : 0, source)
   }
 
   const resumeSong = async () => {
     await waitForTransition()
-    const current = store.player.currSong
+    const current = store.playback.current
     if (current && transport.loadedSongId !== current.id) {
       try {
         await loadSong(current)
-        transport.currentTime = store.player.currentTime
+        transport.currentTime = store.playback.currentTime
       } catch (error) {
         recordPlaybackClientEvent('source_authorization_failed')
         try {
@@ -386,8 +403,7 @@ export function createPlaybackController(
       const snapshot = await bridge.dispatch({ type: 'discardQueueUndo' })
       queuedSongs.clear()
       undoEntryIds.clear()
-      store.playlist = []
-      mirrorSnapshot(snapshot)
+      mirrorSnapshot(snapshot, { context: [], replaceContext: true })
     },
     enqueueSong: async (song) => {
       await waitForTransition()
@@ -415,8 +431,10 @@ export function createPlaybackController(
       await dispatchQueueEdit({ type: 'moveQueueEntry', entryId, beforeEntryId })
     },
     nextSong: () => {
-      const first = store.playlist[0]
-      return !store.player.currSong && first ? playSong(first, 0) : runTransition({ type: 'next' })
+      const first = store.playback.context[0]
+      return !store.playback.current && first
+        ? playSong(first, 0, store.playback.source)
+        : runTransition({ type: 'next' })
     },
     observePosition: async () => {
       if (transitionTask) return
@@ -436,9 +454,11 @@ export function createPlaybackController(
     playSong,
     playTracks,
     prevSong: () => {
-      const lastIndex = store.playlist.length - 1
-      const last = store.playlist[lastIndex]
-      return !store.player.currSong && last ? playSong(last, lastIndex) : runTransition({ type: 'previous' })
+      const lastIndex = store.playback.context.length - 1
+      const last = store.playback.context[lastIndex]
+      return !store.playback.current && last
+        ? playSong(last, lastIndex, store.playback.source)
+        : runTransition({ type: 'previous' })
     },
     resumeSong,
     removeQueuedSong: async (entryId) => {
@@ -448,7 +468,7 @@ export function createPlaybackController(
     seekSong: async (positionSeconds) => {
       await waitForTransition()
       transport.currentTime = positionSeconds
-      store.player.currentTime = positionSeconds
+      store.playback.currentTime = positionSeconds
       const trackId = transport.loadedSongId
       if (trackId && Number.isFinite(transport.duration) && transport.duration > 0) {
         await bridge.observePosition(trackId, milliseconds(positionSeconds), milliseconds(transport.duration))
@@ -460,7 +480,7 @@ export function createPlaybackController(
         await bridge.dispatch({
           type: 'setVolume',
           muted,
-          volumePercent: store.player.volumePercent,
+          volumePercent: store.playback.volumePercent,
         })
       )
     },
@@ -474,7 +494,7 @@ export function createPlaybackController(
         await bridge.dispatch({
           type: 'setShuffle',
           enabled,
-          seed: enabled ? Date.now() : store.player.shuffleSeed,
+          seed: enabled ? Date.now() : store.playback.shuffleSeed,
         })
       )
     },
@@ -512,18 +532,21 @@ export function bindPlaybackEvents(
   }
   const unsubscribe = [
     transport.subscribe('durationchange', () => {
-      store.player.duration = Number.isFinite(transport.duration) ? transport.duration : 0
+      store.playback.duration = Number.isFinite(transport.duration) ? transport.duration : 0
       observePosition(true)
     }),
     transport.subscribe('timeupdate', () => {
-      store.player.currentTime = transport.currentTime
+      store.playback.currentTime = transport.currentTime
+      if (Number.isFinite(transport.duration) && transport.duration > 0) {
+        store.playback.duration = transport.duration
+      }
       observePosition()
     }),
     transport.subscribe('play', () => {
-      store.player.isPaused = false
+      store.playback.isPaused = false
     }),
     transport.subscribe('pause', () => {
-      store.player.isPaused = true
+      store.playback.isPaused = true
     }),
     transport.subscribe('ended', () => {
       void controller.handleEnded().catch(() => undefined)
@@ -538,24 +561,6 @@ export function bindPlaybackEvents(
   }
 }
 
-export const AudioPlayerState = {
-  player: {
-    canUndoQueueEdit: false,
-    currSong: undefined,
-    currSongIndex: 0,
-    audioElem: undefined,
-    error: '',
-    isPaused: true,
-    currentTime: 0,
-    duration: 0,
-    muted: false,
-    repeatMode: 'off' as const,
-    shuffleEnabled: false,
-    shuffleSeed: 1,
-    volumePercent: 100,
-  },
-}
-
 export function useAudioPlayer(store: Store) {
   const controller = useSignal<NoSerialize<PlaybackController>>()
 
@@ -565,8 +570,7 @@ export function useAudioPlayer(store: Store) {
       recordPlaybackFailure(store)
       throw new Error(PLAYBACK_ERROR_MESSAGE)
     }
-    store.playbackSource = source
-    return controller.value.playSong(song, index)
+    return controller.value.playSong(song, index, source)
   })
   const playTracks = $(async (songs: Song[], index: number, source?: PlaybackSource) => {
     if (!controller.value) {
@@ -574,8 +578,7 @@ export function useAudioPlayer(store: Store) {
       recordPlaybackFailure(store)
       throw new Error(PLAYBACK_ERROR_MESSAGE)
     }
-    store.playbackSource = source
-    return controller.value.playTracks(songs, index)
+    return controller.value.playTracks(songs, index, source)
   })
   const pauseSong = $(async () => controller.value?.pauseSong())
   const resumeSong = $(async () => controller.value?.resumeSong())
@@ -598,8 +601,6 @@ export function useAudioPlayer(store: Store) {
   const undoQueueEdit = $(async () => controller.value?.undoQueueEdit())
 
   useVisibleTask$(({ cleanup }) => {
-    if (store.player.audioElem) return
-
     recordPlaybackClientEvent('initializing')
 
     const audioElement = new Audio()
@@ -619,7 +620,6 @@ export function useAudioPlayer(store: Store) {
         if (disposed) return
         unbindEvents = bindPlaybackEvents(store, transport, playbackController)
         controller.value = noSerialize(playbackController)
-        store.player.audioElem = audioElement
         recordPlaybackClientEvent('ready')
       })
       .catch(() => {
@@ -634,7 +634,6 @@ export function useAudioPlayer(store: Store) {
       controller.value = undefined
       unbindEvents()
       transport.clear()
-      store.player.audioElem = undefined
     })
   })
 

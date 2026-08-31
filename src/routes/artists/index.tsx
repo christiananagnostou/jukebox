@@ -2,6 +2,7 @@ import {
   $,
   component$,
   noSerialize,
+  useComputed$,
   useContext,
   useSignal,
   useTask$,
@@ -145,12 +146,16 @@ export default component$(() => {
     }
   })
 
-  const error = store.artistView.artists.error || store.artistView.albums.error || store.artistView.tracks.error
+  const error = useComputed$(
+    () => store.artistView.artists.error || store.artistView.albums.error || store.artistView.tracks.error
+  )
 
   return (
     <section class="min-h-0 w-full flex flex-col flex-1 relative">
-      {error && (
-        <p class="absolute inset-x-4 top-10 z-10 border border-red-900 bg-gray-950 p-3 text-sm text-red-300">{error}</p>
+      {error.value && (
+        <p class="absolute inset-x-4 top-10 z-10 border border-red-900 bg-gray-950 p-3 text-sm text-red-300">
+          {error.value}
+        </p>
       )}
       <div
         class="w-full text-sm grid grid-cols-[1fr_1fr_1fr] text-left items-center border-b border-gray-700"
@@ -257,7 +262,6 @@ export default component$(() => {
               if (!song) return <div class="bg-gray-900" style={{ ...style, height: `${ROW_HEIGHT}px` }} />
               const highlighted = store.artistView.trackIdx === index
               const isCursor = store.artistView.cursorCol === 2 && highlighted
-              const isPlaying = store.player.currSong?.id === song.id
               const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
 
               return (
@@ -276,7 +280,7 @@ export default component$(() => {
                   ${isCursor && '!bg-gray-700'}`}
                 >
                   {song.title || '-'}
-                  <SoundBars show={isPlaying} />
+                  <SoundBars show={store.playback.current?.id === song.id} />
                 </button>
               )
             })}

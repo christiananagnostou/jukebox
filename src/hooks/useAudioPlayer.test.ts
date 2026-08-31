@@ -9,6 +9,7 @@ import type {
   PlaybackPositionState,
   PlaybackSnapshot,
 } from '~/services/playback-client'
+import { createPlaybackViewState } from '~/services/playback-view'
 import {
   bindPlaybackEvents,
   createPlaybackController,
@@ -18,7 +19,7 @@ import {
   type PlaybackController,
 } from './useAudioPlayer'
 
-const song = (id: string): Song => ({
+const song = (id: string, metadata: Partial<Song> = {}): Song => ({
   id,
   path: `/music/${id}.flac`,
   file: `${id}.flac`,
@@ -40,6 +41,7 @@ const song = (id: string): Song => ({
   favorRating: 0,
   dateAdded: '2026-08-26T00:00:00.000Z',
   visualsPath: '',
+  ...metadata,
 })
 
 function emptySnapshot(): PlaybackSnapshot {
@@ -334,25 +336,9 @@ class FakeAudioTransport implements AudioTransport {
   }
 }
 
-function playbackStore(playlist: Song[] = []): Pick<Store, 'player' | 'playlist' | 'queue'> {
+function playbackStore(context: Song[] = []): Pick<Store, 'playback'> {
   return {
-    playlist,
-    queue: [],
-    player: {
-      canUndoQueueEdit: false,
-      currSong: undefined,
-      currSongIndex: 0,
-      audioElem: undefined,
-      error: '',
-      isPaused: true,
-      currentTime: 0,
-      duration: 0,
-      muted: false,
-      repeatMode: 'off',
-      shuffleEnabled: false,
-      shuffleSeed: 1,
-      volumePercent: 100,
-    },
+    playback: { ...createPlaybackViewState(), context },
   }
 }
 
@@ -363,7 +349,7 @@ function queueItem(entryId: string, track: Song) {
 function setup(store = playbackStore()): {
   bridge: FakePlaybackBridge
   controller: PlaybackController
-  store: Pick<Store, 'player' | 'playlist' | 'queue'>
+  store: Pick<Store, 'playback'>
   transport: FakeAudioTransport
 } {
   const bridge = new FakePlaybackBridge()
@@ -413,13 +399,61 @@ describe('native-backed playback controller', () => {
     firstPlay.resolve()
     await Promise.all([firstRequest, latestRequest])
 
-    expect(store.player.currSong?.id).toBe('latest')
-    expect(store.playlist.map((track) => track.id)).toEqual(['latest'])
+    expect(store.playback.current?.id).toBe('latest')
+    expect(store.playback.context.map((track) => track.id)).toEqual(['latest'])
     expect(transport.loadedSources.map(({ songId }) => songId)).toEqual(['first', 'latest'])
     expect(bridge.commands.filter((command) => command.type === 'replaceContext')).toEqual([
       { type: 'replaceContext', autoplay: true, startIndex: 0, trackIds: ['first'] },
       { type: 'replaceContext', autoplay: true, startIndex: 0, trackIds: ['latest'] },
     ])
+  })
+
+  it('commits track metadata, context, and source as one playback view', async () => {
+    const first = song('first', {
+      album: 'Book Of Roses',
+      artist: 'Andreas Vollenweider',
+      title: 'Morning At Boma Park',
+      visualsPath: '/art/book-of-roses.jpeg',
+    })
+    const second = song('second', {
+      album: 'Amarantine',
+      artist: 'Enya',
+      title: "It's In The Rain",
+      visualsPath: '',
+    })
+    const firstSource = { kind: 'album' as const, label: 'Book Of Roses' }
+    const secondSource = { kind: 'collection' as const, label: 'Recently Played' }
+    const { controller, store, transport } = setup()
+    await controller.initialize()
+    await controller.playTracks([first], 0, firstSource)
+
+    const secondPlay = deferred()
+    transport.queuePlay(secondPlay.promise)
+    const request = controller.playTracks([second], 0, secondSource)
+    await flushPromises()
+
+    expect(store.playback).toMatchObject({
+      context: [first],
+      current: first,
+      source: firstSource,
+    })
+
+    transport.duration = 192.733
+    secondPlay.resolve()
+    await request
+
+    expect(store.playback).toMatchObject({
+      context: [second],
+      current: second,
+      source: secondSource,
+      duration: 192.733,
+    })
+    expect(store.playback.current).toMatchObject({
+      album: 'Amarantine',
+      artist: 'Enya',
+      title: "It's In The Rain",
+      visualsPath: '',
+    })
   })
 
   it('hydrates restored metadata without opening media until playback is requested', async () => {
@@ -451,21 +485,21 @@ describe('native-backed playback controller', () => {
       undefined,
       async (trackIds) => {
         resolvedIds.push(trackIds)
-        return trackIds.map(song)
+        return trackIds.map((trackId) => song(trackId))
       }
     )
 
     await controller.initialize()
 
     expect(resolvedIds).toEqual([['one', 'two', 'bonus']])
-    expect(store.playlist.map((track) => track.id)).toEqual(['one', 'two'])
-    expect(store.queue).toEqual([
+    expect(store.playback.context.map((track) => track.id)).toEqual(['one', 'two'])
+    expect(store.playback.queue).toEqual([
       queueItem('queued-bonus', song('bonus')),
       queueItem('queued-bonus-again', song('bonus')),
     ])
-    expect(store.player.currSong?.id).toBe('two')
-    expect(store.player.currentTime).toBe(42)
-    expect(store.player.isPaused).toBe(true)
+    expect(store.playback.current?.id).toBe('two')
+    expect(store.playback.currentTime).toBe(42)
+    expect(store.playback.isPaused).toBe(true)
     expect(transport.loadedSongId).toBeUndefined()
     expect(transport.currentTime).toBe(0)
     expect(transport.playCalls).toBe(0)
@@ -475,7 +509,7 @@ describe('native-backed playback controller', () => {
     expect(transport.loadedSongId).toBe('two')
     expect(transport.currentTime).toBe(42)
     expect(transport.playCalls).toBe(1)
-    expect(store.player.isPaused).toBe(false)
+    expect(store.playback.isPaused).toBe(false)
   })
 
   it('mirrors persistent playback modes and applies user changes to the transport', async () => {
@@ -491,7 +525,7 @@ describe('native-backed playback controller', () => {
 
     await controller.initialize()
 
-    expect(store.player).toMatchObject({
+    expect(store.playback).toMatchObject({
       muted: true,
       repeatMode: 'all',
       shuffleEnabled: true,
@@ -506,7 +540,7 @@ describe('native-backed playback controller', () => {
     await controller.setRepeatMode('one')
     await controller.setShuffleEnabled(false)
 
-    expect(store.player).toMatchObject({
+    expect(store.playback).toMatchObject({
       muted: false,
       repeatMode: 'one',
       shuffleEnabled: false,
@@ -528,12 +562,12 @@ describe('native-backed playback controller', () => {
     await controller.initialize()
 
     await controller.setVolumePercent(0)
-    expect(store.player.muted).toBe(true)
+    expect(store.playback.muted).toBe(true)
     expect(transport.muted).toBe(true)
     expect(transport.volume).toBe(0)
 
     await controller.setVolumePercent(25)
-    expect(store.player.muted).toBe(false)
+    expect(store.playback.muted).toBe(false)
     expect(transport.muted).toBe(false)
     expect(transport.volume).toBe(0.25)
   })
@@ -558,13 +592,13 @@ describe('native-backed playback controller', () => {
       },
       bridge,
       undefined,
-      async (trackIds) => trackIds.map(song)
+      async (trackIds) => trackIds.map((trackId) => song(trackId))
     )
 
     await controller.initialize()
     await expect(controller.resumeSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
-    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
+    expect(store.playback.error).toBe(PLAYBACK_ERROR_MESSAGE)
     expect(bridge.commands.at(-1)).toEqual({ type: 'reportError', code: 'unavailable', recoverable: true })
   })
 
@@ -587,13 +621,13 @@ describe('native-backed playback controller', () => {
       },
       new FakePlaybackBridge(snapshot),
       undefined,
-      async (trackIds) => trackIds.map(song)
+      async (trackIds) => trackIds.map((trackId) => song(trackId))
     )
 
     await controller.initialize()
     await expect(controller.resumeSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
-    expect(store.player.error).toBe(PLAYBACK_ACCESS_ERROR_MESSAGE)
+    expect(store.playback.error).toBe(PLAYBACK_ACCESS_ERROR_MESSAGE)
   })
 
   it('surfaces a generic warning when playback durability is degraded', async () => {
@@ -611,7 +645,7 @@ describe('native-backed playback controller', () => {
 
     await controller.initialize()
 
-    expect(store.player.error).toBe(PLAYBACK_PERSISTENCE_WARNING_MESSAGE)
+    expect(store.playback.error).toBe(PLAYBACK_PERSISTENCE_WARNING_MESSAGE)
   })
 
   it('commits exactly one duplicate queue entry after playback succeeds', async () => {
@@ -625,8 +659,8 @@ describe('native-backed playback controller', () => {
     await controller.nextSong()
 
     expect(transport.loadedSources).toEqual([{ songId: 'duplicate', source: 'asset:/music/duplicate.flac' }])
-    expect(store.queue).toEqual([queueItem('entry-2', second)])
-    expect(store.player.currSong).toBe(first)
+    expect(store.playback.queue).toEqual([queueItem('entry-2', second)])
+    expect(store.playback.current).toBe(first)
     expect(bridge.commands.at(-1)).toEqual({ type: 'commitTransition' })
   })
 
@@ -640,13 +674,13 @@ describe('native-backed playback controller', () => {
     await controller.enqueueSong(other)
 
     await controller.moveQueuedSong('entry-3', 'entry-1')
-    expect(store.queue.map((entry) => entry.entryId)).toEqual(['entry-3', 'entry-1', 'entry-2'])
+    expect(store.playback.queue.map((entry) => entry.entryId)).toEqual(['entry-3', 'entry-1', 'entry-2'])
 
     await controller.removeQueuedSong('entry-1')
-    expect(store.queue).toEqual([queueItem('entry-3', other), queueItem('entry-2', duplicate)])
+    expect(store.playback.queue).toEqual([queueItem('entry-3', other), queueItem('entry-2', duplicate)])
 
     await controller.clearUpcoming()
-    expect(store.queue).toEqual([])
+    expect(store.playback.queue).toEqual([])
     expect(bridge.commands.slice(-3)).toEqual([
       { type: 'moveQueueEntry', entryId: 'entry-3', beforeEntryId: 'entry-1' },
       { type: 'removeQueueEntry', entryId: 'entry-1' },
@@ -664,17 +698,17 @@ describe('native-backed playback controller', () => {
     await controller.enqueueSong(other)
 
     await controller.clearUpcoming()
-    expect(store.queue).toEqual([])
-    expect(store.player.canUndoQueueEdit).toBe(true)
+    expect(store.playback.queue).toEqual([])
+    expect(store.playback.canUndoQueueEdit).toBe(true)
 
     await controller.undoQueueEdit()
 
-    expect(store.queue).toEqual([
+    expect(store.playback.queue).toEqual([
       queueItem('entry-1', duplicate),
       queueItem('entry-2', duplicate),
       queueItem('entry-3', other),
     ])
-    expect(store.player.canUndoQueueEdit).toBe(false)
+    expect(store.playback.canUndoQueueEdit).toBe(false)
     expect(bridge.commands.at(-1)).toEqual({ type: 'undoQueueEdit' })
   })
 
@@ -685,9 +719,9 @@ describe('native-backed playback controller', () => {
 
     await controller.clearPlayback()
 
-    expect(store.queue).toEqual([])
-    expect(store.playlist).toEqual([])
-    expect(store.player.canUndoQueueEdit).toBe(false)
+    expect(store.playback.queue).toEqual([])
+    expect(store.playback.context).toEqual([])
+    expect(store.playback.canUndoQueueEdit).toBe(false)
     expect(bridge.commands.slice(-3)).toEqual([
       { type: 'replaceContext', autoplay: false, startIndex: 0, trackIds: [] },
       { type: 'clearUpcoming' },
@@ -708,7 +742,7 @@ describe('native-backed playback controller', () => {
 
     await expect(controller.removeQueuedSong('entry-1')).rejects.toThrow('native mutation failed')
 
-    expect(store.queue).toEqual([queueItem('entry-1', queued)])
+    expect(store.playback.queue).toEqual([queueItem('entry-1', queued)])
   })
 
   it('rolls back a failed queue transition and restores the previous current song', async () => {
@@ -722,10 +756,10 @@ describe('native-backed playback controller', () => {
 
     await expect(controller.nextSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
-    expect(store.queue).toEqual([queueItem('entry-1', queued)])
-    expect(store.player.currSong).toBe(current)
-    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
-    expect(store.player.isPaused).toBe(true)
+    expect(store.playback.queue).toEqual([queueItem('entry-1', queued)])
+    expect(store.playback.current).toBe(current)
+    expect(store.playback.error).toBe(PLAYBACK_ERROR_MESSAGE)
+    expect(store.playback.isPaused).toBe(true)
     expect(bridge.commands.at(-1)).toEqual({ type: 'rejectTransition', code: 'decoder', recoverable: true })
     expect(transport.loadedSongId).toBe('current')
   })
@@ -752,9 +786,9 @@ describe('native-backed playback controller', () => {
 
     await expect(controller.nextSong()).rejects.toThrow(PLAYBACK_ERROR_MESSAGE)
 
-    expect(store.queue).toEqual([queueItem('blocked-entry', queued)])
-    expect(store.player.currSong).toBe(current)
-    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
+    expect(store.playback.queue).toEqual([queueItem('blocked-entry', queued)])
+    expect(store.playback.current).toBe(current)
+    expect(store.playback.error).toBe(PLAYBACK_ERROR_MESSAGE)
     expect(bridge.commands.at(-1)).toEqual({ type: 'rejectTransition', code: 'unavailable', recoverable: true })
     expect(transport.loadedSongId).toBe('current')
   })
@@ -766,8 +800,8 @@ describe('native-backed playback controller', () => {
 
     await controller.nextSong()
 
-    expect(store.player.currSong).toBe(first)
-    expect(store.player.isPaused).toBe(false)
+    expect(store.playback.current).toBe(first)
+    expect(store.playback.isPaused).toBe(false)
   })
 
   it('restarts the current transport after ten seconds without loading another track', async () => {
@@ -782,7 +816,7 @@ describe('native-backed playback controller', () => {
     await controller.prevSong()
 
     expect(transport.currentTime).toBe(0)
-    expect(store.player.currentTime).toBe(0)
+    expect(store.playback.currentTime).toBe(0)
     expect(transport.loadedSources).toHaveLength(loadCount)
   })
 })
@@ -801,8 +835,8 @@ describe('playback event bindings', () => {
     transport.emit('ended')
     await flushPromises()
 
-    expect(store.queue).toEqual([queueItem('entry-1', queued)])
-    expect(store.player.error).toBe(PLAYBACK_ERROR_MESSAGE)
+    expect(store.playback.queue).toEqual([queueItem('entry-1', queued)])
+    expect(store.playback.error).toBe(PLAYBACK_ERROR_MESSAGE)
     cleanup()
   })
 
@@ -826,7 +860,7 @@ describe('playback event bindings', () => {
     resolvePlay()
     await flushPromises()
 
-    expect(store.queue).toEqual([queueItem('entry-2', second)])
+    expect(store.playback.queue).toEqual([queueItem('entry-2', second)])
     cleanup()
   })
 
@@ -844,6 +878,7 @@ describe('playback event bindings', () => {
     transport.emit('timeupdate')
     await flushPromises()
     expect(bridge.observations).toHaveLength(1)
+    expect(store.playback).toMatchObject({ currentTime: 2, duration: 60 })
     expect(transport.listenerCount('ended')).toBe(1)
     expect(transport.listenerCount('error')).toBe(1)
 

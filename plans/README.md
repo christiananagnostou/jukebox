@@ -63,10 +63,16 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [059](059-durable-blue-private-pwa.md)             | Make private iPhone listening durable, blue, and recoverable        | P1       | M      | 058        | TODO   |
 | [060](060-native-output-real-device-gate.md)       | Prove native audio output on supported desktop platforms            | P1       | L      | 057        | TODO   |
 | [061](061-windows-test-portability.md)             | Fix Windows test portability exposed by desktop parity              | P1       | S      | 057        | DONE   |
+| [062](062-atomic-reactive-playback-state.md)       | Keep playback metadata and renderer projections coherent            | P1       | M      | 054        | DONE   |
+| [063](063-bounded-refresh-playback-isolation.md)   | Bound stalled refresh work and keep playback responsive             | P1       | M      | 062        | TODO   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 
 Plans 057-060 are the next evidence-backed phase. Plan 057 establishes Windows compile/package parity before any native-output choice. Plan 058 characterizes the private PWA's device-local playback semantics; plan 059 then adds bounded paused restore, queue recovery, and steel-blue mobile polish without making the remote API mutable. Plan 060 is a reversible native-output gate that may not replace production playback until real-device evidence exists on macOS, Windows, and Linux.
+
+Plan 062 is a corrective prerequisite discovered during native playback QA. It hardens the desktop renderer's atomic and reactive playback projections before plans 058-059 reuse or extend playback state for the private PWA.
+
+Plan 063 captures a separate native-QA finding: blocking filesystem discovery can delay refresh cancellation and playback access. It isolates and bounds that work before the private PWA expands playback surfaces.
 
 ## Strategic roadmap status
 

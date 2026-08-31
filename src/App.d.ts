@@ -1,7 +1,6 @@
 export interface Store {
   libraryCatalog: LibraryCatalogState
-  playlist: Song[]
-  playbackSource?: PlaybackSource
+  playback: PlaybackViewState
   searchTerm: string
   settings: Settings
   bootstrap: BootstrapState
@@ -54,23 +53,24 @@ export interface Store {
 
   isTyping: boolean
   showKeyShortcuts: boolean
-  queue: QueuedSong[]
+}
 
-  player: {
-    canUndoQueueEdit: boolean
-    currSong?: Song
-    currSongIndex: number
-    audioElem?: HTMLAudioElement
-    error: string
-    isPaused: boolean
-    currentTime: number
-    duration: number
-    muted: boolean
-    repeatMode: 'off' | 'one' | 'all'
-    shuffleEnabled: boolean
-    shuffleSeed: number
-    volumePercent: number
-  }
+export interface PlaybackViewState {
+  canUndoQueueEdit: boolean
+  context: Song[]
+  current?: Song
+  currentContextIndex: number | null
+  currentTime: number
+  duration: number
+  error: string
+  isPaused: boolean
+  muted: boolean
+  queue: QueuedSong[]
+  repeatMode: 'off' | 'one' | 'all'
+  shuffleEnabled: boolean
+  shuffleSeed: number
+  source?: PlaybackSource
+  volumePercent: number
 }
 
 export interface Settings {

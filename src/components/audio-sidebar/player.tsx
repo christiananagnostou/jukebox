@@ -4,10 +4,10 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 
 import type { Song } from '~/App'
 import MetadataLink from '~/components/library/MetadataLink'
-import { PLAYBACK_ACCESS_ERROR_MESSAGE } from '~/hooks/useAudioPlayer'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { updateFavoriteRating } from '~/services/library-db'
 import { trackMetadataDestinations } from '~/services/library-destination'
+import { PLAYBACK_ACCESS_ERROR_MESSAGE, playbackTrackOccurrences } from '~/services/playback-view'
 import PlaybackLink from './playback-link'
 import { MusicNote } from '../svg/MusicNote'
 import { NextTrack } from '../svg/NextTrack'
@@ -57,27 +57,26 @@ export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
   const favoriteState = useStore({ busy: false, error: '' })
+  const current = useComputed$(() => store.playback.current)
+  const destinations = useComputed$(() => (current.value ? trackMetadataDestinations(current.value) : {}))
+  const nextFavorite = useComputed$(() =>
+    current.value ? (((current.value.favorRating + 1) % 3) as Song['favorRating']) : 0
+  )
 
   const albumArt = useComputed$(() => {
-    const visualsPath = store.player.currSong?.visualsPath
+    const visualsPath = current.value?.visualsPath
     return visualsPath ? convertFileSrc(visualsPath) : ''
   })
 
   const setFavorite = $(async (rating: Song['favorRating']) => {
-    const current = store.player.currSong
-    if (!current || favoriteState.busy) return
+    const song = store.playback.current
+    if (!song || favoriteState.busy) return
 
     favoriteState.busy = true
     favoriteState.error = ''
     try {
-      await updateFavoriteRating(current.id, rating)
-      current.favorRating = rating
-      for (const song of store.playlist) {
-        if (song.id === current.id) song.favorRating = rating
-      }
-      for (const entry of store.queue) {
-        if (entry.song.id === current.id) entry.song.favorRating = rating
-      }
+      await updateFavoriteRating(song.id, rating)
+      for (const occurrence of playbackTrackOccurrences(store.playback, song.id)) occurrence.favorRating = rating
       store.libraryCatalog.refreshKey += 1
     } catch {
       favoriteState.error = 'Favorite rating could not be updated.'
@@ -86,31 +85,28 @@ export default component$(() => {
     }
   })
 
-  const current = store.player.currSong
-  const destinations = current ? trackMetadataDestinations(current) : {}
-  const nextFavorite = current ? (((current.favorRating + 1) % 3) as Song['favorRating']) : 0
   return (
     <section aria-label="Now playing" class="border-b border-slate-700/80">
       <div class="flex items-center justify-end px-4 pb-2 pt-3">
         <button
           type="button"
           class="playback-interactive grid h-8 w-8 place-items-center rounded text-lg"
-          disabled={!current || favoriteState.busy}
-          aria-label={current ? `Set favorite rating to ${nextFavorite}` : 'No track selected'}
-          title={current ? `Favorite rating: ${current.favorRating}` : 'No track selected'}
-          onClick$={() => setFavorite(nextFavorite)}
+          disabled={!current.value || favoriteState.busy}
+          aria-label={current.value ? `Set favorite rating to ${nextFavorite.value}` : 'No track selected'}
+          title={current.value ? `Favorite rating: ${current.value.favorRating}` : 'No track selected'}
+          onClick$={() => setFavorite(nextFavorite.value)}
         >
-          {current?.favorRating === 1 ? <Star1 /> : current?.favorRating === 2 ? <Star2 /> : <Star0 />}
+          {current.value?.favorRating === 1 ? <Star1 /> : current.value?.favorRating === 2 ? <Star2 /> : <Star0 />}
         </button>
       </div>
 
       <div class="px-4">
-        {current ? (
-          destinations.album ? (
+        {current.value ? (
+          destinations.value.album ? (
             <MetadataLink
-              destination={destinations.album}
-              ariaLabel={`Open album ${current.album}`}
-              title={`Open ${current.album}`}
+              destination={destinations.value.album}
+              ariaLabel={`Open album ${current.value.album}`}
+              title={`Open ${current.value.album}`}
               class="playback-artwork-link mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]"
             >
               <PlayerArtwork src={albumArt.value} />
@@ -118,7 +114,7 @@ export default component$(() => {
           ) : (
             <PlaybackLink
               href="/songs/"
-              ariaLabel={`Find ${current.title} in the library`}
+              ariaLabel={`Find ${current.value.title} in the library`}
               title="Find in library"
               class="playback-artwork-link mx-auto block max-w-[240px] overflow-hidden rounded-sm bg-slate-900 shadow-[0_14px_32px_rgba(0,0,0,0.22)]"
             >
@@ -134,30 +130,33 @@ export default component$(() => {
         )}
 
         <div class="min-w-0 pb-1 pt-4 text-center">
-          {current ? (
-            <h2 class="truncate text-base font-semibold leading-6 text-slate-100" title={current.title}>
-              <PlaybackLink href="/songs/">{current.title}</PlaybackLink>
+          {current.value ? (
+            <h2
+              class="playback-track-title truncate text-base font-semibold leading-6 text-slate-100"
+              title={current.value.title}
+            >
+              <PlaybackLink href="/songs/">{current.value.title}</PlaybackLink>
             </h2>
           ) : (
             <h2 class="truncate text-base font-semibold leading-6 text-slate-100">Nothing playing</h2>
           )}
-          {current?.artist ? (
-            <p class="truncate text-xs leading-5 text-slate-400" title={current.artist}>
-              {destinations.artist ? (
-                <MetadataLink destination={destinations.artist}>{current.artist}</MetadataLink>
+          {current.value?.artist ? (
+            <p class="playback-track-artist truncate text-xs leading-5 text-slate-400" title={current.value.artist}>
+              {destinations.value.artist ? (
+                <MetadataLink destination={destinations.value.artist}>{current.value.artist}</MetadataLink>
               ) : (
-                current.artist
+                current.value.artist
               )}
             </p>
           ) : (
             <p class="truncate text-xs leading-5 text-slate-400">Choose a track from your library</p>
           )}
-          {current?.album && (
-            <p class="truncate text-[11px] leading-4 text-slate-500" title={current.album}>
-              {destinations.album ? (
-                <MetadataLink destination={destinations.album}>{current.album}</MetadataLink>
+          {current.value?.album && (
+            <p class="playback-track-album truncate text-[11px] leading-4 text-slate-500" title={current.value.album}>
+              {destinations.value.album ? (
+                <MetadataLink destination={destinations.value.album}>{current.value.album}</MetadataLink>
               ) : (
-                current.album
+                current.value.album
               )}
             </p>
           )}
@@ -166,32 +165,32 @@ export default component$(() => {
         <input
           type="range"
           min={0}
-          max={Math.max(store.player.duration, 0)}
+          max={Math.max(store.playback.duration, 0)}
           step={0.1}
-          value={Math.min(store.player.currentTime, store.player.duration || 0)}
-          disabled={!current}
+          value={Math.min(store.playback.currentTime, store.playback.duration || 0)}
+          disabled={!current.value}
           aria-label="Playback position"
           class="playback-range mt-2 w-full"
-          style={`--range-progress: ${store.player.duration > 0 ? Math.min(100, (store.player.currentTime / store.player.duration) * 100) : 0}%`}
+          style={`--range-progress: ${store.playback.duration > 0 ? Math.min(100, (store.playback.currentTime / store.playback.duration) * 100) : 0}%`}
           onInput$={(_, element) => {
             void storeActions.seekSong(Number(element.value))
           }}
         />
 
         <div class="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-slate-500">
-          <span>{formatSeconds(store.player.currentTime)}</span>
-          <span>{formatSeconds(store.player.duration)}</span>
+          <span>{formatSeconds(store.playback.currentTime)}</span>
+          <span>{formatSeconds(store.playback.duration)}</span>
         </div>
 
         <div class="mt-1 grid grid-cols-[1fr_auto_auto_auto_1fr] items-center gap-1" aria-label="Playback controls">
           <button
             type="button"
             class={`${MODE_BUTTON_CLASS} justify-self-start`}
-            data-active={store.player.shuffleEnabled ? 'true' : 'false'}
-            aria-label={store.player.shuffleEnabled ? 'Turn shuffle off' : 'Turn shuffle on'}
-            aria-pressed={store.player.shuffleEnabled}
-            title={store.player.shuffleEnabled ? 'Shuffle on' : 'Shuffle off'}
-            onClick$={() => storeActions.setShuffleEnabled(!store.player.shuffleEnabled)}
+            data-active={store.playback.shuffleEnabled ? 'true' : 'false'}
+            aria-label={store.playback.shuffleEnabled ? 'Turn shuffle off' : 'Turn shuffle on'}
+            aria-pressed={store.playback.shuffleEnabled}
+            title={store.playback.shuffleEnabled ? 'Shuffle on' : 'Shuffle off'}
+            onClick$={() => storeActions.setShuffleEnabled(!store.playback.shuffleEnabled)}
           >
             <Shuffle />
           </button>
@@ -203,7 +202,7 @@ export default component$(() => {
           >
             <PrevTrack />
           </button>
-          {!current ? (
+          {!current.value ? (
             <button
               class={PRIMARY_BUTTON_CLASS}
               onClick$={storeActions.nextSong}
@@ -212,7 +211,7 @@ export default component$(() => {
             >
               <Play />
             </button>
-          ) : store.player.isPaused ? (
+          ) : store.playback.isPaused ? (
             <button class={PRIMARY_BUTTON_CLASS} onClick$={storeActions.resumeSong} aria-label="Play" title="Play">
               <Play />
             </button>
@@ -232,13 +231,13 @@ export default component$(() => {
           <button
             type="button"
             class={`${MODE_BUTTON_CLASS} justify-self-end`}
-            data-active={store.player.repeatMode !== 'off' ? 'true' : 'false'}
-            aria-label={`${repeatLabel(store.player.repeatMode)}. Change mode.`}
-            title={repeatLabel(store.player.repeatMode)}
-            onClick$={() => storeActions.setRepeatMode(nextRepeatMode(store.player.repeatMode))}
+            data-active={store.playback.repeatMode !== 'off' ? 'true' : 'false'}
+            aria-label={`${repeatLabel(store.playback.repeatMode)}. Change mode.`}
+            title={repeatLabel(store.playback.repeatMode)}
+            onClick$={() => storeActions.setRepeatMode(nextRepeatMode(store.playback.repeatMode))}
           >
             <Repeat />
-            {store.player.repeatMode === 'one' && (
+            {store.playback.repeatMode === 'one' && (
               <span aria-hidden="true" class="absolute bottom-0.5 right-0.5 text-[8px] font-bold">
                 1
               </span>
@@ -250,36 +249,36 @@ export default component$(() => {
           <button
             type="button"
             class="playback-interactive grid h-8 w-8 shrink-0 place-items-center rounded text-base"
-            aria-label={store.player.muted ? 'Unmute' : 'Mute'}
-            aria-pressed={store.player.muted}
-            title={store.player.muted ? 'Unmute' : 'Mute'}
-            onClick$={() => storeActions.setMuted(!store.player.muted)}
+            aria-label={store.playback.muted ? 'Unmute' : 'Mute'}
+            aria-pressed={store.playback.muted}
+            title={store.playback.muted ? 'Unmute' : 'Mute'}
+            onClick$={() => storeActions.setMuted(!store.playback.muted)}
           >
-            {store.player.muted || store.player.volumePercent === 0 ? <VolumeMuted /> : <Volume />}
+            {store.playback.muted || store.playback.volumePercent === 0 ? <VolumeMuted /> : <Volume />}
           </button>
           <input
             type="range"
             min={0}
             max={100}
             step={1}
-            value={store.player.volumePercent}
+            value={store.playback.volumePercent}
             aria-label="Volume"
-            aria-valuetext={`${store.player.volumePercent} percent${store.player.muted ? ', muted' : ''}`}
+            aria-valuetext={`${store.playback.volumePercent} percent${store.playback.muted ? ', muted' : ''}`}
             class="playback-range w-full"
-            data-muted={store.player.muted ? 'true' : 'false'}
-            style={`--range-progress: ${store.player.volumePercent}%`}
+            data-muted={store.playback.muted ? 'true' : 'false'}
+            style={`--range-progress: ${store.playback.volumePercent}%`}
             onChange$={(_, element) => storeActions.setVolumePercent(Number(element.value))}
           />
           <span class="w-7 text-right font-mono text-[10px] tabular-nums text-slate-500">
-            {store.player.volumePercent}
+            {store.playback.volumePercent}
           </span>
         </div>
       </div>
 
-      {(store.player.error || favoriteState.error) && (
+      {(store.playback.error || favoriteState.error) && (
         <div role="alert" class="mx-3 mb-3 border-l-2 border-red-500 bg-red-950/60 px-3 py-2 text-xs text-red-100">
-          <p>{favoriteState.error || store.player.error}</p>
-          {store.player.error === PLAYBACK_ACCESS_ERROR_MESSAGE ? (
+          <p>{favoriteState.error || store.playback.error}</p>
+          {store.playback.error === PLAYBACK_ACCESS_ERROR_MESSAGE ? (
             <Link
               class="mt-2 inline-block font-semibold text-red-200 underline decoration-red-500/60 underline-offset-2 hover:text-white"
               href="/settings/library/"
@@ -287,8 +286,8 @@ export default component$(() => {
               Reconnect a music folder
             </Link>
           ) : (
-            store.player.error &&
-            current && (
+            store.playback.error &&
+            current.value && (
               <button
                 type="button"
                 class="mt-2 font-semibold text-red-200 underline decoration-red-500/60 underline-offset-2 hover:text-white"
@@ -301,7 +300,7 @@ export default component$(() => {
         </div>
       )}
 
-      {current && (
+      {current.value && (
         <details class="group border-t border-slate-800 text-xs">
           <summary class="playback-details-summary playback-interactive flex cursor-pointer list-none items-center justify-between px-4 py-3">
             <span>
@@ -316,21 +315,21 @@ export default component$(() => {
             <div>
               <dt class="text-[10px] uppercase tracking-wide text-slate-600">Track</dt>
               <dd class="mt-1 truncate text-slate-300">
-                {current.trackNumber || '-'}
-                {current.trackTotal ? ` of ${current.trackTotal}` : ''}
+                {current.value.trackNumber || '-'}
+                {current.value.trackTotal ? ` of ${current.value.trackTotal}` : ''}
               </dd>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wide text-slate-600">Year</dt>
-              <dd class="mt-1 truncate text-slate-300">{current.date || '-'}</dd>
+              <dd class="mt-1 truncate text-slate-300">{current.value.date || '-'}</dd>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wide text-slate-600">Codec</dt>
-              <dd class="mt-1 truncate text-slate-300">{current.codec || '-'}</dd>
+              <dd class="mt-1 truncate text-slate-300">{current.value.codec || '-'}</dd>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wide text-slate-600">Sample rate</dt>
-              <dd class="mt-1 truncate text-slate-300">{current.sampleRate || '-'}</dd>
+              <dd class="mt-1 truncate text-slate-300">{current.value.sampleRate || '-'}</dd>
             </div>
           </dl>
         </details>

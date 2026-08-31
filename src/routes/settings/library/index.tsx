@@ -1,4 +1,4 @@
-import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
+import { $, component$, useComputed$, useContext, useStore, useVisibleTask$ } from '@builder.io/qwik'
 import { Link, type DocumentHead } from '@builder.io/qwik-city'
 import { listen } from '@tauri-apps/api/event'
 import { audioDir } from '@tauri-apps/api/path'
@@ -34,7 +34,7 @@ export default component$(() => {
     refreshes: {} as Record<string, LibraryRefresh>,
     roots: [] as LibraryRoot[],
   })
-  const isBusy = store.sync.status === 'scanning' || store.sync.status === 'importing'
+  const isBusy = useComputed$(() => store.sync.status === 'scanning' || store.sync.status === 'importing')
 
   useVisibleTask$(({ cleanup }) => {
     let disposed = false
@@ -188,10 +188,15 @@ export default component$(() => {
         </header>
 
         <div class="settings-action-row">
-          <button class="workspace-primary-action" type="button" onClick$={chooseMusicFolder} disabled={isBusy}>
+          <button class="workspace-primary-action" type="button" onClick$={chooseMusicFolder} disabled={isBusy.value}>
             Add folder
           </button>
-          <button class="workspace-secondary-action" type="button" onClick$={restoreDefaultFolder} disabled={isBusy}>
+          <button
+            class="workspace-secondary-action"
+            type="button"
+            onClick$={restoreDefaultFolder}
+            disabled={isBusy.value}
+          >
             Add system music folder
           </button>
         </div>
@@ -237,7 +242,7 @@ export default component$(() => {
                           class="workspace-secondary-action"
                           type="button"
                           aria-label={`Refresh ${root.path}`}
-                          disabled={!root.enabled || isBusy}
+                          disabled={!root.enabled || isBusy.value}
                           onClick$={() => refreshRoot(root.id)}
                         >
                           Refresh
@@ -283,11 +288,11 @@ export default component$(() => {
           <p>Disable every folder and remove indexed tracks. Your music files are never deleted.</p>
         </header>
 
-        {isBusy && <progress class="settings-progress">Working</progress>}
+        {isBusy.value && <progress class="settings-progress">Working</progress>}
         <div class="settings-action-row">
           {state.confirmClear ? (
             <>
-              <button class="settings-danger-action" type="button" onClick$={clearLibrary} disabled={isBusy}>
+              <button class="settings-danger-action" type="button" onClick$={clearLibrary} disabled={isBusy.value}>
                 Disable folders and clear library
               </button>
               <button class="workspace-secondary-action" type="button" onClick$={() => (state.confirmClear = false)}>
@@ -299,7 +304,7 @@ export default component$(() => {
               class="settings-danger-action"
               type="button"
               onClick$={() => (state.confirmClear = true)}
-              disabled={isBusy}
+              disabled={isBusy.value}
             >
               Clear library…
             </button>

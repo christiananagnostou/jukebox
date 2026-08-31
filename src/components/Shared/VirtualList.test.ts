@@ -1,13 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
-
-vi.mock('@builder.io/qwik', () => ({
-  $: (callback: unknown) => callback,
-  Slot: () => null,
-  component$: (component: unknown) => component,
-  useSignal: (value: unknown) => ({ value }),
-  useTask$: () => undefined,
-  useVisibleTask$: () => undefined,
-}))
+import { describe, expect, it } from 'vitest'
 
 import { computeVirtualRange } from './VirtualList'
 
