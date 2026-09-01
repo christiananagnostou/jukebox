@@ -60,7 +60,9 @@ export default component$<FocusedCollectionViewProps>((props) => {
   const actionError = useSignal('')
   const headerSong = useComputed$(() => librarySongAt(catalog, 0))
   const label = useComputed$(() => libraryDestinationLabel(props.destination))
-  const artistHref = useComputed$(() => libraryDestinationHref({ artist: props.destination.artist, kind: 'artist' }))
+  const artistHref = useComputed$(() =>
+    props.destination.artist ? libraryDestinationHref({ artist: props.destination.artist, kind: 'artist' }) : ''
+  )
   const artworkSource = useComputed$(() =>
     props.destination.kind === 'album' && headerSong.value?.visualsPath
       ? convertFileSrc(headerSong.value.visualsPath)
@@ -82,7 +84,8 @@ export default component$<FocusedCollectionViewProps>((props) => {
     const kind = track(() => props.destination.kind)
     const artist = track(() => props.destination.artist)
     const album = track(() => (props.destination.kind === 'album' ? props.destination.album : ''))
-    const destination: LibraryDestination = kind === 'album' ? { album, artist, kind } : { artist, kind }
+    const destination: LibraryDestination =
+      kind === 'album' ? (artist ? { album, artist, kind } : { album, kind }) : { artist: artist ?? '', kind }
     actionError.value = ''
     void pager.value?.resetQuery(focusedCollectionQuery(destination))
   })
@@ -133,7 +136,11 @@ export default component$<FocusedCollectionViewProps>((props) => {
             <span aria-hidden="true">/</span>
             {props.destination.kind === 'album' ? (
               <>
-                <Link href={artistHref.value}>{props.destination.artist}</Link>
+                {artistHref.value ? (
+                  <Link href={artistHref.value}>{props.destination.artist}</Link>
+                ) : (
+                  <span>Various Artists</span>
+                )}
                 <span aria-hidden="true">/</span>
                 <span aria-current="page">{props.destination.album}</span>
               </>
@@ -143,11 +150,14 @@ export default component$<FocusedCollectionViewProps>((props) => {
           </nav>
 
           <h1 title={label.value}>{label.value}</h1>
-          {props.destination.kind === 'album' && (
-            <Link class="focused-collection-artist" href={artistHref.value}>
-              {props.destination.artist}
-            </Link>
-          )}
+          {props.destination.kind === 'album' &&
+            (artistHref.value ? (
+              <Link class="focused-collection-artist" href={artistHref.value}>
+                {props.destination.artist}
+              </Link>
+            ) : (
+              <span class="focused-collection-artist">Various Artists</span>
+            ))}
           <p class="focused-collection-count" aria-live="polite">
             {catalog.status === 'loading' && !catalog.total
               ? 'Loading tracks…'

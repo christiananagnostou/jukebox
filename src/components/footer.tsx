@@ -1,11 +1,9 @@
 import { $, component$, useComputed$, useContext, useOnWindow, useSignal } from '@builder.io/qwik'
-import { useLocation, useNavigate } from '@builder.io/qwik-city'
 import { StoreContext } from '~/routes/layout'
+import { shouldFocusLibrarySearch } from '~/services/search-shortcut'
 
 export default component$(() => {
   const store = useContext(StoreContext)
-  const location = useLocation()
-  const navigate = useNavigate()
   const searchInput = useSignal<HTMLInputElement>()
 
   useOnWindow(
@@ -14,9 +12,8 @@ export default component$(() => {
       if (!searchInput.value) return
       const { key } = e as KeyboardEvent
 
-      if (key === '/') {
+      if (shouldFocusLibrarySearch(e as KeyboardEvent, store.isTyping)) {
         e.preventDefault()
-        void navigate('/songs/')
         searchInput.value.focus()
       }
       if (key === 'Escape') {
@@ -43,7 +40,6 @@ export default component$(() => {
 
   const focusSearch = $(() => {
     store.isTyping = true
-    if (location.url.pathname !== '/songs/') void navigate('/songs/')
   })
 
   const clearSearch = $(() => {

@@ -2,7 +2,7 @@ import type { TrackQuery } from '~/services/library-client'
 
 const MAX_EXACT_METADATA_LENGTH = 1_024
 
-export type LibraryDestination = { kind: 'artist'; artist: string } | { kind: 'album'; album: string; artist: string }
+export type LibraryDestination = { kind: 'artist'; artist: string } | { kind: 'album'; album: string; artist?: string }
 
 export interface TrackMetadataDestinations {
   album?: LibraryDestination
@@ -28,15 +28,24 @@ export function albumDestination(artist: string, album: string): LibraryDestinat
   return isValidExactMetadata(artist) && isValidExactMetadata(album) ? { kind: 'album', album, artist } : undefined
 }
 
-export function trackMetadataDestinations(track: { album: string; artist: string }): TrackMetadataDestinations {
+export function compilationAlbumDestination(album: string): LibraryDestination | undefined {
+  return isValidExactMetadata(album) ? { kind: 'album', album } : undefined
+}
+
+export function trackMetadataDestinations(track: {
+  album: string
+  artist: string
+  compilation?: number
+}): TrackMetadataDestinations {
   return {
-    album: albumDestination(track.artist, track.album),
+    album: track.compilation ? compilationAlbumDestination(track.album) : albumDestination(track.artist, track.album),
     artist: artistDestination(track.artist),
   }
 }
 
 export function libraryDestinationHref(destination: LibraryDestination): string {
-  const parameters = new URLSearchParams({ artist: destination.artist })
+  const parameters = new URLSearchParams()
+  if (destination.artist) parameters.set('artist', destination.artist)
   if (destination.kind === 'album') parameters.set('album', destination.album)
   return `/${destination.kind === 'album' ? 'albums' : 'artists'}/view/#${parameters.toString()}`
 }
@@ -49,21 +58,23 @@ export function parseLibraryDestination(
   parameters: URLSearchParams,
   expectedKind: LibraryDestination['kind']
 ): LibraryDestination | undefined {
-  const artist = readSingleParameter(parameters, 'artist')
-  if (!artist) return undefined
-
   if (expectedKind === 'artist') {
+    const artist = readSingleParameter(parameters, 'artist')
+    if (!artist) return undefined
     return parameters.has('album') ? undefined : { kind: 'artist', artist }
   }
 
   const album = readSingleParameter(parameters, 'album')
-  return album ? { kind: 'album', album, artist } : undefined
+  if (!album) return undefined
+  const artist = parameters.has('artist') ? readSingleParameter(parameters, 'artist') : undefined
+  if (parameters.has('artist') && !artist) return undefined
+  return artist ? { kind: 'album', album, artist } : { kind: 'album', album }
 }
 
 export function focusedCollectionQuery(destination: LibraryDestination): Omit<TrackQuery, 'cursor' | 'limit'> {
   return {
     ...(destination.kind === 'album' ? { album: destination.album } : {}),
-    artist: destination.artist,
+    ...(destination.artist ? { artist: destination.artist } : {}),
     direction: 'asc',
     q: '',
     sort: destination.kind === 'album' ? 'track' : 'default',

@@ -23,7 +23,7 @@ import {
   loadTrackSelection,
   queryAlbums,
 } from '~/services/library-client'
-import { trackMetadataDestinations } from '~/services/library-destination'
+import { albumDestination, artistDestination, compilationAlbumDestination } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from '../layout'
 
 const ALBUM_GAP = 16
@@ -94,7 +94,7 @@ export default component$(() => {
     try {
       const songs = await loadTrackSelection({
         album: album.value,
-        artist: album.artistValue,
+        ...(album.isCompilation ? {} : { artist: album.artistValue }),
         direction: 'asc',
         q: store.searchTerm,
         sort: 'track',
@@ -136,7 +136,12 @@ export default component$(() => {
                   return <div class="h-full w-0 flex-1 bg-gray-900" key={albumIndex} aria-hidden="true" />
                 }
                 const albumArtSrc = album.visualsPath ? convertFileSrc(album.visualsPath) : ''
-                const destinations = trackMetadataDestinations({ album: album.value, artist: album.artistValue })
+                const destinations = {
+                  album: album.isCompilation
+                    ? compilationAlbumDestination(album.value)
+                    : albumDestination(album.artistValue, album.value),
+                  artist: album.isCompilation ? undefined : artistDestination(album.artistValue),
+                }
                 const artwork = albumArtSrc ? (
                   <img
                     src={albumArtSrc}

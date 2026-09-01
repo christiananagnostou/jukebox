@@ -153,6 +153,7 @@ export interface AlbumSummary {
   artist: string
   artistValue: string
   date: string
+  isCompilation: boolean
   name: string
   trackCount: number
   value: string
