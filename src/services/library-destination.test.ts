@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   albumDestination,
   artistDestination,
+  compilationAlbumDestination,
   focusedCollectionQuery,
   libraryDestinationHref,
   libraryDestinationLabel,
@@ -18,6 +19,13 @@ describe('library destinations', () => {
 
   it('creates an exact album destination with its artist identity', () => {
     expect(albumDestination('Björk', 'Homogenic')).toEqual({ album: 'Homogenic', artist: 'Björk', kind: 'album' })
+  })
+
+  it('creates an album-wide destination for compilations', () => {
+    expect(compilationAlbumDestination('Remember The Titans')).toEqual({
+      album: 'Remember The Titans',
+      kind: 'album',
+    })
   })
 
   it('preserves catalog whitespace while using trimmed validation', () => {
@@ -62,6 +70,18 @@ describe('library destinations', () => {
     expect(parseLibraryDestination(libraryDestinationParameters(firstUrl), 'album')).toEqual(first)
     expect(parseLibraryDestination(libraryDestinationParameters(secondUrl), 'album')).toEqual(second)
     expect(libraryDestinationHref(first)).not.toBe(libraryDestinationHref(second))
+  })
+
+  it('round trips a compilation album without an artist filter', () => {
+    const destination = compilationAlbumDestination('Disneyland Park Official Album (c) 2001')!
+    const url = new URL(libraryDestinationHref(destination), 'https://jukebox.invalid')
+    expect(parseLibraryDestination(libraryDestinationParameters(url), 'album')).toEqual(destination)
+    expect(focusedCollectionQuery(destination)).toEqual({
+      album: 'Disneyland Park Official Album (c) 2001',
+      direction: 'asc',
+      q: '',
+      sort: 'track',
+    })
   })
 
   it('rejects repeated identity parameters', () => {
@@ -115,6 +135,19 @@ describe('library destinations', () => {
     expect(trackMetadataDestinations({ album: 'Homogenic', artist: 'Björk' })).toEqual({
       album: { album: 'Homogenic', artist: 'Björk', kind: 'album' },
       artist: { artist: 'Björk', kind: 'artist' },
+    })
+  })
+
+  it('links a compilation track back to its complete album', () => {
+    expect(
+      trackMetadataDestinations({
+        album: 'Supernatural',
+        artist: 'Santana Feat. Rob Thomas',
+        compilation: 1,
+      })
+    ).toEqual({
+      album: { album: 'Supernatural', kind: 'album' },
+      artist: { artist: 'Santana Feat. Rob Thomas', kind: 'artist' },
     })
   })
 

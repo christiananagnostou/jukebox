@@ -40,6 +40,7 @@ pub struct AlbumSummary {
     pub artist: String,
     pub artist_value: String,
     pub date: String,
+    pub is_compilation: bool,
     pub name: String,
     pub track_count: i64,
     pub value: String,
@@ -173,11 +174,16 @@ pub(crate) async fn load_album_page(
     let mut transaction = pool.begin().await.map_err(|_| LibraryError::database())?;
     let revision = read_revision(&mut transaction).await?;
 
-    let mut count =
-        QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM (SELECT artist, album FROM songs");
+    let mut count = QueryBuilder::<Sqlite>::new(
+        "SELECT COUNT(*) FROM (
+         SELECT CASE WHEN compilation <> 0 THEN '' ELSE artist END AS album_artist,
+                CASE WHEN compilation <> 0 THEN 1 ELSE 0 END AS is_compilation,
+                album
+         FROM songs",
+    );
     let has_filter = push_search(&mut count, search.as_deref(), false);
     push_exact_filter(&mut count, "artist", query.artist.as_deref(), has_filter);
-    count.push(" GROUP BY artist, album)");
+    count.push(" GROUP BY album_artist, is_compilation, album)");
     let total = count
         .build_query_scalar::<i64>()
         .fetch_one(&mut *transaction)
@@ -185,15 +191,19 @@ pub(crate) async fn load_album_page(
         .map_err(|_| LibraryError::database())?;
 
     let mut page = QueryBuilder::<Sqlite>::new(
-        "SELECT COALESCE(NULLIF(TRIM(artist), ''), '-') AS artist, artist AS artist_value,
+        "SELECT CASE WHEN compilation <> 0
+                     THEN 'Various Artists'
+                     ELSE COALESCE(NULLIF(TRIM(artist), ''), '-')
+                END AS artist,
+                CASE WHEN compilation <> 0 THEN '' ELSE artist END AS artist_value,
                 COALESCE(NULLIF(TRIM(album), ''), '-') AS name, album AS value,
-                MAX(date) AS date, COUNT(*) AS track_count,
+                MAX(date) AS date, compilation <> 0 AS is_compilation, COUNT(*) AS track_count,
                 COALESCE(MIN(NULLIF(visualsPath, '')), '') AS visuals_path
          FROM songs",
     );
     let has_filter = push_search(&mut page, search.as_deref(), false);
     push_exact_filter(&mut page, "artist", query.artist.as_deref(), has_filter);
-    page.push(" GROUP BY artist, album ORDER BY artist COLLATE NOCASE");
+    page.push(" GROUP BY artist_value, is_compilation, album ORDER BY artist COLLATE NOCASE");
     push_direction(&mut page, query.direction);
     page.push(", name COLLATE NOCASE");
     push_direction(&mut page, query.direction);
@@ -223,6 +233,10 @@ pub(crate) async fn load_album_page(
                     .try_get("artist_value")
                     .map_err(|_| LibraryError::database())?,
                 date: row.try_get("date").map_err(|_| LibraryError::database())?,
+                is_compilation: row
+                    .try_get::<i64, _>("is_compilation")
+                    .map_err(|_| LibraryError::database())?
+                    != 0,
                 name: row.try_get("name").map_err(|_| LibraryError::database())?,
                 track_count: row
                     .try_get("track_count")
@@ -313,12 +327,26 @@ mod tests {
         date: &str,
         art: &str,
     ) {
+        insert_song_with_compilation(pool, id, title, album, artist, date, art, 0).await;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn insert_song_with_compilation(
+        pool: &SqlitePool,
+        id: &str,
+        title: &str,
+        album: &str,
+        artist: &str,
+        date: &str,
+        art: &str,
+        compilation: i64,
+    ) {
         sqlx::query(
             "INSERT INTO songs (
                id, path, file, title, album, artist, genre, bpm, compilation, date, encoder,
                trackTotal, trackNumber, codec, duration, sampleRate, side, startTime,
                favorRating, dateAdded, visualsPath
-             ) VALUES (?, ?, ?, ?, ?, ?, '', 0, 0, ?, '', 0, 0, 'flac', '', '44100',
+             ) VALUES (?, ?, ?, ?, ?, ?, '', 0, ?, ?, '', 0, 0, 'flac', '', '44100',
                        0, 0, 0, '2026-08-26', ?)",
         )
         .bind(id)
@@ -327,6 +355,7 @@ mod tests {
         .bind(title)
         .bind(album)
         .bind(artist)
+        .bind(compilation)
         .bind(date)
         .bind(art)
         .execute(pool)
@@ -427,6 +456,7 @@ mod tests {
             assert_eq!(first_album.total, 1);
             assert_eq!(first_album.items[0].date, "2021");
             assert_eq!(first_album.items[0].track_count, 2);
+            assert!(!first_album.items[0].is_compilation);
             assert_eq!(first_album.items[0].visuals_path, "art-a");
 
             let artist_albums = load_album_page(
@@ -443,6 +473,53 @@ mod tests {
                 .items
                 .iter()
                 .all(|album| album.artist_value == "Björk"));
+        });
+    }
+
+    #[test]
+    fn compilation_albums_group_across_track_artists() {
+        tauri::async_runtime::block_on(async {
+            let pool = fixture().await;
+            insert_song_with_compilation(
+                &pool,
+                "6",
+                "Featured One",
+                "One Complete Album",
+                "Primary Artist feat. Guest",
+                "2024",
+                "art-compilation",
+                1,
+            )
+            .await;
+            insert_song_with_compilation(
+                &pool,
+                "7",
+                "Featured Two",
+                "One Complete Album",
+                "Another Guest",
+                "2024",
+                "",
+                1,
+            )
+            .await;
+
+            let page = load_album_page(
+                &pool,
+                AggregateQuery {
+                    q: "One Complete Album".to_owned(),
+                    ..AggregateQuery::default()
+                },
+            )
+            .await
+            .expect("query compilation album");
+
+            assert_eq!(page.total, 1);
+            assert_eq!(page.items.len(), 1);
+            assert_eq!(page.items[0].artist, "Various Artists");
+            assert_eq!(page.items[0].artist_value, "");
+            assert_eq!(page.items[0].track_count, 2);
+            assert!(page.items[0].is_compilation);
+            assert_eq!(page.items[0].visuals_path, "art-compilation");
         });
     }
 }
