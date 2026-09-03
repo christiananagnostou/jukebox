@@ -171,16 +171,17 @@ body {
 
 .focused-collection-header {
   display: grid;
-  min-height: 144px;
+  min-height: 136px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 1rem;
   border-bottom: 1px solid var(--app-border);
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   background: var(--focused-accent-soft);
 }
 
 .focused-collection[data-kind='artist'] .focused-collection-header {
+  min-height: 104px;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
@@ -339,6 +340,11 @@ body {
   padding: 0 0.75rem;
 }
 
+.focused-collection-columns span {
+  display: flex;
+  align-items: center;
+}
+
 .focused-collection-columns span:first-child,
 .focused-track-row > span:first-child {
   border-left: 0;
@@ -417,7 +423,7 @@ body {
 
 @media (max-width: 920px) {
   .focused-collection-header {
-    min-height: 120px;
+    min-height: 112px;
   }
 
   .focused-collection-art {
