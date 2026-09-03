@@ -35,6 +35,23 @@ export function computeVirtualRange(
   }
 }
 
+export function scrollTopForVirtualRow(
+  scrollTop: number,
+  viewportHeight: number,
+  itemHeight: number,
+  targetRow: number,
+  numItems: number
+): number | undefined {
+  if (targetRow < 0 || targetRow >= numItems || viewportHeight <= 0 || itemHeight <= 0) return undefined
+
+  const visibleStart = Math.max(0, Math.floor(scrollTop / itemHeight))
+  const visibleEnd = Math.min(numItems - 1, Math.ceil((scrollTop + viewportHeight) / itemHeight) - 1)
+
+  if (targetRow < visibleStart) return targetRow * itemHeight
+  if (targetRow > visibleEnd) return Math.max(0, targetRow * itemHeight - (viewportHeight - itemHeight))
+  return undefined
+}
+
 export default component$((props: Props) => {
   const scrollTop = useSignal(0)
   const viewportHeight = useSignal(0)
@@ -73,17 +90,8 @@ export default component$((props: Props) => {
     const itemHeight = track(() => props.itemHeight)
     if (targetRow === undefined || targetRow < 0 || targetRow >= numItems || height === 0) return
 
-    const visibleStart = Math.max(0, Math.floor(scrollTop.value / itemHeight))
-    const visibleEnd = Math.min(numItems - 1, Math.floor((scrollTop.value + height) / itemHeight))
-
-    if (targetRow < visibleStart) {
-      scrollRef.value?.scrollTo({ top: targetRow * itemHeight, behavior: 'auto' })
-    } else if (targetRow > visibleEnd) {
-      scrollRef.value?.scrollTo({
-        top: Math.max(0, targetRow * itemHeight - (height - itemHeight)),
-        behavior: 'auto',
-      })
-    }
+    const nextScrollTop = scrollTopForVirtualRow(scrollTop.value, height, itemHeight, targetRow, numItems)
+    if (nextScrollTop !== undefined) scrollRef.value?.scrollTo({ top: nextScrollTop, behavior: 'auto' })
   })
 
   useTask$(({ track }) => {

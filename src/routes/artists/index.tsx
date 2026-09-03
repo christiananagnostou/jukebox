@@ -26,7 +26,9 @@ import {
   loadTrackSelection,
   queryAlbums,
   queryArtists,
+  type TrackQuery,
 } from '~/services/library-client'
+import { albumSummaryTrackQuery } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from '../layout'
 
 const ROW_HEIGHT = 30
@@ -93,7 +95,7 @@ export default component$(() => {
     store.artistView.albumIdx = 0
     store.artistView.trackIdx = 0
     trackPager.value?.clear()
-    void albumPager.value?.reset({ artist: artist.value, direction: 'asc', q: store.searchTerm })
+    void albumPager.value?.reset({ artist: artist.value, direction: 'asc', q: '' })
   })
 
   useTask$(({ track }) => {
@@ -105,18 +107,14 @@ export default component$(() => {
       if (store.artistView.albums.total) void albumPager.value?.ensureRange(albumIdx, albumIdx)
       return
     }
-    const albumKey = JSON.stringify([album.artistValue, album.value])
+    const albumKey = JSON.stringify([album.artistValue, album.isCompilation, album.value])
     if (albumKey === store.artistView.selectedAlbumKey) return
 
     store.artistView.selectedAlbumKey = albumKey
     store.artistView.trackIdx = 0
-    void trackPager.value?.resetQuery({
-      album: album.value,
-      artist: album.artistValue,
-      direction: 'asc',
-      q: store.searchTerm,
-      sort: 'track',
-    })
+    const query = albumSummaryTrackQuery(album)
+    if (query) void trackPager.value?.resetQuery(query)
+    else trackPager.value?.clear()
   })
 
   useTask$(({ track }) => {
@@ -130,9 +128,9 @@ export default component$(() => {
     void artistPager.value?.reload()
   })
 
-  const playSelection = $(async (query: { album?: string; artist: string; sort: 'default' | 'track' }, song?: Song) => {
+  const playSelection = $(async (query: Omit<TrackQuery, 'cursor' | 'limit'>, song?: Song) => {
     try {
-      const songs = await loadTrackSelection({ ...query, direction: 'asc', q: store.searchTerm })
+      const songs = await loadTrackSelection(query)
       const playlistIndex = song ? songs.findIndex((item) => item.id === song.id) : 0
       if (playlistIndex < 0 || !songs[playlistIndex]) return
       const selectedSong = songs[playlistIndex]
@@ -200,7 +198,7 @@ export default component$(() => {
               return (
                 <button
                   key={artist.value}
-                  onDblClick$={() => playSelection({ artist: artist.value, sort: 'default' })}
+                  onDblClick$={() => playSelection({ artist: artist.value, direction: 'asc', q: '', sort: 'default' })}
                   onClick$={() => {
                     store.artistView.artistIdx = index
                     store.artistView.cursorCol = 0
@@ -233,7 +231,10 @@ export default component$(() => {
               return (
                 <button
                   key={`${album.artistValue}\0${album.value}`}
-                  onDblClick$={() => playSelection({ album: album.value, artist: album.artistValue, sort: 'track' })}
+                  onDblClick$={() => {
+                    const query = albumSummaryTrackQuery(album)
+                    if (query) playSelection(query)
+                  }}
                   onClick$={() => {
                     store.artistView.albumIdx = index
                     store.artistView.cursorCol = 1
@@ -268,7 +269,8 @@ export default component$(() => {
                 <button
                   key={song.id}
                   onDblClick$={() => {
-                    if (album) playSelection({ album: album.value, artist: album.artistValue, sort: 'track' }, song)
+                    const query = album && albumSummaryTrackQuery(album)
+                    if (query) playSelection(query, song)
                   }}
                   onClick$={() => {
                     store.artistView.trackIdx = index

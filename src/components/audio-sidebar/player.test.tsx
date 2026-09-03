@@ -57,10 +57,15 @@ const Harness = component$(() => {
       current: first,
       currentContextIndex: 0,
       source: { kind: 'album', label: 'Book Of Roses' },
+      volumePercent: 37,
     },
   } as Store)
   useContextProvider(StoreContext, store)
-  useContextProvider(StoreActionsContext, {} as StoreActions)
+  useContextProvider(StoreActionsContext, {
+    setVolumePercent: $((volumePercent: number) => {
+      store.playback.volumePercent = volumePercent
+    }),
+  } as StoreActions)
 
   const swap = $(() => {
     commitPlaybackView(store.playback, {
@@ -99,5 +104,16 @@ describe('playback drawer state', () => {
     expect(screen.querySelector('.playback-track-artist')?.textContent).toBe('Enya')
     expect(screen.querySelector('.playback-track-album')?.textContent).toBe('Amarantine')
     expect(screen.querySelector('.playback-upcoming-title')?.textContent).toBe('Amarantine')
+  })
+
+  it('resets volume from the numeric control', async () => {
+    const { render, screen, userEvent } = await createDOM()
+    await render(<Harness />)
+
+    const resetButton = screen.querySelector('[aria-label="Reset volume to 100 percent"]')
+    expect(resetButton?.textContent).toBe('37')
+
+    await userEvent(resetButton as Element, 'click')
+    expect(resetButton?.textContent).toBe('100')
   })
 })

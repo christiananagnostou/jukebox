@@ -26,14 +26,13 @@ const NavigationLink = component$((props: { command: NavigationCommand; pathname
       class="nav-index-link"
       data-active={active.value ? 'true' : 'false'}
       aria-current={active.value ? 'page' : undefined}
-      title={props.command.shortcut ? `${props.command.label} (Shift+${props.command.shortcut})` : props.command.label}
+      title={props.command.label}
     >
       <span class="nav-index-marker" aria-hidden="true" />
       <span class="nav-index-icon">
         <NavigationIcon name={props.command.icon} />
       </span>
       <span class="min-w-0 flex-1 truncate">{props.command.label}</span>
-      {props.command.shortcut && <kbd class="nav-index-shortcut">⇧{props.command.shortcut}</kbd>}
     </Link>
   )
 })
@@ -126,7 +125,6 @@ export default component$(() => {
                   <NavigationIcon name={command.icon} />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-left">{command.label}</span>
-                <kbd class="nav-index-shortcut">?</kbd>
               </button>
             )
           )}

@@ -7,7 +7,11 @@ import MetadataLink from '~/components/library/MetadataLink'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { updateFavoriteRating } from '~/services/library-db'
 import { trackMetadataDestinations } from '~/services/library-destination'
-import { PLAYBACK_ACCESS_ERROR_MESSAGE, playbackTrackOccurrences } from '~/services/playback-view'
+import {
+  DEFAULT_VOLUME_PERCENT,
+  PLAYBACK_ACCESS_ERROR_MESSAGE,
+  playbackTrackOccurrences,
+} from '~/services/playback-view'
 import PlaybackLink from './playback-link'
 import { MusicNote } from '../svg/MusicNote'
 import { NextTrack } from '../svg/NextTrack'
@@ -23,6 +27,7 @@ const MODE_BUTTON_CLASS =
   'playback-interactive playback-mode-button relative grid h-8 w-8 place-items-center rounded text-lg'
 const TRANSPORT_BUTTON_CLASS = 'playback-interactive grid h-10 w-10 place-items-center rounded-full'
 const PRIMARY_BUTTON_CLASS = 'playback-primary-button grid h-11 w-11 place-items-center rounded-full'
+const VOLUME_BUTTON_CLASS = 'playback-interactive grid h-8 w-8 shrink-0 place-items-center rounded'
 
 function formatSeconds(time: number): string {
   if (!Number.isFinite(time) || time < 0) return '0:00'
@@ -248,7 +253,7 @@ export default component$(() => {
         <div class="mb-3 mt-2 flex items-center gap-2">
           <button
             type="button"
-            class="playback-interactive grid h-8 w-8 shrink-0 place-items-center rounded text-base"
+            class={`${VOLUME_BUTTON_CLASS} text-base`}
             aria-label={store.playback.muted ? 'Unmute' : 'Mute'}
             aria-pressed={store.playback.muted}
             title={store.playback.muted ? 'Unmute' : 'Mute'}
@@ -269,9 +274,15 @@ export default component$(() => {
             style={`--range-progress: ${store.playback.volumePercent}%`}
             onChange$={(_, element) => storeActions.setVolumePercent(Number(element.value))}
           />
-          <span class="w-7 text-right font-mono text-[10px] tabular-nums text-slate-500">
+          <button
+            type="button"
+            class={`${VOLUME_BUTTON_CLASS} font-mono text-[10px] tabular-nums text-slate-500`}
+            aria-label={`Reset volume to ${DEFAULT_VOLUME_PERCENT} percent`}
+            title={`Reset volume to ${DEFAULT_VOLUME_PERCENT}%`}
+            onClick$={() => storeActions.setVolumePercent(DEFAULT_VOLUME_PERCENT)}
+          >
             {store.playback.volumePercent}
-          </span>
+          </button>
         </div>
       </div>
 

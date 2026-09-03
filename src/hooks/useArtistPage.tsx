@@ -1,6 +1,7 @@
 import type { Store, StoreActions } from '~/App'
 import { $ } from '@builder.io/qwik'
 import { aggregateItemAt, librarySongAt, loadTrackSelection } from '~/services/library-client'
+import { albumSummaryTrackQuery } from '~/services/library-destination'
 
 export const ArtistPageState: Pick<Store, 'artistView'> = {
   artistView: {
@@ -41,13 +42,9 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
   const _playShownAlbum = $(async () => {
     const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
     if (!album) return
-    const songs = await loadTrackSelection({
-      album: album.value,
-      artist: album.artistValue,
-      direction: 'asc',
-      q: store.searchTerm,
-      sort: 'track',
-    })
+    const query = albumSummaryTrackQuery(album)
+    if (!query) return
+    const songs = await loadTrackSelection(query)
     if (songs[0]) storeActions.playTracks(songs, 0, { kind: 'album', label: album.name })
   })
 
@@ -56,13 +53,9 @@ export function useArtistPage(store: Store, storeActions: StoreActions) {
     if (!song) return
     const album = aggregateItemAt(store.artistView.albums, store.artistView.albumIdx)
     if (!album) return
-    const songs = await loadTrackSelection({
-      album: album.value,
-      artist: album.artistValue,
-      direction: 'asc',
-      q: store.searchTerm,
-      sort: 'track',
-    })
+    const query = albumSummaryTrackQuery(album)
+    if (!query) return
+    const songs = await loadTrackSelection(query)
     const playlistIndex = songs.findIndex((track) => track.id === song.id)
     if (playlistIndex >= 0) {
       storeActions.playTracks(songs, playlistIndex, { kind: 'album', label: album.name })

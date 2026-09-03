@@ -4,6 +4,7 @@ import type { PlaybackSelection, PlaybackSnapshot } from '~/services/playback-cl
 export const PLAYBACK_ERROR_MESSAGE = 'This track could not be played'
 export const PLAYBACK_ACCESS_ERROR_MESSAGE = 'Music folder access is required. Reconnect the folder in Settings.'
 export const PLAYBACK_PERSISTENCE_WARNING_MESSAGE = 'Playback progress may not be saved'
+export const DEFAULT_VOLUME_PERCENT = 100
 
 export interface PlaybackMetadataProjection {
   context: Song[]
@@ -28,7 +29,7 @@ export function createPlaybackViewState(): PlaybackViewState {
     shuffleEnabled: false,
     shuffleSeed: 1,
     source: undefined,
-    volumePercent: 100,
+    volumePercent: DEFAULT_VOLUME_PERCENT,
   }
 }
 

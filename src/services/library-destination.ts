@@ -1,3 +1,4 @@
+import type { AlbumSummary } from '~/App'
 import type { TrackQuery } from '~/services/library-client'
 
 const MAX_EXACT_METADATA_LENGTH = 1_024
@@ -30,6 +31,21 @@ export function albumDestination(artist: string, album: string): LibraryDestinat
 
 export function compilationAlbumDestination(album: string): LibraryDestination | undefined {
   return isValidExactMetadata(album) ? { kind: 'album', album } : undefined
+}
+
+export function albumSummaryDestination(
+  album: Pick<AlbumSummary, 'artistValue' | 'isCompilation' | 'value'>
+): LibraryDestination | undefined {
+  return album.isCompilation
+    ? compilationAlbumDestination(album.value)
+    : albumDestination(album.artistValue, album.value)
+}
+
+export function albumSummaryTrackQuery(
+  album: Pick<AlbumSummary, 'artistValue' | 'isCompilation' | 'value'>
+): Omit<TrackQuery, 'cursor' | 'limit'> | undefined {
+  const destination = albumSummaryDestination(album)
+  return destination ? focusedCollectionQuery(destination) : undefined
 }
 
 export function trackMetadataDestinations(track: {
