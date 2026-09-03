@@ -182,7 +182,7 @@ pub(crate) async fn load_album_page(
          FROM songs",
     );
     let has_filter = push_search(&mut count, search.as_deref(), false);
-    push_exact_filter(&mut count, "artist", query.artist.as_deref(), has_filter);
+    push_album_artist_filter(&mut count, query.artist.as_deref(), has_filter);
     count.push(" GROUP BY album_artist, is_compilation, album)");
     let total = count
         .build_query_scalar::<i64>()
@@ -202,7 +202,7 @@ pub(crate) async fn load_album_page(
          FROM songs",
     );
     let has_filter = push_search(&mut page, search.as_deref(), false);
-    push_exact_filter(&mut page, "artist", query.artist.as_deref(), has_filter);
+    push_album_artist_filter(&mut page, query.artist.as_deref(), has_filter);
     page.push(" GROUP BY artist_value, is_compilation, album ORDER BY artist COLLATE NOCASE");
     push_direction(&mut page, query.direction);
     page.push(", name COLLATE NOCASE");
@@ -269,6 +269,29 @@ fn push_direction(builder: &mut QueryBuilder<'_, Sqlite>, direction: SortDirecti
         SortDirection::Asc => " ASC",
         SortDirection::Desc => " DESC",
     });
+}
+
+fn push_album_artist_filter(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    artist: Option<&str>,
+    has_where: bool,
+) -> bool {
+    let Some(artist) = artist else {
+        return has_where;
+    };
+
+    builder
+        .push(if has_where { " AND " } else { " WHERE " })
+        .push("((compilation = 0 AND artist = ")
+        .push_bind(artist.to_owned())
+        .push(
+            ") OR (compilation <> 0 AND album IN (
+            SELECT related.album FROM songs AS related
+            WHERE related.compilation <> 0 AND related.artist = ",
+        )
+        .push_bind(artist.to_owned())
+        .push(")))");
+    true
 }
 
 #[tauri::command]
@@ -520,6 +543,22 @@ mod tests {
             assert_eq!(page.items[0].track_count, 2);
             assert!(page.items[0].is_compilation);
             assert_eq!(page.items[0].visuals_path, "art-compilation");
+
+            let artist_page = load_album_page(
+                &pool,
+                AggregateQuery {
+                    artist: Some("Primary Artist feat. Guest".to_owned()),
+                    ..AggregateQuery::default()
+                },
+            )
+            .await
+            .expect("query compilation from an artist");
+
+            assert_eq!(artist_page.total, 1);
+            assert_eq!(artist_page.items.len(), 1);
+            assert_eq!(artist_page.items[0].name, "One Complete Album");
+            assert_eq!(artist_page.items[0].track_count, 2);
+            assert!(artist_page.items[0].is_compilation);
         });
     }
 }

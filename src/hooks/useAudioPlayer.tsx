@@ -5,6 +5,7 @@ import type { PlaybackSource, Song, Store } from '~/App'
 import { BrowserAudioTransport, type AudioTransport } from '~/services/audio-transport'
 import { resolvePlaybackTracks } from '~/services/library-client'
 import { authorizePlaybackSource, PlaybackSourceAccessError } from '~/services/media-source'
+import { bindPlaybackMediaActions, syncPlaybackMediaSession } from '~/services/media-session'
 import {
   NativePlaybackBridge,
   type PlaybackBridge,
@@ -613,12 +614,21 @@ export function useAudioPlayer(store: Store) {
     )
     let disposed = false
     let unbindEvents = () => {}
+    let unbindMediaActions = () => {}
 
     void playbackController
       .initialize()
       .then(() => {
         if (disposed) return
         unbindEvents = bindPlaybackEvents(store, transport, playbackController)
+        if ('mediaSession' in navigator) {
+          unbindMediaActions = bindPlaybackMediaActions(navigator.mediaSession, {
+            next: () => playbackController.nextSong(),
+            pause: () => playbackController.pauseSong(),
+            play: () => playbackController.resumeSong(),
+            previous: () => playbackController.prevSong(),
+          })
+        }
         controller.value = noSerialize(playbackController)
         recordPlaybackClientEvent('ready')
       })
@@ -633,8 +643,22 @@ export function useAudioPlayer(store: Store) {
       disposed = true
       controller.value = undefined
       unbindEvents()
+      unbindMediaActions()
       transport.clear()
     })
+  })
+
+  useVisibleTask$(({ track }) => {
+    const current = track(() => store.playback.current)
+    const isPaused = track(() => store.playback.isPaused)
+    if (!('mediaSession' in navigator)) return
+
+    syncPlaybackMediaSession(
+      navigator.mediaSession,
+      current,
+      isPaused,
+      typeof MediaMetadata === 'function' ? (metadata) => new MediaMetadata(metadata) : undefined
+    )
   })
 
   return {

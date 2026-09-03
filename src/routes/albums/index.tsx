@@ -15,6 +15,7 @@ import type { ListItemStyle } from '~/App'
 import MetadataLink from '~/components/library/MetadataLink'
 import VirtualList from '~/components/Shared/VirtualList'
 import { MusicNote } from '~/components/svg/MusicNote'
+import { Play } from '~/components/svg/Play'
 import {
   aggregateItemAt,
   AggregatePager,
@@ -23,11 +24,11 @@ import {
   loadTrackSelection,
   queryAlbums,
 } from '~/services/library-client'
-import { albumDestination, artistDestination, compilationAlbumDestination } from '~/services/library-destination'
+import { albumSummaryDestination, albumSummaryTrackQuery, artistDestination } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from '../layout'
 
 const ALBUM_GAP = 16
-const ALBUM_INFO_HEIGHT = 124
+const ALBUM_INFO_HEIGHT = 68
 const MIN_ALBUM_WIDTH = 180
 
 function aggregateState(): AggregateCatalogState<AlbumSummary> {
@@ -92,13 +93,9 @@ export default component$(() => {
 
   const playAlbum = $(async (album: AlbumSummary) => {
     try {
-      const songs = await loadTrackSelection({
-        album: album.value,
-        ...(album.isCompilation ? {} : { artist: album.artistValue }),
-        direction: 'asc',
-        q: store.searchTerm,
-        sort: 'track',
-      })
+      const query = albumSummaryTrackQuery(album)
+      if (!query) return
+      const songs = await loadTrackSelection(query)
       const firstSong = songs[0]
       if (!firstSong) return
       storeActions.playTracks(songs, 0, { kind: 'album', label: album.name })
@@ -133,13 +130,19 @@ export default component$(() => {
               {indexes.map((albumIndex) => {
                 const album = aggregateItemAt(albums, albumIndex)
                 if (!album) {
-                  return <div class="h-full w-0 flex-1 bg-gray-900" key={albumIndex} aria-hidden="true" />
+                  return (
+                    <div class="album-card album-card-loading h-fit w-0 flex-1" key={albumIndex} aria-hidden="true">
+                      <div class="album-card-cover" />
+                      <div class="album-card-details">
+                        <span class="album-card-loading-line" />
+                        <span class="album-card-loading-line" />
+                      </div>
+                    </div>
+                  )
                 }
                 const albumArtSrc = album.visualsPath ? convertFileSrc(album.visualsPath) : ''
                 const destinations = {
-                  album: album.isCompilation
-                    ? compilationAlbumDestination(album.value)
-                    : albumDestination(album.artistValue, album.value),
+                  album: albumSummaryDestination(album),
                   artist: album.isCompilation ? undefined : artistDestination(album.artistValue),
                 }
                 const artwork = albumArtSrc ? (
@@ -158,53 +161,54 @@ export default component$(() => {
                   </span>
                 )
                 return (
-                  <article
-                    class="album-container album-card flex h-fit w-0 flex-1 flex-col text-left"
-                    key={`${album.artistValue}\0${album.value}`}
-                  >
-                    {destinations.album ? (
-                      <MetadataLink
-                        destination={destinations.album}
-                        class="album-card-cover min-w-full aspect-square bg-gray-800"
-                        ariaLabel={`Open album ${album.name}`}
-                      >
-                        {artwork}
-                      </MetadataLink>
-                    ) : (
-                      <div class="album-card-cover min-w-full aspect-square bg-gray-800">{artwork}</div>
-                    )}
-                    <div class="p-2 h-full w-full min-w-0">
-                      <div class="flex min-w-0 items-center gap-2">
+                  <article class="album-card h-fit w-0 flex-1 text-left" key={`${album.artistValue}\0${album.value}`}>
+                    <div class="album-card-artwork">
+                      {destinations.album ? (
+                        <MetadataLink
+                          destination={destinations.album}
+                          class="album-card-cover"
+                          ariaLabel={`Open album ${album.name}`}
+                        >
+                          {artwork}
+                        </MetadataLink>
+                      ) : (
+                        <div class="album-card-cover">{artwork}</div>
+                      )}
+                    </div>
+                    <div class="album-card-details">
+                      <div class="album-card-heading">
                         {destinations.album ? (
-                          <MetadataLink
-                            destination={destinations.album}
-                            class="album-card-title block min-w-0 flex-1 truncate py-1 text-lg font-light"
-                          >
+                          <MetadataLink destination={destinations.album} class="album-card-title" title={album.name}>
                             {album.name}
                           </MetadataLink>
                         ) : (
-                          <span class="block min-w-0 flex-1 truncate py-1 text-lg font-light">{album.name}</span>
+                          <span class="album-card-title" title={album.name}>
+                            {album.name}
+                          </span>
                         )}
                         <button
                           type="button"
-                          class="album-card-play shrink-0 rounded px-2 py-1 text-xs font-medium"
+                          class="album-card-play"
                           onClick$={() => playAlbum(album)}
                           aria-label={`Play ${album.name} by ${album.artist || 'Unknown artist'}`}
+                          title={`Play ${album.name}`}
                         >
-                          Play
+                          <Play />
                         </button>
                       </div>
                       {destinations.artist ? (
-                        <MetadataLink destination={destinations.artist} class="block truncate py-1 mb-1 text-slate-300">
+                        <MetadataLink destination={destinations.artist} class="album-card-artist" title={album.artist}>
                           {album.artist}
                         </MetadataLink>
                       ) : (
-                        <span class="block truncate py-1 mb-1 text-slate-300">{album.artist}</span>
+                        <span class="album-card-artist" title={album.artist}>
+                          {album.artist}
+                        </span>
                       )}
-                      <div class="flex items-center justify-between gap-2 text-sm text-slate-300">
-                        <span class="truncate py-1">{album.date || '-'}</span>
-                        <span class="truncate py-1">
-                          {album.trackCount} <span class="text-xs text-slate-500">tracks</span>
+                      <div class="album-card-meta">
+                        <span>{album.date || 'Year unknown'}</span>
+                        <span>
+                          {album.trackCount} {album.trackCount === 1 ? 'track' : 'tracks'}
                         </span>
                       </div>
                     </div>

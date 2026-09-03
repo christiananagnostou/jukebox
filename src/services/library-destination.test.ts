@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   albumDestination,
+  albumSummaryDestination,
+  albumSummaryTrackQuery,
   artistDestination,
   compilationAlbumDestination,
   focusedCollectionQuery,
@@ -25,6 +27,32 @@ describe('library destinations', () => {
     expect(compilationAlbumDestination('Remember The Titans')).toEqual({
       album: 'Remember The Titans',
       kind: 'album',
+    })
+  })
+
+  it('keeps compilation album summaries album-wide across browse and playback', () => {
+    const supernatural = {
+      artistValue: '',
+      isCompilation: true,
+      value: 'Supernatural',
+    }
+
+    expect(albumSummaryDestination(supernatural)).toEqual({ album: 'Supernatural', kind: 'album' })
+    expect(albumSummaryTrackQuery(supernatural)).toEqual({
+      album: 'Supernatural',
+      direction: 'asc',
+      q: '',
+      sort: 'track',
+    })
+  })
+
+  it('keeps standard album summaries scoped to their artist', () => {
+    expect(albumSummaryTrackQuery({ artistValue: 'Santana', isCompilation: false, value: 'Supernatural' })).toEqual({
+      album: 'Supernatural',
+      artist: 'Santana',
+      direction: 'asc',
+      q: '',
+      sort: 'track',
     })
   })
 
