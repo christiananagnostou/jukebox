@@ -42,6 +42,71 @@ const queueCount = document.querySelector('#queue-count')
 const queueItems = document.querySelector('#queue-items')
 const clearQueueButton = document.querySelector('#clear-queue')
 const viewButtons = [...document.querySelectorAll('[data-view]')]
+const playerPanel = document.querySelector('#now-playing-panel')
+const seek = document.querySelector('#seek')
+let scrubbing = false
+const transportButtons = [...document.querySelectorAll('[data-transport]')]
+const iconPaths = {
+  play: 'M8 5l11 7-11 7z',
+  pause: 'M8 5v14M16 5v14',
+  next: 'M5 5l11 7-11 7zM19 5v14',
+  previous: 'M19 5L8 12l11 7zM5 5v14',
+  down: 'm6 9 6 6 6-6',
+  back: 'm14 6-6 6 6 6',
+  arrow: 'M5 12h14m-6-6 6 6-6 6',
+  search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  music: 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3h3M20 16a3 3 0 1 1-3-3h3',
+  album: 'M3 3h18v18H3zM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+  artist: 'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',
+  queue: 'M4 6h16M4 12h16M4 18h10',
+}
+const icon = (name) => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS(svg.namespaceURI, 'path')
+  path.setAttribute('d', iconPaths[name] || iconPaths.music)
+  svg.append(path)
+  return svg
+}
+for (const slot of document.querySelectorAll('[data-icon]')) slot.replaceChildren(icon(slot.dataset.icon))
+const trackArtwork = (track) => (track ? `/api/tracks/${encodeURIComponent(track.id)}/artwork` : '')
+const artwork = (url, className = '', eager = false) => {
+  const holder = document.createElement('span')
+  holder.className = `artwork ${className}`
+  holder.append(icon(className === 'artist-art' ? 'artist' : 'music'))
+  if (url) {
+    const image = document.createElement('img')
+    image.alt = ''
+    image.loading = eager ? 'eager' : 'lazy'
+    image.src = url
+    image.addEventListener('error', () => image.remove(), { once: true })
+    holder.append(image)
+  }
+  return holder
+}
+const formatTime = (seconds) => {
+  const value = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`
+}
+const updateControls = () => {
+  for (const button of transportButtons) {
+    const action = button.dataset.transport
+    button.disabled = !activeTrack || (action === 'next' && playback.currentIndex >= playback.queue.length - 1)
+    if (action === 'toggle') {
+      const label = player.paused ? 'Play' : 'Pause'
+      if (button.getAttribute('aria-label') !== label) {
+        button.setAttribute('aria-label', label)
+        button.replaceChildren(icon(player.paused ? 'play' : 'pause'))
+      }
+    }
+  }
+  seek.disabled = !activeTrack || !Number.isFinite(player.duration) || player.duration <= 0
+  if (!scrubbing) seek.value = seek.disabled ? 0 : (player.currentTime / player.duration) * 100
+  document.querySelector('#elapsed').textContent = formatTime(activeTrack ? player.currentTime : 0)
+  document.querySelector('#duration').textContent = formatTime(activeTrack ? player.duration : 0)
+  document.querySelector('#mini-progress').value = seek.disabled ? 0 : (player.currentTime / player.duration) * 100
+}
 
 let view = 'tracks'
 let artist = ''
@@ -89,6 +154,7 @@ const actionButton = ({ label, action, danger = false }) => {
 const showPlaybackFeedback = (message, actions = []) => {
   playbackStatus.textContent = message
   playbackActions.replaceChildren(...actions.map(actionButton))
+  if (actions.length && activeTrack) document.querySelector('#mini-detail').textContent = message
 }
 
 const setLibraryStatus = (message, retry = false) => {
@@ -103,6 +169,14 @@ const updateNavigation = () => {
   contextLabel.textContent = album ? detail([album, artist], 'Album') : artist
   input.placeholder = view === 'artists' ? 'Search artists' : view === 'albums' ? 'Search albums' : 'Search tracks'
   items.setAttribute('aria-label', view[0].toUpperCase() + view.slice(1))
+  items.dataset.layout = view
+  document.querySelector('#view-title').textContent = album
+    ? 'Songs'
+    : view === 'tracks'
+      ? 'Songs'
+      : view === 'albums'
+        ? 'Albums'
+        : 'Artists'
 }
 
 const setMediaMetadata = (track) => {
@@ -112,6 +186,7 @@ const setMediaMetadata = (track) => {
       title: track.title || track.file,
       artist: track.artist,
       album: track.album,
+      artwork: [{ src: new URL(trackArtwork(track), window.location.origin).href }],
     })
   } catch {
     // Media metadata is an enhancement; audio remains available without it.
@@ -139,13 +214,26 @@ const updateMediaPosition = () => {
 }
 
 const updatePlayingCopy = (track) => {
+  document.querySelector('#mini-title').textContent = track ? track.title || track.file : 'Nothing playing'
+  document.querySelector('#mini-detail').textContent = track
+    ? track.artist || 'Unknown artist'
+    : 'Choose a song to begin'
+  document.querySelector('#now-artist').textContent = track?.artist || ''
+  document.querySelector('#now-artist').disabled = !track?.artist
+  nowPlayingDetail.disabled = !track?.album
+  for (const id of ['#mini-art', '#now-art']) {
+    document.querySelector(id).replaceChildren(...artwork(trackArtwork(track), '', true).childNodes)
+  }
+  for (const row of items.querySelectorAll('[data-track-id]'))
+    row.classList.toggle('is-current', row.dataset.trackId === track?.id)
+  updateControls()
   if (!track) {
     nowPlaying.textContent = 'Nothing playing'
     nowPlayingDetail.textContent = playback.queue.length ? 'Choose a queued track.' : 'Choose a track to begin.'
     return
   }
   nowPlaying.textContent = track.title || track.file
-  nowPlayingDetail.textContent = detail([track.artist, track.album], 'Unknown artist')
+  nowPlayingDetail.textContent = track.album || 'Unknown album'
 }
 
 const checkpointSession = () => {
@@ -187,6 +275,7 @@ const removeAt = (index) => {
 }
 
 const renderQueue = () => {
+  updateControls()
   const count = playback.queue.length
   queueCount.textContent = count ? `${count} track${count === 1 ? '' : 's'}` : 'Queue empty'
   clearQueueButton.hidden = count === 0
@@ -253,6 +342,8 @@ const playSelected = async () => {
     playbackError = true
     showPlaybackFeedback('Tap play to start audio.', [{ label: 'Play', action: playSelected }])
     return false
+  } finally {
+    updateControls()
   }
 }
 
@@ -315,6 +406,14 @@ const playAdjacent = async (transition, options) => {
   if (next === playback || next.currentIndex === null) return false
   await playAt(next.currentIndex, options)
   return true
+}
+
+const playPrevious = () => {
+  if (player.currentTime > 3 || playback.currentIndex === 0) {
+    seekTo(0)
+    return playSelected()
+  }
+  return playAdjacent(previousTrack)
 }
 
 const skipUnavailable = async () => {
@@ -417,14 +516,18 @@ const validateRestoredSession = async (catalogRevision) => {
   }
 }
 
-const itemButton = (primary, secondary, onClick) => {
+const itemButton = (primary, secondary, onClick, imageUrl = '', kind = '') => {
   const button = document.createElement('button')
-  button.className = 'item'
+  button.className = `item ${kind}`
+  button.type = 'button'
   const title = document.createElement('strong')
   title.textContent = primary
   const description = document.createElement('span')
   description.textContent = secondary
-  button.append(title, description)
+  const copy = document.createElement('span')
+  copy.className = 'item-copy'
+  copy.append(title, description)
+  button.append(artwork(imageUrl, kind === 'artist-item' ? 'artist-art' : ''), copy)
   button.addEventListener('click', onClick)
   return button
 }
@@ -435,17 +538,23 @@ const renderTracks = (tracks, append) => {
     ? [...browseTracks, ...tracks.slice(0, MAX_QUEUE_LENGTH - browseTracks.length)]
     : tracks.slice(0, MAX_QUEUE_LENGTH)
   browseTracks.slice(start).forEach((track, index) => {
-    items.append(
-      itemButton(
-        track.title || track.file,
-        detail([track.artist, track.album, track.duration], 'Unknown artist'),
-        () => {
-          playback = replaceQueue(playback, browseTracks)
-          playbackRevision = revision
-          runTransport(() => playAt(start + index))
-        }
-      )
+    const row = itemButton(
+      track.title || track.file,
+      detail([track.artist, track.album], 'Unknown artist'),
+      () => {
+        playback = replaceQueue(playback, browseTracks)
+        playbackRevision = revision
+        runTransport(() => playAt(start + index))
+      },
+      trackArtwork(track)
     )
+    row.dataset.trackId = track.id
+    row.classList.toggle('is-current', activeTrack?.id === track.id)
+    const duration = document.createElement('span')
+    duration.className = 'item-duration'
+    duration.textContent = track.duration
+    row.append(duration)
+    items.append(row)
   })
 }
 
@@ -461,7 +570,9 @@ const renderArtists = (artists) => {
           album = ''
           input.value = ''
           load()
-        }
+        },
+        '',
+        'artist-item'
       )
     )
   }
@@ -470,13 +581,19 @@ const renderArtists = (artists) => {
 const renderAlbums = (albums) => {
   for (const item of albums) {
     items.append(
-      itemButton(item.name, detail([item.artist, item.date, `${item.trackCount} tracks`], 'Unknown artist'), () => {
-        view = 'tracks'
-        artist = item.artistValue
-        album = item.value
-        input.value = ''
-        load()
-      })
+      itemButton(
+        item.name,
+        detail([item.artist, item.date], 'Unknown artist'),
+        () => {
+          view = 'tracks'
+          artist = item.artistValue
+          album = item.value
+          input.value = ''
+          load()
+        },
+        `/api/artwork?${new URLSearchParams({ album: item.value, ...(item.artistValue ? { artist: item.artistValue } : {}) })}`,
+        'album-item'
+      )
     )
   }
 }
@@ -550,6 +667,7 @@ for (const button of viewButtons) {
     album = ''
     input.value = ''
     load()
+    window.scrollTo(0, 0)
   })
 }
 
@@ -560,6 +678,50 @@ form.addEventListener('submit', (event) => {
 libraryRetry.addEventListener('click', () => load())
 loadMore.addEventListener('click', () => load({ append: true }))
 clearQueueButton.addEventListener('click', clearDeviceQueue)
+document.querySelector('#open-player').addEventListener('click', () => playerPanel.showModal())
+document.querySelector('#close-player').addEventListener('click', () => playerPanel.close())
+document.querySelector('#show-queue').addEventListener('click', () => {
+  const queue = document.querySelector('#queue-panel')
+  queue.open = true
+  queue.scrollIntoView({ block: 'start' })
+  queue.querySelector('summary').focus()
+})
+for (const button of transportButtons) {
+  button.addEventListener('click', () =>
+    runTransport(() => {
+      if (button.dataset.transport === 'next') return playAdjacent(nextTrack)
+      if (button.dataset.transport === 'previous') return playPrevious()
+      return player.paused ? playSelected() : player.pause()
+    })
+  )
+}
+seek.addEventListener('input', () => {
+  scrubbing = true
+  document.querySelector('#elapsed').textContent = formatTime((Number(seek.value) / 100) * player.duration)
+})
+seek.addEventListener('change', () => {
+  scrubbing = false
+  seekTo((Number(seek.value) / 100) * player.duration)
+  updateControls()
+})
+for (const event of ['blur', 'pointercancel']) {
+  seek.addEventListener(event, () => {
+    scrubbing = false
+    updateControls()
+  })
+}
+const browseCurrent = (target) => {
+  if (!activeTrack) return
+  playerPanel.close()
+  view = target === 'artist' ? 'albums' : 'tracks'
+  artist = target === 'artist' ? activeTrack.artist : ''
+  album = target === 'album' ? activeTrack.album : ''
+  input.value = ''
+  load()
+  window.scrollTo(0, 0)
+}
+document.querySelector('#now-artist').addEventListener('click', () => browseCurrent('artist'))
+nowPlayingDetail.addEventListener('click', () => browseCurrent('album'))
 back.addEventListener('click', () => {
   if (album) {
     view = 'albums'
@@ -588,8 +750,11 @@ player.addEventListener('playing', () => {
   showPlaybackFeedback(`Playing ${selectedTrackLabel()}.`)
   updateMediaPlaybackState()
   updateMediaPosition()
+  updateControls()
+  document.querySelector('#mini-detail').textContent = activeTrack?.artist || 'Unknown artist'
 })
 player.addEventListener('pause', () => {
+  updateControls()
   updateMediaPlaybackState()
   checkpointSession()
   if (!playbackError && !player.ended && player.currentSrc) {
@@ -605,7 +770,9 @@ player.addEventListener('ended', () => {
   })
 })
 player.addEventListener('durationchange', updateMediaPosition)
+player.addEventListener('durationchange', updateControls)
 player.addEventListener('timeupdate', () => {
+  updateControls()
   const positionMilliseconds = Math.max(0, Math.floor(player.currentTime * 1_000))
   const mediaBucket = Math.floor(positionMilliseconds / MEDIA_POSITION_UPDATE_MILLISECONDS)
   if (mediaBucket !== lastMediaPositionBucket) {
@@ -623,7 +790,7 @@ if ('mediaSession' in navigator) {
   const handlers = {
     play: () => runTransport(playSelected),
     pause: () => player.pause(),
-    previoustrack: () => runTransport(() => playAdjacent(previousTrack)),
+    previoustrack: () => runTransport(playPrevious),
     nexttrack: () => runTransport(() => playAdjacent(nextTrack)),
     seekbackward: ({ seekOffset = 10 } = {}) => seekTo(player.currentTime - seekOffset),
     seekforward: ({ seekOffset = 10 } = {}) => seekTo(player.currentTime + seekOffset),
@@ -653,6 +820,7 @@ window.addEventListener('online', () => {
 })
 
 restoreDeviceSession()
+updatePlayingCopy(activeTrack)
 renderQueue()
 load()
 

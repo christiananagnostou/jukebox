@@ -394,6 +394,8 @@ fn router(state: HttpState) -> Router {
         .route("/api/tracks", get(list_tracks))
         .route("/api/artists", get(list_artists))
         .route("/api/albums", get(list_albums))
+        .route("/api/artwork", get(album_artwork))
+        .route("/api/tracks/{id}/artwork", get(track_artwork))
         .route("/api/tracks/{id}/stream", get(stream_track))
         .with_state(state)
 }
@@ -561,6 +563,92 @@ fn api_json<T: Serialize>(value: T) -> Result<Response, ApiError> {
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     Ok(response)
+}
+
+#[derive(Deserialize)]
+struct ArtworkQuery {
+    album: String,
+    artist: Option<String>,
+}
+
+async fn album_artwork(
+    State(state): State<HttpState>,
+    Query(query): Query<ArtworkQuery>,
+) -> Result<Response, ApiError> {
+    let path = sqlx::query_scalar::<_, String>(
+        "SELECT visualsPath FROM songs WHERE album = ?
+         AND (? IS NULL OR artist = ?) AND visualsPath <> ''
+         AND availability = 'available'
+         AND (root_id IS NULL OR root_id IN (SELECT id FROM library_roots WHERE enabled = 1))
+         ORDER BY visualsPath LIMIT 1",
+    )
+    .bind(query.album)
+    .bind(&query.artist)
+    .bind(&query.artist)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| ApiError::internal())?
+    .ok_or_else(ApiError::not_found)?;
+    serve_artwork(&state, &path).await
+}
+
+async fn track_artwork(
+    State(state): State<HttpState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let path = sqlx::query_scalar::<_, String>(
+        "SELECT visualsPath FROM songs WHERE id = ? AND availability = 'available'
+         AND (root_id IS NULL OR root_id IN (SELECT id FROM library_roots WHERE enabled = 1))",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| ApiError::internal())?
+    .ok_or_else(ApiError::not_found)?;
+    serve_artwork(&state, &path).await
+}
+
+async fn serve_artwork(state: &HttpState, path: &str) -> Result<Response, ApiError> {
+    let root = match &state.music_root {
+        MusicRootSource::App(app) => app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| ApiError::internal())?
+            .join("Jukebox")
+            .join("art"),
+        #[cfg(test)]
+        MusicRootSource::Fixed(root) => PathBuf::from(root).join("art"),
+    };
+    let approved = approved_track_path(&root.to_string_lossy(), path).await?;
+    let file = File::open(approved)
+        .await
+        .map_err(|_| ApiError::not_found())?;
+    let mut bytes = Vec::new();
+    file.take(16 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|_| ApiError::not_found())?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(ApiError::not_found());
+    }
+    let media_type = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png"
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        "image/jpeg"
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        "image/webp"
+    } else {
+        return Err(ApiError::not_found());
+    };
+    Ok((
+        [
+            (CONTENT_TYPE, media_type),
+            (CACHE_CONTROL, "private, max-age=300"),
+            (HeaderName::from_static("x-content-type-options"), "nosniff"),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 async fn stream_track(
@@ -895,6 +983,61 @@ mod tests {
             });
 
             let shell = request(&app, "/", None).await;
+            assert_eq!(
+                request(&app, "/api/tracks", None).await.status(),
+                StatusCode::OK
+            );
+            let art = root.join("art").join("cover.png");
+            std::fs::create_dir_all(art.parent().expect("art directory")).expect("create art");
+            std::fs::write(&art, ICON_192).expect("write art");
+            sqlx::query("UPDATE songs SET visualsPath = ? WHERE id = 'percent'")
+                .bind(art.to_string_lossy().as_ref())
+                .execute(&pool)
+                .await
+                .expect("set art");
+            let cover = request(&app, "/api/tracks/percent/artwork", None).await;
+            assert_eq!(cover.status(), StatusCode::OK);
+            assert_eq!(cover.headers()[CONTENT_TYPE], "image/png");
+            assert_eq!(response_bytes(cover).await, ICON_192);
+            assert_eq!(
+                request(&app, "/api/artwork?album=B&artist=Zulu", None)
+                    .await
+                    .status(),
+                StatusCode::OK
+            );
+            assert_eq!(
+                request(&app, "/api/tracks/missing/artwork", None)
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+            sqlx::query("UPDATE songs SET visualsPath = ? WHERE id = 'percent'")
+                .bind(outside.to_string_lossy().as_ref())
+                .execute(&pool)
+                .await
+                .expect("set outside art");
+            assert_eq!(
+                request(&app, "/api/tracks/percent/artwork", None)
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+            assert_eq!(
+                request(&app, "/api/artwork?album=B", None).await.status(),
+                StatusCode::NOT_FOUND
+            );
+            std::fs::write(&art, b"<html>not an image</html>").expect("write invalid art");
+            sqlx::query("UPDATE songs SET visualsPath = ? WHERE id = 'percent'")
+                .bind(art.to_string_lossy().as_ref())
+                .execute(&pool)
+                .await
+                .expect("set invalid art");
+            assert_eq!(
+                request(&app, "/api/tracks/percent/artwork", None)
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
             assert_eq!(shell.status(), StatusCode::OK);
             assert_eq!(shell.headers()[CACHE_CONTROL], "no-store");
             assert!(shell.headers().contains_key("content-security-policy"));
@@ -933,7 +1076,7 @@ mod tests {
             assert_eq!(escaped_ids, vec!["percent"]);
 
             let ordered_search = request(&app, "/api/tracks?limit=100", None).await;
-            assert_eq!(ordered_search.headers()[CATALOG_REVISION_HEADER], "4");
+            assert_eq!(ordered_search.headers()[CATALOG_REVISION_HEADER], "7");
             assert!(!ordered_search.headers().contains_key(NEXT_CURSOR_HEADER));
             let ordered_json: Value = serde_json::from_slice(&response_bytes(ordered_search).await)
                 .expect("ordered JSON");
@@ -1186,7 +1329,7 @@ mod tests {
         assert_eq!(png_dimensions(ICON_192), (192, 192));
         assert_eq!(png_dimensions(ICON_512), (512, 512));
         assert!(!SERVICE_WORKER.contains("/api/"));
-        assert!(SERVICE_WORKER.contains("jukebox-shell-v5"));
+        assert!(SERVICE_WORKER.contains("jukebox-shell-v6"));
         assert!(SERVICE_WORKER.contains("'/player-core.js'"));
         assert!(SERVICE_WORKER.contains("new Request(path, { cache: 'reload' })"));
         assert!(SERVICE_WORKER.contains("new Request(event.request, { cache: 'reload' })"));
