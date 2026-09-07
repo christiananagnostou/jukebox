@@ -63,10 +63,10 @@ Album artwork uses an adaptive grid with 140px minimum columns and 16px column
 gaps; at 700px and above, use four columns. Songs and artists use compact rows.
 The dock places the mini-player immediately above Songs, Albums, and Artists.
 
-Now Playing fills the mobile viewport and scrolls when needed. Its content is
+Now Playing is a bottom-anchored sheet with a small safe-area gap above it and scrolls when needed. Its content is
 centered within 480px; artwork scales with available height to retain access to
 transport controls on small screens. At wider widths, the player uses a centered
-520px dialog. Preserve usable layouts down to 320px.
+520px bottom sheet. Preserve usable layouts down to 320px.
 
 Albums is the initial library view. Navigation to a collection or queue scrolls
 smoothly; reduced-motion preferences disable these transitions.
@@ -91,9 +91,14 @@ transport controls. Use consistent outlined SVG icons.
   Its title/artwork region opens Now Playing.
 - Now Playing shows artwork, title, artist and album links, seek position and
   times, previous/play-pause/next, playback feedback, and the queue.
-- The player enters as an interruptible bottom sheet (340ms ease-out), dismisses
-  faster (220ms), and supports dragging its handle down. Keep native dialog focus
-  and Escape behavior. Reduced motion removes the animated transition.
+- The player enters as an interruptible bottom sheet (420ms), dismisses faster
+  (300ms), and uses a 44px drag handle. Motion and scrim opacity follow the finger;
+  recent release velocity and projected distance decide whether to dismiss or
+  settle back. Use the CSS motion tokens, not component-local timing values.
+- Keep the native modal through the visual exit, with inactive closing controls,
+  a sticky header, internal scrolling, and background scroll locking. Restore
+  the exact opener and page position after dismissal. Escape and backdrop taps
+  dismiss; reduced motion uses a short 120ms fade rather than spatial movement.
 - The seek bar retains its thin visual track within a 54px pointer target;
   dragging anywhere in that target previews position and commits on release.
 - Saving a song offline is explicit and removable. Keep storage bounded and

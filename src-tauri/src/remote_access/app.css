@@ -19,6 +19,13 @@
   --danger: #efa0a8;
   --control-height: 44px;
   --dock-height: 146px;
+  --sheet-enter-ms: 420;
+  --sheet-exit-ms: 300;
+  --sheet-reduced-ms: 120;
+  --sheet-easing: cubic-bezier(0.32, 0.72, 0, 1);
+  --sheet-radius: 20px;
+  --sheet-header-gap: 24px;
+  --sheet-scrim: color-mix(in srgb, var(--canvas) 72%, transparent);
   background: var(--canvas);
   color: var(--text);
   scrollbar-color: var(--border) var(--canvas);
@@ -351,6 +358,8 @@ nav button[aria-pressed='true'] {
   color: var(--primary-hover);
 }
 dialog {
+  position: fixed;
+  inset: 0;
   padding: 0;
   margin: 0;
   width: 100%;
@@ -358,18 +367,33 @@ dialog {
   height: 100dvh;
   max-height: none;
   border: 0;
-  background: var(--canvas);
+  background: transparent;
   color: var(--text);
-  overflow-y: auto;
+  overflow: hidden;
+}
+.sheet-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--sheet-scrim);
+}
+.player-sheet {
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(100% - max(12px, env(safe-area-inset-top)));
+  overflow: hidden;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
   overscroll-behavior: contain;
-  border-radius: 18px 18px 0 0;
 }
 #sheet-handle {
-  height: 20px;
+  height: var(--control-height);
   display: grid;
   place-items: center;
   touch-action: none;
   cursor: grab;
+  user-select: none;
 }
 #sheet-handle span {
   width: 36px;
@@ -377,7 +401,7 @@ dialog {
   border-radius: 2px;
   background: var(--muted);
 }
-#sheet-handle:active {
+#sheet-handle[data-dragging] {
   cursor: grabbing;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -387,18 +411,34 @@ dialog {
   }
 }
 dialog::backdrop {
-  background: var(--canvas);
+  background: transparent;
 }
 .player-screen {
   width: min(100%, 480px);
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scroll-padding-top: calc(var(--control-height) * 2 + var(--sheet-header-gap));
   margin: auto;
-  padding: max(12px, env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  padding: 0 24px calc(24px + env(safe-area-inset-bottom));
+}
+.sheet-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--canvas);
+  margin-inline: -24px;
+  padding-inline: 24px;
+}
+#player-heading:focus {
+  outline: none;
 }
 .player-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 0 -10px 24px;
+  margin: 0 -10px var(--sheet-header-gap);
 }
 .player-heading h2 {
   font-size: 15px;
@@ -488,8 +528,8 @@ dialog::backdrop {
   background: var(--primary-hover);
 }
 @media (max-height: 700px) {
-  .player-heading {
-    margin-bottom: 12px;
+  .player-screen {
+    --sheet-header-gap: 12px;
   }
   .large-art {
     max-width: clamp(120px, calc(100dvh - 350px), 100%);
@@ -612,15 +652,10 @@ audio {
   #items[data-layout='albums'] {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  dialog {
+  .player-sheet {
     width: 520px;
     max-height: 94dvh;
-    margin: auto;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-  }
-  dialog::backdrop {
-    background: color-mix(in srgb, var(--canvas) 80%, transparent);
+    margin-inline: auto;
   }
 }
 @media (max-width: 360px) {
@@ -631,6 +666,10 @@ audio {
     padding-inline: 16px;
   }
   .player-screen {
+    padding-inline: 20px;
+  }
+  .sheet-header {
+    margin-inline: -20px;
     padding-inline: 20px;
   }
 }
