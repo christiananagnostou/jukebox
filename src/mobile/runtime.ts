@@ -137,10 +137,11 @@ export class MobileRuntime {
         this.player.feedback('Offline mode unavailable', 'Reconnect and reload to enable offline access.')
       })
   }
-  navigate(view: View, artist = '', album = '') {
-    void this.sheet.close()
+  async navigate(view: View, artist = '', album = '') {
+    const request = this.library.navigate(view, artist, album)
+    await this.sheet.close()
     window.scrollTo({ top: 0, behavior: scrollBehavior() })
-    return this.library.navigate(view, artist, album)
+    return request
   }
   search() {
     window.scrollTo({ top: 0, behavior: scrollBehavior() })

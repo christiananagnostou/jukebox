@@ -16,7 +16,7 @@ export const MiniPlayer = component$(() => {
           aria-label="Open Now Playing"
           aria-haspopup="dialog"
           disabled={!player.ready}
-          onClick$={() => runtime.value?.sheet.open()}
+          onClick$={(_, element) => runtime.value?.sheet.open(element)}
         >
           <Artwork id="mini-art" url={trackArtwork(player.active)} eager />
           <span class="playing-copy">
@@ -123,117 +123,124 @@ export const NowPlaying = component$<{
   const position = player.scrubbing ? (player.preview / 100) * player.duration : player.position
   return (
     <dialog id="now-playing-panel" aria-labelledby="player-heading" ref={refs.panel}>
-      <div class="player-screen">
-        <div id="sheet-handle" aria-hidden="true" ref={refs.handle}>
-          <span />
-        </div>
-        <div class="player-heading">
-          <button
-            id="close-player"
-            class="icon-button"
-            type="button"
-            aria-label="Close Now Playing"
-            onClick$={() => runtime.value?.sheet.close()}
-          >
-            <Icon name="down" />
-          </button>
-          <h2 id="player-heading" aria-live="polite" aria-atomic="true">
-            {player.feedback.heading}
-          </h2>
-          <button
-            id="show-queue"
-            class="icon-button"
-            type="button"
-            aria-label="Show queue"
-            onClick$={() => runtime.value?.showQueue()}
-          >
-            <Icon name="queue" />
-          </button>
-        </div>
-        <div class="playback-feedback" hidden={!player.feedback.message && !player.feedback.actions.length}>
-          <p id="playback-message" role="status" aria-atomic="true" hidden={!player.feedback.message}>
-            {player.feedback.message}
-          </p>
-          <div id="playback-actions">
-            {player.feedback.actions.map((action) => (
+      <div class="sheet-overlay" data-sheet-overlay aria-hidden="true" />
+      <div class="player-sheet" data-sheet-surface>
+        <div class="player-screen">
+          <div class="sheet-header">
+            <div id="sheet-handle" aria-hidden="true" ref={refs.handle}>
+              <span />
+            </div>
+            <div class="player-heading">
               <button
-                key={action}
+                id="close-player"
+                class="icon-button"
                 type="button"
-                class={`quiet-action ${action === 'remove' ? 'danger-action' : ''}`}
-                data-player-action="recover"
-                data-recovery={action}
+                aria-label="Close Now Playing"
+                onClick$={() => runtime.value?.sheet.close()}
               >
-                {action === 'retry' ? 'Retry' : action === 'skip' ? 'Skip' : 'Remove'}
+                <Icon name="down" />
               </button>
-            ))}
+              <h2 id="player-heading" tabIndex={-1} aria-live="polite" aria-atomic="true">
+                {player.feedback.heading}
+              </h2>
+              <button
+                id="show-queue"
+                class="icon-button"
+                type="button"
+                aria-label="Show queue"
+                onClick$={() => runtime.value?.showQueue()}
+              >
+                <Icon name="queue" />
+              </button>
+            </div>
           </div>
-        </div>
-        <Artwork id="now-art" class="large-art" url={trackArtwork(player.active)} eager />
-        <div class="playing-copy full-copy" aria-live="polite">
-          <strong id="now-playing">
-            {player.active ? player.active.title || player.active.file : 'Nothing playing'}
-          </strong>
-          <button
-            id="now-artist"
-            class="text-link"
-            type="button"
-            disabled={!player.active?.artist}
-            onClick$={() => {
-              if (player.active) return runtime.value?.navigate('albums', player.active.artist)
-            }}
-          >
-            {player.active?.artist || ''}
-          </button>
-          <button
-            id="now-playing-detail"
-            class="text-link"
-            type="button"
-            disabled={!player.active?.album}
-            onClick$={() => {
-              if (player.active) return runtime.value?.navigate('tracks', '', player.active.album)
-            }}
-          >
-            {player.active?.album || (player.active ? 'Unknown album' : 'Choose a song to begin')}
-          </button>
-        </div>
-        <div class="seek-control">
-          <input
-            id="seek"
-            ref={refs.seek}
-            type="range"
-            min={0}
-            max={100}
-            step={0.1}
-            value={player.scrubbing ? player.preview : player.duration ? (player.position / player.duration) * 100 : 0}
-            aria-label="Playback position"
-            disabled={!player.ready || !player.active || !player.duration}
-          />
-          <div class="time-labels">
-            <span id="elapsed">{formatTime(position)}</span>
-            <span id="duration">{formatTime(player.duration)}</span>
+          <div class="playback-feedback" hidden={!player.feedback.message && !player.feedback.actions.length}>
+            <p id="playback-message" role="status" aria-atomic="true" hidden={!player.feedback.message}>
+              {player.feedback.message}
+            </p>
+            <div id="playback-actions">
+              {player.feedback.actions.map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  class={`quiet-action ${action === 'remove' ? 'danger-action' : ''}`}
+                  data-player-action="recover"
+                  data-recovery={action}
+                >
+                  {action === 'retry' ? 'Retry' : action === 'skip' ? 'Skip' : 'Remove'}
+                </button>
+              ))}
+            </div>
           </div>
+          <Artwork id="now-art" class="large-art" url={trackArtwork(player.active)} eager />
+          <div class="playing-copy full-copy" aria-live="polite">
+            <strong id="now-playing">
+              {player.active ? player.active.title || player.active.file : 'Nothing playing'}
+            </strong>
+            <button
+              id="now-artist"
+              class="text-link"
+              type="button"
+              disabled={!player.active?.artist}
+              onClick$={() => {
+                if (player.active) return runtime.value?.navigate('albums', player.active.artist)
+              }}
+            >
+              {player.active?.artist || ''}
+            </button>
+            <button
+              id="now-playing-detail"
+              class="text-link"
+              type="button"
+              disabled={!player.active?.album}
+              onClick$={() => {
+                if (player.active) return runtime.value?.navigate('tracks', '', player.active.album)
+              }}
+            >
+              {player.active?.album || (player.active ? 'Unknown album' : 'Choose a song to begin')}
+            </button>
+          </div>
+          <div class="seek-control">
+            <input
+              id="seek"
+              ref={refs.seek}
+              type="range"
+              min={0}
+              max={100}
+              step={0.1}
+              value={
+                player.scrubbing ? player.preview : player.duration ? (player.position / player.duration) * 100 : 0
+              }
+              aria-label="Playback position"
+              disabled={!player.ready || !player.active || !player.duration}
+            />
+            <div class="time-labels">
+              <span id="elapsed">{formatTime(position)}</span>
+              <span id="duration">{formatTime(player.duration)}</span>
+            </div>
+          </div>
+          <div class="transport" aria-label="Playback controls">
+            <TransportButton action="previous" />
+            <TransportButton action="toggle" primary />
+            <TransportButton action="next" />
+          </div>
+          <button
+            id="save-offline"
+            class="quiet-action"
+            type="button"
+            disabled={!player.active || player.offline === 'saving' || player.offline === 'unavailable'}
+            onClick$={() => runtime.value?.player.toggleOffline()}
+          >
+            {player.offline === 'saved'
+              ? 'Remove offline copy'
+              : player.offline === 'saving'
+                ? 'Saving…'
+                : player.offline === 'unavailable'
+                  ? 'Offline storage unavailable'
+                  : 'Save offline'}
+          </button>
+          <Queue queueRef={refs.queue} />
         </div>
-        <div class="transport" aria-label="Playback controls">
-          <TransportButton action="previous" />
-          <TransportButton action="toggle" primary />
-          <TransportButton action="next" />
-        </div>
-        <button
-          id="save-offline"
-          class="quiet-action"
-          type="button"
-          disabled={!player.active || player.offline === 'saving' || player.offline === 'unavailable'}
-          onClick$={() => runtime.value?.player.toggleOffline()}
-        >
-          {player.offline === 'saved'
-            ? 'Remove offline copy'
-            : player.offline === 'saving'
-              ? 'Saving…'
-              : player.offline === 'unavailable'
-                ? 'Offline storage unavailable'
-                : 'Save offline'}
-        </button>
-        <Queue queueRef={refs.queue} />
       </div>
     </dialog>
   )
