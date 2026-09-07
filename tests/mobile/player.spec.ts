@@ -29,9 +29,7 @@ test('Qwik resumes under strict CSP, navigates without replacing audio, and reta
   await expect(page.locator('#mini-title')).toHaveText('Song 2')
   await page.locator('#open-player').click()
   await page.waitForFunction(
-    () =>
-      document.querySelector('dialog')!.open &&
-      document.querySelector('dialog')!.getAnimations({ subtree: true }).length === 0
+    () => document.querySelector('dialog')!.open && document.querySelector('dialog')!.getAnimations().length === 0
   )
   await expect(page.locator('#now-playing')).toHaveText('Song 2')
   const seek = await page.locator('#seek').boundingBox()
