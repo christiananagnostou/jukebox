@@ -1,19 +1,20 @@
 import { AUDIO_CACHE, cachedAudioResponse, trimCache } from './data-cache.js'
 
-const CACHE_NAME = 'jukebox-shell-v7'
+/* MOBILE_SHELL */
+const buildShell = typeof BUILD_SHELL === 'undefined' ? null : BUILD_SHELL
+const CACHE_NAME = `jukebox-shell-${buildShell?.version || 'development'}`
 const LIBRARY_CACHE = 'jukebox-library-v1'
 const ART_CACHE = 'jukebox-art-v1'
-const SHELL_PATHS = new Set([
-  '/',
-  '/app.css',
-  '/app.js',
-  '/player-core.js',
-  '/player-sheet.js',
-  '/data-cache.js',
-  '/manifest.webmanifest',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-])
+const SHELL_PATHS = new Set(
+  buildShell?.paths || [
+    '/',
+    '/app.css',
+    '/data-cache.js',
+    '/manifest.webmanifest',
+    '/icons/icon-192.png',
+    '/icons/icon-512.png',
+  ]
+)
 const OWNED_CACHES = new Set([CACHE_NAME, LIBRARY_CACHE, ART_CACHE, AUDIO_CACHE])
 
 self.addEventListener('install', (event) => {
@@ -28,11 +29,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) =>
-        Promise.all(
-          keys.filter((key) => key.startsWith('jukebox-') && !OWNED_CACHES.has(key)).map((key) => caches.delete(key))
+      .then((keys) => {
+        // Keep one previous shell for tabs still running its lazy Qwik modules.
+        const previous = keys.filter((key) => key.startsWith('jukebox-shell-') && key !== CACHE_NAME).at(-1)
+        return Promise.all(
+          keys
+            .filter((key) => key.startsWith('jukebox-') && !OWNED_CACHES.has(key) && key !== previous)
+            .map((key) => caches.delete(key))
         )
-      )
+      })
       .then(() => self.clients.claim())
   )
 })
@@ -79,6 +84,21 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return
   if (SHELL_PATHS.has(url.pathname)) {
     event.respondWith(networkWithFallback(event.request, CACHE_NAME, SHELL_PATHS.size))
+  } else if (/^\/(build|assets)\/[A-Za-z0-9_-]+\.(js|mjs|json|css)$/.test(url.pathname)) {
+    event.respondWith(
+      (async () => {
+        // Only fall back through our own retained shells, never another app's caches.
+        try {
+          for (const name of (await caches.keys()).filter((key) => key.startsWith('jukebox-shell-')).reverse()) {
+            const saved = await (await caches.open(name)).match(event.request)
+            if (saved) return saved
+          }
+        } catch {
+          /* Storage unavailable; normal online loading can still work. */
+        }
+        return fetch(event.request)
+      })()
+    )
   } else if (/^\/api\/(tracks|albums|artists)$/.test(url.pathname)) {
     event.respondWith(networkWithFallback(event.request, LIBRARY_CACHE, 40, true))
   } else if (url.pathname === '/api/artwork' || /^\/api\/tracks\/[^/]+\/artwork$/.test(url.pathname)) {

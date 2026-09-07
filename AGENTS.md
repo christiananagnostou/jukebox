@@ -29,6 +29,7 @@ Frontend build:
 - npm run build
 - npm run build.client # used by qwik build
 - npm run build.server # used by qwik build
+- npm run build.mobile # statically rendered private PWA embedded by Rust
 
 Typecheck:
 
@@ -62,12 +63,16 @@ Desktop bundle:
 
 Rust only:
 
+- npm run build.mobile # required before direct Cargo commands on a clean checkout
 - cd src-tauri && cargo build
 
 ## Tests
 
-- No test runner configured yet.
-- Single-test commands are not available.
+- npm test # Vitest unit, controller, component, and service-worker tests
+- npx vitest run path/to/file.test.ts # one test file
+- npx playwright install chromium webkit # compiled mobile browser prerequisites
+- npm run test.mobile # synthetic-library playback/offline tests in both engines
+- npm run check:rust # builds mobile assets, then Rust format/tests/Clippy
 
 ## CI Parity (GitHub Actions)
 
@@ -77,7 +82,9 @@ Rust only:
 - npm run lint
 - npm run build.types
 - npm run build
-- npm run tauri build (Ubuntu + macOS)
+- npm run test.mobile (Web job, Chromium + WebKit)
+- npm run build.mobile before direct Cargo tests or lint
+- npm run tauri build (Ubuntu + macOS + Windows)
 
 ## Code Style
 

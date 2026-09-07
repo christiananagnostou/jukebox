@@ -90,5 +90,11 @@ export const createPlayerSheet = (panel, handle) => {
   }
   handle.addEventListener('pointerup', release)
   handle.addEventListener('pointercancel', release)
-  return { open, close }
+  const dispose = () => {
+    ++serial
+    animation?.cancel()
+    drag = null
+    if (panel.open) panel.close()
+  }
+  return { open, close, dispose }
 }

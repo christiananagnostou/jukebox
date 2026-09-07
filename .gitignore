@@ -3,6 +3,10 @@
 /lib
 /lib-types
 /server
+/.mobile-dist
+/.mobile-ssr
+/test-results
+/playwright-report
 
 # Development
 node_modules

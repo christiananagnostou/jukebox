@@ -108,8 +108,9 @@ form {
   border-radius: 10px;
   background: var(--surface);
 }
-form > span {
+form > svg {
   color: var(--muted);
+  flex-shrink: 0;
 }
 input[type='search'] {
   min-width: 0;
@@ -402,6 +403,9 @@ dialog::backdrop {
 .player-heading h2 {
   font-size: 15px;
   letter-spacing: 0;
+  min-width: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .large-art {
   width: 100%;
@@ -531,12 +535,17 @@ dialog::backdrop {
 .playback-feedback {
   font-size: 13px;
   color: var(--muted);
+  margin: -12px 0 20px;
+  text-align: center;
 }
-#playback-status {
+#playback-message {
   margin: 0;
+  line-height: 18px;
 }
 #playback-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 .quiet-action {
