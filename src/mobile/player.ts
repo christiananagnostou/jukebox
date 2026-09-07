@@ -23,6 +23,7 @@ export const SESSION_KEY = 'jukebox.private-player.session'
 export class PlayerController {
   private cleanups: (() => void)[] = []
   private epoch = 0
+  private playAttempt = 0
   private endedHandled = false
   private failed = false
   private restored = false
@@ -45,6 +46,7 @@ export class PlayerController {
       this.mediaState()
     })
     this.listen(audio, 'pause', () => {
+      if (audio.paused) ++this.playAttempt
       this.sync()
       this.checkpoint()
       this.mediaState()
@@ -144,11 +146,12 @@ export class PlayerController {
   async play(): Promise<boolean> {
     if (!this.state.active || this.destroyed) return false
     const epoch = this.epoch
+    const attempt = ++this.playAttempt
     try {
       await this.audio.play()
-      return epoch === this.epoch
+      return epoch === this.epoch && attempt === this.playAttempt && !this.destroyed
     } catch {
-      if (epoch === this.epoch && !this.destroyed) {
+      if (epoch === this.epoch && attempt === this.playAttempt && !this.destroyed) {
         this.failed = true
         this.feedback('Ready to play', 'Tap the play control to start audio.')
       }
@@ -159,7 +162,11 @@ export class PlayerController {
   }
   toggle() {
     if (this.audio.paused) void this.play()
-    else this.audio.pause()
+    else this.pause()
+  }
+  pause() {
+    ++this.playAttempt
+    this.audio.pause()
   }
   select(tracks: PlayerTrack[], index: number, revision: string) {
     this.restored = false
@@ -304,7 +311,7 @@ export class PlayerController {
   }
   private async classifyFailure(track: PlayerTrack, epoch: number) {
     const availability = await this.probe(track)
-    if (this.destroyed || epoch !== this.epoch) return
+    if (this.destroyed || epoch !== this.epoch || !this.failed) return
     this.feedback(
       availability === 'unavailable' ? 'Track unavailable' : navigator.onLine ? 'Playback interrupted' : 'Offline',
       '',
@@ -375,7 +382,7 @@ export class PlayerController {
       play: () => {
         void this.play()
       },
-      pause: () => this.audio.pause(),
+      pause: () => this.pause(),
       nexttrack: () => {
         void this.next()
       },

@@ -98,6 +98,40 @@ describe('persistent mobile audio controller', () => {
     expect(state.active?.id).toBe('two')
     expect(state.feedback.heading).toBe('Now playing')
   })
+  it('does not turn an intentional pause into an error when WebKit rejects pending play', async () => {
+    start()
+    let reject!: (error: Error) => void
+    vi.mocked(audio.play).mockImplementationOnce(() => {
+      paused = false
+      return new Promise((_, fail) => {
+        reject = fail
+      })
+    })
+    const pending = controller.select(tracks, 0, '1')
+    controller.toggle()
+    reject(new DOMException('Playback was aborted by pause', 'AbortError'))
+    expect(await pending).toBe(false)
+    expect(state.paused).toBe(true)
+    expect(state.feedback).toEqual({ heading: 'Now playing', message: '', actions: [] })
+  })
+  it('ignores an old failure probe after the same track successfully resumes', async () => {
+    let resolve!: (response: Response) => void
+    start(
+      vi.fn<typeof fetch>().mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done
+          })
+      )
+    )
+    await controller.select(tracks, 0, '1')
+    audio.dispatchEvent(new Event('error'))
+    await controller.play()
+    resolve(new Response('', { status: 404 }))
+    await settle()
+    expect(state.paused).toBe(false)
+    expect(state.feedback.actions).toEqual([])
+  })
   it('ignores a late unavailable probe after the track changes', async () => {
     let resolve!: (response: Response) => void
     start(
