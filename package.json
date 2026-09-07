@@ -16,6 +16,7 @@
     "check:desktop-security": "node scripts/check-desktop-security.mjs",
     "check:public-source": "node scripts/check-public-source.mjs",
     "check:rust": "npm run build.mobile && cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check && cargo test --locked --manifest-path src-tauri/Cargo.toml && cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "predev": "npm run build.mobile",
     "dev": "vite --mode ssr",
     "fmt": "prettier --write .",
     "fmt.check": "prettier --check .",

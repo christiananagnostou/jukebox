@@ -33,7 +33,7 @@ the mobile UI and service worker; navigation never remounts the audio element.
 `npm run build.mobile` statically renders the shell and writes `.mobile-dist/`.
 The Rust build embeds an allowlisted asset table, so no Node server is required
 at runtime. Run this command before direct `cargo build` or `cargo test`; the
-normal frontend and packaging builds include it automatically. The service
+normal frontend, development startup, and packaging builds include it automatically. The service
 worker precaches all Qwik runtime chunks and retains one previous shell for
 already-open tabs. Executable bootstrap scripts remain external under the
 existing strict CSP.
