@@ -61,7 +61,7 @@ export class PlayerController {
       if (state.active) void this.classifyFailure(state.active, this.epoch)
     })
     this.listen(audio, 'ended', () => {
-      if (this.endedHandled) return
+      if (this.endedHandled || !audio.ended) return
       this.endedHandled = true
       const next = endTrack(state.queue)
       if (next === state.queue || next.currentIndex === null) this.feedback('End of queue')

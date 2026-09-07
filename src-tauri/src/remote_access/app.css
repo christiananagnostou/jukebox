@@ -108,8 +108,9 @@ form {
   border-radius: 10px;
   background: var(--surface);
 }
-form > span {
+form > svg {
   color: var(--muted);
+  flex-shrink: 0;
 }
 input[type='search'] {
   min-width: 0;

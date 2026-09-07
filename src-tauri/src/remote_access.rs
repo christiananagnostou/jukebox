@@ -6,7 +6,7 @@ use crate::library::{
 };
 use crate::settings::{save_settings, AppState};
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{OriginalUri, Path, Query, State};
 use axum::http::header::{
     ACCEPT_RANGES, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE,
 };
@@ -27,14 +27,12 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::io::ReaderStream;
 
-const INDEX_HTML: &str = include_str!("remote_access/index.html");
+const INDEX_HTML: &str = include_str!("../../.mobile-dist/index.html");
 const APP_CSS: &str = include_str!("remote_access/app.css");
-const APP_JS: &str = include_str!("remote_access/app.js");
-const PLAYER_CORE_JS: &str = include_str!("remote_access/player-core.js");
-const PLAYER_SHEET_JS: &str = include_str!("remote_access/player-sheet.js");
 const DATA_CACHE_JS: &str = include_str!("remote_access/data-cache.js");
 const MANIFEST: &str = include_str!("remote_access/manifest.webmanifest");
-const SERVICE_WORKER: &str = include_str!("remote_access/sw.js");
+const SERVICE_WORKER: &str = include_str!("../../.mobile-dist/sw.js");
+include!(concat!(env!("OUT_DIR"), "/mobile_assets.rs"));
 const ICON_192: &[u8] = include_bytes!("remote_access/icon-192.png");
 const ICON_512: &[u8] = include_bytes!("../icons/icon.png");
 const REMOTE_ACCESS_PORT: u16 = 45_321;
@@ -387,12 +385,8 @@ fn router(state: HttpState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/app.css", get(stylesheet))
-        .route("/app.js", get(script))
-        .route("/player-core.js", get(player_core))
-        .route(
-            "/player-sheet.js",
-            get(|| async { static_asset(PLAYER_SHEET_JS, "text/javascript; charset=utf-8") }),
-        )
+        .route("/build/{*path}", get(mobile_asset))
+        .route("/assets/{*path}", get(mobile_asset))
         .route(
             "/data-cache.js",
             get(|| async { static_asset(DATA_CACHE_JS, "text/javascript; charset=utf-8") }),
@@ -432,12 +426,20 @@ async fn stylesheet() -> impl IntoResponse {
     static_asset(APP_CSS, "text/css; charset=utf-8")
 }
 
-async fn script() -> impl IntoResponse {
-    static_asset(APP_JS, "text/javascript; charset=utf-8")
-}
-
-async fn player_core() -> impl IntoResponse {
-    static_asset(PLAYER_CORE_JS, "text/javascript; charset=utf-8")
+async fn mobile_asset(OriginalUri(uri): OriginalUri) -> Response {
+    match MOBILE_ASSETS.iter().find(|(path, _)| *path == uri.path()) {
+        Some((path, bytes)) => binary_asset(
+            bytes,
+            if path.ends_with(".json") {
+                "application/json; charset=utf-8"
+            } else if path.ends_with(".css") {
+                "text/css; charset=utf-8"
+            } else {
+                "text/javascript; charset=utf-8"
+            },
+        ),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 async fn manifest() -> impl IntoResponse {
@@ -1059,17 +1061,21 @@ mod tests {
             assert!(!content_security_policy.contains("'unsafe-eval'"));
             assert_eq!(shell.headers()["x-content-type-options"], "nosniff");
 
-            let player_core = request(&app, "/player-core.js", None).await;
-            assert_eq!(player_core.status(), StatusCode::OK);
-            assert_eq!(
-                player_core.headers()[CONTENT_TYPE],
-                "text/javascript; charset=utf-8"
-            );
-            assert_eq!(
-                player_core.headers()[CACHE_CONTROL],
-                "private, max-age=3600"
-            );
-            assert_eq!(response_bytes(player_core).await, PLAYER_CORE_JS.as_bytes());
+            let (asset_path, asset_bytes) = MOBILE_ASSETS.first().expect("built Qwik assets");
+            let asset = request(&app, asset_path, None).await;
+            assert_eq!(asset.status(), StatusCode::OK);
+            assert_eq!(response_bytes(asset).await, *asset_bytes);
+            for private_path in [
+                "/build/missing.js",
+                "/assets/../../Cargo.toml",
+                "/q-manifest.json",
+                "/app.js",
+            ] {
+                assert_eq!(
+                    request(&app, private_path, None).await.status(),
+                    StatusCode::NOT_FOUND
+                );
+            }
 
             let escaped_search = request(&app, "/api/tracks?q=100%25&limit=100", None).await;
             assert_eq!(escaped_search.status(), StatusCode::OK);
@@ -1338,31 +1344,22 @@ mod tests {
         assert_eq!(manifest["icons"][1]["sizes"], "512x512");
         assert_eq!(png_dimensions(ICON_192), (192, 192));
         assert_eq!(png_dimensions(ICON_512), (512, 512));
-        assert!(SERVICE_WORKER.contains("jukebox-shell-v9"));
-        assert!(SERVICE_WORKER.contains("'/player-core.js'"));
+        assert!(SERVICE_WORKER.contains("const BUILD_SHELL ="));
+        assert!(SERVICE_WORKER.contains("/build/"));
         assert!(SERVICE_WORKER.contains("new Request(path, { cache: 'reload' })"));
         assert!(SERVICE_WORKER.contains("cachedAudioResponse"));
         assert!(SERVICE_WORKER.contains("self.skipWaiting()"));
         for view in ["tracks", "albums", "artists"] {
             assert!(INDEX_HTML.contains(&format!("data-view=\"{view}\"")));
-            assert!(APP_JS.contains(&format!("view = '{view}'")));
         }
-        assert!(INDEX_HTML.contains("<script type=\"module\" src=\"/app.js\"></script>"));
+        assert!(INDEX_HTML.contains("q:container=\"paused\""));
         assert!(INDEX_HTML.contains("id=\"queue-panel\""));
         assert!(INDEX_HTML.contains("id=\"playback-actions\""));
-        assert!(APP_JS.contains("from './player-core.js'"));
-        assert!(APP_JS.contains("/api/${view}"));
-        assert!(APP_JS.contains("x-jukebox-next-cursor"));
-        assert!(APP_JS.contains("window.localStorage"));
-        assert!(APP_JS.contains("visibilitychange"));
-        assert!(APP_JS.contains("POSITION_CHECKPOINT_MILLISECONDS = 5_000"));
-        assert!(APP_JS.contains("PROBE_TIMEOUT_MILLISECONDS = 5_000"));
-        assert!(APP_JS.contains("const controller = new AbortController()"));
-        assert!(APP_JS.contains("restoreDeviceSession()"));
-        assert!(!APP_JS.contains("visualsPath"));
-        assert!(!PLAYER_CORE_JS.contains("document."));
-        assert!(!PLAYER_CORE_JS.contains("localStorage"));
-        assert!(!PLAYER_CORE_JS.contains("/api/"));
+        assert!(!MOBILE_ASSETS.is_empty());
+        for (path, _) in MOBILE_ASSETS {
+            assert!(path.starts_with("/build/") || path.starts_with("/assets/"));
+            assert!(!path.ends_with(".map"));
+        }
     }
 
     fn png_dimensions(bytes: &[u8]) -> (u32, u32) {

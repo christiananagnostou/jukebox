@@ -46,6 +46,10 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Install mobile test browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Compiled mobile playback and offline regression tests
+        run: npm run test.mobile
 
   tauri:
     name: Tauri (${{ matrix.os }})
@@ -93,6 +97,8 @@ jobs:
       - name: Rust format check
         run: cargo fmt --all -- --check
         working-directory: src-tauri
+      - name: Build embedded mobile Qwik assets
+        run: npm run build.mobile
       - name: Rust tests
         run: cargo test --locked
         working-directory: src-tauri
