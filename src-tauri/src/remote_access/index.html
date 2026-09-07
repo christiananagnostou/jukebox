@@ -33,14 +33,17 @@
           ><strong id="context-label"></strong>
         </div>
         <div class="section-heading">
-          <h2 id="view-title">Songs</h2>
+          <h2 id="view-title">Albums</h2>
           <div class="status-row">
             <p id="status" role="status">Loading library…</p>
+            <button id="refresh-library" class="icon-button" type="button" aria-label="Refresh library">
+              <span data-icon="refresh" aria-hidden="true"></span>
+            </button>
             <button id="library-retry" class="quiet-action" type="button" hidden>Retry</button>
           </div>
         </div>
       </header>
-      <section id="items" aria-label="Tracks"></section>
+      <section id="items" aria-label="Albums"></section>
       <button id="load-more" type="button" hidden>Load more</button>
     </main>
     <footer class="bottom-dock">
@@ -60,10 +63,10 @@
         <progress id="mini-progress" value="0" max="100" aria-label="Track progress"></progress>
       </section>
       <nav aria-label="Library views">
-        <button type="button" data-view="tracks" aria-pressed="true">
+        <button type="button" data-view="tracks" aria-pressed="false">
           <span data-icon="music" aria-hidden="true"></span>Songs
         </button>
-        <button type="button" data-view="albums" aria-pressed="false">
+        <button type="button" data-view="albums" aria-pressed="true">
           <span data-icon="album" aria-hidden="true"></span>Albums
         </button>
         <button type="button" data-view="artists" aria-pressed="false">
@@ -73,6 +76,7 @@
     </footer>
     <dialog id="now-playing-panel" aria-labelledby="player-heading">
       <div class="player-screen">
+        <div id="sheet-handle" aria-hidden="true"><span></span></div>
         <div class="player-heading">
           <button id="close-player" class="icon-button" type="button" aria-label="Close Now Playing">
             <span data-icon="down" aria-hidden="true"></span>
@@ -116,6 +120,7 @@
           <p id="playback-status" role="status">Choose a song from your library.</p>
           <div id="playback-actions"></div>
         </div>
+        <button id="save-offline" class="quiet-action" type="button" disabled>Save offline</button>
         <details id="queue-panel">
           <summary><span>Up next</span><span id="queue-count">Queue empty</span></summary>
           <div id="queue-content">

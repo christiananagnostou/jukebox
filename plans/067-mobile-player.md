@@ -7,7 +7,7 @@ Implemented a familiar mobile music interface using the desktop Jukebox palette.
 - Expanded Now Playing with artwork, previous/next, seeking, artist and album links, and queue management.
 - Safe artwork endpoints return raster images from the artwork cache without exposing filesystem paths.
 - Missing artwork falls back to the shared music icon. Error recovery remains available in Now Playing.
-- Shell cache version 6 refreshes installed PWAs. Audio and artwork are not stored by the service worker.
+- Initially shipped with shell cache version 6. Follow-up caching and interaction changes are documented in [068](068-mobile-interactions-cache.md).
 
 ## Verification
 

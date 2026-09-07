@@ -83,6 +83,8 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('private mobile player controls', () => {
   it('keeps mini and full players synchronized through next, previous, pause and queue clearing', async () => {
+    click('[data-view="tracks"]')
+    await settle()
     click('[data-track-id="one"]')
     await settle()
     expect(document.querySelector('#mini-title').textContent).toBe('First song')
@@ -107,6 +109,8 @@ describe('private mobile player controls', () => {
   })
 
   it('seeks and restarts the current song with previous after three seconds', async () => {
+    click('[data-view="tracks"]')
+    await settle()
     click('[data-track-id="two"]')
     await settle()
     const seek = document.querySelector('#seek')
@@ -124,8 +128,7 @@ describe('private mobile player controls', () => {
   })
 
   it('browses compilation albums without an empty artist filter and tolerates missing artwork', async () => {
-    click('[data-view="albums"]')
-    await settle()
+    expect(document.querySelector('[data-view="albums"]').getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelector('#items').dataset.layout).toBe('albums')
     const cover = document.querySelector('.album-item img')
     cover.dispatchEvent(new Event('error'))

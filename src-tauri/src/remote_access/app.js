@@ -16,6 +16,8 @@ import {
   savePersistedSession,
   selectTrack,
 } from './player-core.js'
+import { AUDIO_CACHE, createLibraryClient, saveOfflineTrack } from './data-cache.js'
+import { createPlayerSheet, scrollBehavior } from './player-sheet.js'
 
 const PAGE_SIZE = 50
 const MAX_VISIBLE_QUEUE_ITEMS = 20
@@ -43,10 +45,16 @@ const queueItems = document.querySelector('#queue-items')
 const clearQueueButton = document.querySelector('#clear-queue')
 const viewButtons = [...document.querySelectorAll('[data-view]')]
 const playerPanel = document.querySelector('#now-playing-panel')
+const sheet = createPlayerSheet(playerPanel, document.querySelector('#sheet-handle'))
+const libraryClient = createLibraryClient()
+const offlineButton = document.querySelector('#save-offline')
+let savingOffline = false
+const scrollToTop = () => window.scrollTo({ top: 0, behavior: scrollBehavior() })
 const seek = document.querySelector('#seek')
 let scrubbing = false
 const transportButtons = [...document.querySelectorAll('[data-transport]')]
 const iconPaths = {
+  refresh: 'M20 7V3l-3 3M4 17v4l3-3M20 7a8 8 0 0 0-14-2M4 17a8 8 0 0 0 14 2',
   play: 'M8 5l11 7-11 7z',
   pause: 'M8 5v14M16 5v14',
   next: 'M5 5l11 7-11 7zM19 5v14',
@@ -108,7 +116,7 @@ const updateControls = () => {
   document.querySelector('#mini-progress').value = seek.disabled ? 0 : (player.currentTime / player.duration) * 100
 }
 
-let view = 'tracks'
+let view = 'albums'
 let artist = ''
 let album = ''
 let cursor = ''
@@ -214,6 +222,7 @@ const updateMediaPosition = () => {
 }
 
 const updatePlayingCopy = (track) => {
+  void updateOfflineButton(track)
   document.querySelector('#mini-title').textContent = track ? track.title || track.file : 'Nothing playing'
   document.querySelector('#mini-detail').textContent = track
     ? track.artist || 'Unknown artist'
@@ -234,6 +243,19 @@ const updatePlayingCopy = (track) => {
   }
   nowPlaying.textContent = track.title || track.file
   nowPlayingDetail.textContent = track.album || 'Unknown album'
+}
+
+const updateOfflineButton = async (track) => {
+  offlineButton.disabled = !track || savingOffline || !('caches' in window)
+  if (!track || savingOffline) return
+  try {
+    const saved = await (await caches.open(AUDIO_CACHE)).match(`/api/tracks/${encodeURIComponent(track.id)}/stream`)
+    if (activeTrack?.id !== track.id || savingOffline) return
+    offlineButton.textContent = saved ? 'Remove offline copy' : 'Save offline'
+  } catch {
+    offlineButton.disabled = true
+    offlineButton.textContent = 'Offline storage unavailable'
+  }
 }
 
 const checkpointSession = () => {
@@ -611,7 +633,7 @@ const requestUrl = () => {
   return `/api/${view}?${params}`
 }
 
-const load = async ({ append = false } = {}) => {
+const load = async ({ append = false, refresh = false } = {}) => {
   if (!append) {
     cursor = ''
     offset = 0
@@ -619,15 +641,19 @@ const load = async ({ append = false } = {}) => {
     revision = ''
     if (view === 'tracks') browseTracks = []
     items.replaceChildren()
+    scrollToTop()
   }
   updateNavigation()
   const requestGeneration = ++generation
   setLibraryStatus(append ? 'Loading more…' : `Loading ${view}…`)
   loadMore.hidden = true
   try {
-    const response = await fetch(requestUrl())
+    const response = await libraryClient.get(requestUrl(), { refresh })
     if (requestGeneration !== generation) return
-    if (response.status === 409 && append) return load()
+    if (response.status === 409 && append) {
+      libraryClient.clear()
+      return load({ refresh: true })
+    }
     if (!response.ok) throw new Error('Library request failed')
     const body = await response.json()
     if (requestGeneration !== generation) return
@@ -640,20 +666,26 @@ const load = async ({ append = false } = {}) => {
       loadMore.hidden = !cursor || browseTracks.length >= MAX_QUEUE_LENGTH
       await validateRestoredSession(revision)
     } else {
-      if (append && revision && revision !== String(body.revision)) return load()
+      if (append && revision && revision !== String(body.revision)) {
+        libraryClient.clear()
+        return load({ refresh: true })
+      }
       if (view === 'artists') renderArtists(body.items)
       else renderAlbums(body.items)
       offset += body.items.length
       total = body.total
       revision = String(body.revision)
       loadMore.hidden = offset >= total
+      await validateRestoredSession(revision)
     }
+    const offline = response.headers.get('x-jukebox-offline') === 'true'
     setLibraryStatus(
-      offset
-        ? view === 'tracks'
-          ? `${offset}${cursor ? '+' : ''} tracks`
-          : `${offset}${offset < total ? ` of ${total}` : ''} ${view}`
-        : `No matching ${view}`
+      (offline ? 'Offline · ' : '') +
+        (offset
+          ? view === 'tracks'
+            ? `${offset}${cursor ? '+' : ''} tracks`
+            : `${offset}${offset < total ? ` of ${total}` : ''} ${view}`
+          : `No matching ${view}`)
     )
   } catch (error) {
     setLibraryStatus(error instanceof Error ? error.message : 'Could not load the library', true)
@@ -667,7 +699,7 @@ for (const button of viewButtons) {
     album = ''
     input.value = ''
     load()
-    window.scrollTo(0, 0)
+    scrollToTop()
   })
 }
 
@@ -675,16 +707,20 @@ form.addEventListener('submit', (event) => {
   event.preventDefault()
   load()
 })
-libraryRetry.addEventListener('click', () => load())
+libraryRetry.addEventListener('click', () => load({ refresh: true }))
+document.querySelector('#refresh-library').addEventListener('click', () => {
+  libraryClient.clear()
+  load({ refresh: true })
+})
 loadMore.addEventListener('click', () => load({ append: true }))
 clearQueueButton.addEventListener('click', clearDeviceQueue)
-document.querySelector('#open-player').addEventListener('click', () => playerPanel.showModal())
-document.querySelector('#close-player').addEventListener('click', () => playerPanel.close())
+document.querySelector('#open-player').addEventListener('click', () => void sheet.open())
+document.querySelector('#close-player').addEventListener('click', () => void sheet.close())
 document.querySelector('#show-queue').addEventListener('click', () => {
   const queue = document.querySelector('#queue-panel')
   queue.open = true
-  queue.scrollIntoView({ block: 'start' })
-  queue.querySelector('summary').focus()
+  queue.querySelector('summary').focus({ preventScroll: true })
+  queue.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
 })
 for (const button of transportButtons) {
   button.addEventListener('click', () =>
@@ -699,6 +735,28 @@ seek.addEventListener('input', () => {
   scrubbing = true
   document.querySelector('#elapsed').textContent = formatTime((Number(seek.value) / 100) * player.duration)
 })
+const scrubAt = (event) => {
+  const rect = seek.getBoundingClientRect()
+  seek.value = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100))
+  scrubbing = true
+  document.querySelector('#elapsed').textContent = formatTime((Number(seek.value) / 100) * player.duration)
+}
+seek.addEventListener('pointerdown', (event) => {
+  if (seek.disabled || event.button !== 0) return
+  event.preventDefault()
+  seek.focus({ preventScroll: true })
+  seek.setPointerCapture(event.pointerId)
+  scrubAt(event)
+})
+seek.addEventListener('pointermove', (event) => {
+  if (seek.hasPointerCapture(event.pointerId)) scrubAt(event)
+})
+seek.addEventListener('pointerup', (event) => {
+  if (!seek.hasPointerCapture(event.pointerId)) return
+  scrubAt(event)
+  seek.releasePointerCapture(event.pointerId)
+  seek.dispatchEvent(new Event('change'))
+})
 seek.addEventListener('change', () => {
   scrubbing = false
   seekTo((Number(seek.value) / 100) * player.duration)
@@ -712,13 +770,13 @@ for (const event of ['blur', 'pointercancel']) {
 }
 const browseCurrent = (target) => {
   if (!activeTrack) return
-  playerPanel.close()
+  void sheet.close()
   view = target === 'artist' ? 'albums' : 'tracks'
   artist = target === 'artist' ? activeTrack.artist : ''
   album = target === 'album' ? activeTrack.album : ''
   input.value = ''
   load()
-  window.scrollTo(0, 0)
+  scrollToTop()
 }
 document.querySelector('#now-artist').addEventListener('click', () => browseCurrent('artist'))
 nowPlayingDetail.addEventListener('click', () => browseCurrent('album'))
@@ -810,14 +868,45 @@ document.addEventListener('visibilitychange', () => {
 })
 window.addEventListener('pagehide', checkpointSession)
 window.addEventListener('offline', () => {
-  showPlaybackFeedback('You are offline. Playback can resume after reconnecting.', [
-    { label: 'Retry', action: retrySelected },
-  ])
+  libraryClient.clear()
+  showPlaybackFeedback(
+    'You are offline. Saved songs are available on this device.',
+    activeTrack ? [{ label: 'Retry', action: retrySelected }] : []
+  )
 })
 window.addEventListener('online', () => {
+  libraryClient.clear()
   const actions = activeTrack ? [{ label: 'Retry', action: retrySelected }] : []
   showPlaybackFeedback(activeTrack ? 'Back online. Ready to retry.' : 'Back online.', actions)
 })
+
+offlineButton.addEventListener('click', () =>
+  runTransport(async () => {
+    if (!activeTrack || savingOffline) return
+    const track = activeTrack
+    const url = `/api/tracks/${encodeURIComponent(track.id)}/stream`
+    savingOffline = true
+    offlineButton.disabled = true
+    offlineButton.textContent = 'Saving…'
+    try {
+      const cache = await caches.open(AUDIO_CACHE)
+      if (await cache.match(url)) {
+        await cache.delete(url)
+        showPlaybackFeedback('Offline copy removed.')
+      } else {
+        await saveOfflineTrack(cache, url)
+        showPlaybackFeedback('Saved on this device. Your five most recently saved songs stay available offline.')
+      }
+    } catch (error) {
+      showPlaybackFeedback(
+        error instanceof Error ? error.message : 'Could not save offline. Free some storage and try again.'
+      )
+    } finally {
+      savingOffline = false
+      await updateOfflineButton(activeTrack)
+    }
+  })
+)
 
 restoreDeviceSession()
 updatePlayingCopy(activeTrack)
@@ -826,7 +915,7 @@ load()
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
+    navigator.serviceWorker.register('/sw.js', { type: 'module' }).catch((error) => {
       console.warn('Jukebox service worker registration failed', error)
     })
   })

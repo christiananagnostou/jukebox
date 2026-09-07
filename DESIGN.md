@@ -16,6 +16,9 @@ rounded:
   artwork: '6px'
   control: '8px'
   dock: '10px'
+  sheet: '18px'
+  dialog: '16px'
+  thin-track: '2px'
 spacing:
   small: '8px'
   medium: '16px'
@@ -65,6 +68,9 @@ centered within 480px; artwork scales with available height to retain access to
 transport controls on small screens. At wider widths, the player uses a centered
 520px dialog. Preserve usable layouts down to 320px.
 
+Albums is the initial library view. Navigation to a collection or queue scrolls
+smoothly; reduced-motion preferences disable these transitions.
+
 ## Elevation & Depth
 
 Use flat tonal layers and fine borders. There are no decorative shadows or
@@ -85,6 +91,13 @@ transport controls. Use consistent outlined SVG icons.
   Its title/artwork region opens Now Playing.
 - Now Playing shows artwork, title, artist and album links, seek position and
   times, previous/play-pause/next, playback feedback, and the queue.
+- The player enters as an interruptible bottom sheet (340ms ease-out), dismisses
+  faster (220ms), and supports dragging its handle down. Keep native dialog focus
+  and Escape behavior. Reduced motion removes the animated transition.
+- The seek bar retains its thin visual track within a 54px pointer target;
+  dragging anywhere in that target previews position and commits on release.
+- Saving a song offline is explicit and removable. Keep storage bounded and
+  communicate download failures without interrupting playback.
 - Queue access opens and focuses the queue section. Rows support playback and
   removal; clearing the queue is a separate action.
 - Artwork failures reveal the icon fallback. Loading, empty, playback failure,
