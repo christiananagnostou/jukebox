@@ -92,6 +92,10 @@
           ><button id="now-artist" class="text-link" type="button"></button
           ><button id="now-playing-detail" class="text-link" type="button">Choose a song to begin</button>
         </div>
+        <div class="playback-feedback">
+          <p id="playback-status" role="status" aria-atomic="true">Choose a song from your library.</p>
+          <div id="playback-actions"></div>
+        </div>
         <div class="seek-control">
           <input
             id="seek"
@@ -115,10 +119,6 @@
           <button class="icon-button" data-transport="next" type="button" aria-label="Next track" disabled>
             <span data-icon="next" aria-hidden="true"></span>
           </button>
-        </div>
-        <div class="playback-feedback">
-          <p id="playback-status" role="status">Choose a song from your library.</p>
-          <div id="playback-actions"></div>
         </div>
         <button id="save-offline" class="quiet-action" type="button" disabled>Save offline</button>
         <details id="queue-panel">

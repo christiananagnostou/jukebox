@@ -353,8 +353,6 @@ const clearDeviceQueue = () => {
   showPlaybackFeedback('Queue empty.')
 }
 
-const selectedTrackLabel = () => (activeTrack ? activeTrack.title || activeTrack.file : 'this track')
-
 const playSelected = async () => {
   if (!activeTrack) return false
   try {
@@ -362,7 +360,7 @@ const playSelected = async () => {
     return true
   } catch {
     playbackError = true
-    showPlaybackFeedback('Tap play to start audio.', [{ label: 'Play', action: playSelected }])
+    showPlaybackFeedback('Tap play to start audio.')
     return false
   } finally {
     updateControls()
@@ -499,7 +497,7 @@ const restoreDeviceSession = () => {
   }
 
   setPlayerSource(track, session.positionMilliseconds)
-  showPlaybackFeedback('Ready. Tap play to continue.', [{ label: 'Play', action: playSelected }])
+  showPlaybackFeedback('Ready to continue')
 }
 
 const validateRestoredSession = async (catalogRevision) => {
@@ -805,7 +803,7 @@ player.addEventListener('waiting', () => {
 player.addEventListener('playing', () => {
   endedHandled = false
   playbackError = false
-  showPlaybackFeedback(`Playing ${selectedTrackLabel()}.`)
+  showPlaybackFeedback('Playing')
   updateMediaPlaybackState()
   updateMediaPosition()
   updateControls()
@@ -816,7 +814,7 @@ player.addEventListener('pause', () => {
   updateMediaPlaybackState()
   checkpointSession()
   if (!playbackError && !player.ended && player.currentSrc) {
-    showPlaybackFeedback('Paused. Tap play to continue.', [{ label: 'Play', action: playSelected }])
+    showPlaybackFeedback('Paused')
   }
 })
 player.addEventListener('ended', () => {

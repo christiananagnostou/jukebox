@@ -98,6 +98,9 @@ transport controls. Use consistent outlined SVG icons.
   dragging anywhere in that target previews position and commits on release.
 - Saving a song offline is explicit and removable. Keep storage bounded and
   communicate download failures without interrupting playback.
+- Playback status sits quietly below the song metadata, above seeking. Routine
+  Playing/Paused states never add another Play button; reserve feedback actions
+  for recovery that the primary transport controls do not cover.
 - Queue access opens and focuses the queue section. Rows support playback and
   removal; clearing the queue is a separate action.
 - Artwork failures reveal the icon fallback. Loading, empty, playback failure,

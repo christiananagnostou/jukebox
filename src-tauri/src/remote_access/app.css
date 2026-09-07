@@ -531,12 +531,16 @@ dialog::backdrop {
 .playback-feedback {
   font-size: 13px;
   color: var(--muted);
+  margin: 8px 0 16px;
 }
 #playback-status {
   margin: 0;
+  min-height: 18px;
+  line-height: 18px;
 }
 #playback-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .quiet-action {

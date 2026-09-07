@@ -82,6 +82,40 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('private mobile player controls', () => {
+  it('keeps routine status near metadata without duplicating the primary play control', async () => {
+    click('[data-view="tracks"]')
+    await settle()
+    click('[data-track-id="one"]')
+    await settle()
+    const feedback = document.querySelector('.playback-feedback')
+    expect(feedback.previousElementSibling.classList.contains('full-copy')).toBe(true)
+    expect(document.querySelector('#playback-status').textContent).toBe('Playing')
+    click('.transport [data-transport="toggle"]')
+    await settle()
+    expect(document.querySelector('#playback-status').textContent).toBe('Paused')
+    expect(document.querySelector('#playback-actions').children).toHaveLength(0)
+    expect(document.querySelector('.transport [aria-label="Play"]')).not.toBeNull()
+    audio.dispatchEvent(new Event('stalled'))
+    expect(document.querySelector('#playback-actions').textContent).toContain('Retry')
+    click('.transport [data-transport="toggle"]')
+    await settle()
+    expect(document.querySelector('#playback-status').textContent).toBe('Playing')
+    expect(document.querySelector('#playback-actions').children).toHaveLength(0)
+  })
+
+  it('uses the main play control after a browser rejects playback', async () => {
+    audio.play.mockRejectedValueOnce(new Error('Gesture required'))
+    click('[data-view="tracks"]')
+    await settle()
+    click('[data-track-id="one"]')
+    await settle()
+    expect(document.querySelector('#playback-status').textContent).toBe('Tap play to start audio.')
+    expect(document.querySelector('#playback-actions').children).toHaveLength(0)
+    click('.transport [data-transport="toggle"]')
+    await settle()
+    expect(paused).toBe(false)
+  })
+
   it('keeps mini and full players synchronized through next, previous, pause and queue clearing', async () => {
     click('[data-view="tracks"]')
     await settle()

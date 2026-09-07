@@ -1338,7 +1338,7 @@ mod tests {
         assert_eq!(manifest["icons"][1]["sizes"], "512x512");
         assert_eq!(png_dimensions(ICON_192), (192, 192));
         assert_eq!(png_dimensions(ICON_512), (512, 512));
-        assert!(SERVICE_WORKER.contains("jukebox-shell-v7"));
+        assert!(SERVICE_WORKER.contains("jukebox-shell-v8"));
         assert!(SERVICE_WORKER.contains("'/player-core.js'"));
         assert!(SERVICE_WORKER.contains("new Request(path, { cache: 'reload' })"));
         assert!(SERVICE_WORKER.contains("cachedAudioResponse"));
