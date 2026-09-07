@@ -38,7 +38,9 @@ const context = document.querySelector('#context')
 const contextLabel = document.querySelector('#context-label')
 const nowPlaying = document.querySelector('#now-playing')
 const nowPlayingDetail = document.querySelector('#now-playing-detail')
-const playbackStatus = document.querySelector('#playback-status')
+const playbackStatus = document.querySelector('#player-heading')
+const playbackMessage = document.querySelector('#playback-message')
+const playbackFeedback = document.querySelector('.playback-feedback')
 const playbackActions = document.querySelector('#playback-actions')
 const queueCount = document.querySelector('#queue-count')
 const queueItems = document.querySelector('#queue-items')
@@ -147,7 +149,13 @@ const storage = () => {
 const runTransport = (operation) => {
   Promise.resolve()
     .then(operation)
-    .catch(() => showPlaybackFeedback('This track could not be played.', [{ label: 'Retry', action: retrySelected }]))
+    .catch(() =>
+      showPlaybackFeedback(
+        'This track could not be played.',
+        [{ label: 'Retry', action: retrySelected }],
+        'Playback interrupted'
+      )
+    )
 }
 
 const actionButton = ({ label, action, danger = false }) => {
@@ -159,10 +167,13 @@ const actionButton = ({ label, action, danger = false }) => {
   return button
 }
 
-const showPlaybackFeedback = (message, actions = []) => {
-  playbackStatus.textContent = message
+const showPlaybackFeedback = (message = '', actions = [], heading = message ? 'Playback update' : 'Now playing') => {
+  playbackStatus.textContent = heading
+  playbackMessage.textContent = message
+  playbackMessage.hidden = !message
+  playbackFeedback.hidden = !message && !actions.length
   playbackActions.replaceChildren(...actions.map(actionButton))
-  if (actions.length && activeTrack) document.querySelector('#mini-detail').textContent = message
+  if (actions.length && activeTrack) document.querySelector('#mini-detail').textContent = message || heading
 }
 
 const setLibraryStatus = (message, retry = false) => {
@@ -360,7 +371,7 @@ const playSelected = async () => {
     return true
   } catch {
     playbackError = true
-    showPlaybackFeedback('Tap play to start audio.')
+    showPlaybackFeedback('Tap the play control to start audio.', [], 'Ready to play')
     return false
   } finally {
     updateControls()
@@ -469,15 +480,21 @@ const classifyPlaybackFailure = async (track) => {
   const availability = await probeTrack(track)
   if (selectedTrack !== activeTrack || selectedIndex !== playback.currentIndex) return
   if (availability === 'unavailable') {
-    showPlaybackFeedback('Track unavailable.', [
-      { label: 'Skip', action: skipUnavailable },
-      { label: 'Remove', action: () => removeAt(playback.currentIndex), danger: true },
-    ])
+    showPlaybackFeedback(
+      '',
+      [
+        { label: 'Skip', action: skipUnavailable },
+        { label: 'Remove', action: () => removeAt(playback.currentIndex), danger: true },
+      ],
+      'Track unavailable'
+    )
     return
   }
-  showPlaybackFeedback(navigator.onLine ? 'Audio was interrupted.' : 'You are offline.', [
-    { label: 'Retry', action: retrySelected },
-  ])
+  showPlaybackFeedback(
+    '',
+    [{ label: 'Retry', action: retrySelected }],
+    navigator.onLine ? 'Playback interrupted' : 'Offline'
+  )
 }
 
 const restoreDeviceSession = () => {
@@ -497,7 +514,7 @@ const restoreDeviceSession = () => {
   }
 
   setPlayerSource(track, session.positionMilliseconds)
-  showPlaybackFeedback('Ready to continue')
+  showPlaybackFeedback()
 }
 
 const validateRestoredSession = async (catalogRevision) => {
@@ -795,15 +812,15 @@ player.addEventListener('error', () => {
   if (activeTrack) runTransport(() => classifyPlaybackFailure(activeTrack))
 })
 player.addEventListener('stalled', () => {
-  showPlaybackFeedback('Audio stalled. Waiting to recover…', [{ label: 'Retry', action: retrySelected }])
+  showPlaybackFeedback('', [{ label: 'Retry', action: retrySelected }], 'Reconnecting…')
 })
 player.addEventListener('waiting', () => {
-  showPlaybackFeedback('Buffering audio…')
+  showPlaybackFeedback('', [], 'Buffering…')
 })
 player.addEventListener('playing', () => {
   endedHandled = false
   playbackError = false
-  showPlaybackFeedback('Playing')
+  showPlaybackFeedback()
   updateMediaPlaybackState()
   updateMediaPosition()
   updateControls()
@@ -814,7 +831,7 @@ player.addEventListener('pause', () => {
   updateMediaPlaybackState()
   checkpointSession()
   if (!playbackError && !player.ended && player.currentSrc) {
-    showPlaybackFeedback('Paused')
+    showPlaybackFeedback()
   }
 })
 player.addEventListener('ended', () => {
@@ -869,13 +886,14 @@ window.addEventListener('offline', () => {
   libraryClient.clear()
   showPlaybackFeedback(
     'You are offline. Saved songs are available on this device.',
-    activeTrack ? [{ label: 'Retry', action: retrySelected }] : []
+    activeTrack ? [{ label: 'Retry', action: retrySelected }] : [],
+    'Offline'
   )
 })
 window.addEventListener('online', () => {
   libraryClient.clear()
   const actions = activeTrack ? [{ label: 'Retry', action: retrySelected }] : []
-  showPlaybackFeedback(activeTrack ? 'Back online. Ready to retry.' : 'Back online.', actions)
+  showPlaybackFeedback(activeTrack ? 'Connection restored. You can retry playback.' : '', actions, 'Back online')
 })
 
 offlineButton.addEventListener('click', () =>
@@ -890,14 +908,16 @@ offlineButton.addEventListener('click', () =>
       const cache = await caches.open(AUDIO_CACHE)
       if (await cache.match(url)) {
         await cache.delete(url)
-        showPlaybackFeedback('Offline copy removed.')
+        showPlaybackFeedback('', [], 'Offline copy removed')
       } else {
         await saveOfflineTrack(cache, url)
-        showPlaybackFeedback('Saved on this device. Your five most recently saved songs stay available offline.')
+        showPlaybackFeedback('Your five most recently saved songs stay available offline.', [], 'Saved offline')
       }
     } catch (error) {
       showPlaybackFeedback(
-        error instanceof Error ? error.message : 'Could not save offline. Free some storage and try again.'
+        error instanceof Error ? error.message : 'Free some storage and try again.',
+        [],
+        'Could not save offline'
       )
     } finally {
       savingOffline = false

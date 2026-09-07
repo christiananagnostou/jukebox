@@ -1,6 +1,6 @@
 import { AUDIO_CACHE, cachedAudioResponse, trimCache } from './data-cache.js'
 
-const CACHE_NAME = 'jukebox-shell-v8'
+const CACHE_NAME = 'jukebox-shell-v9'
 const LIBRARY_CACHE = 'jukebox-library-v1'
 const ART_CACHE = 'jukebox-art-v1'
 const SHELL_PATHS = new Set([
