@@ -31,6 +31,8 @@ const INDEX_HTML: &str = include_str!("remote_access/index.html");
 const APP_CSS: &str = include_str!("remote_access/app.css");
 const APP_JS: &str = include_str!("remote_access/app.js");
 const PLAYER_CORE_JS: &str = include_str!("remote_access/player-core.js");
+const PLAYER_SHEET_JS: &str = include_str!("remote_access/player-sheet.js");
+const DATA_CACHE_JS: &str = include_str!("remote_access/data-cache.js");
 const MANIFEST: &str = include_str!("remote_access/manifest.webmanifest");
 const SERVICE_WORKER: &str = include_str!("remote_access/sw.js");
 const ICON_192: &[u8] = include_bytes!("remote_access/icon-192.png");
@@ -387,6 +389,14 @@ fn router(state: HttpState) -> Router {
         .route("/app.css", get(stylesheet))
         .route("/app.js", get(script))
         .route("/player-core.js", get(player_core))
+        .route(
+            "/player-sheet.js",
+            get(|| async { static_asset(PLAYER_SHEET_JS, "text/javascript; charset=utf-8") }),
+        )
+        .route(
+            "/data-cache.js",
+            get(|| async { static_asset(DATA_CACHE_JS, "text/javascript; charset=utf-8") }),
+        )
         .route("/manifest.webmanifest", get(manifest))
         .route("/sw.js", get(service_worker))
         .route("/icons/icon-192.png", get(icon_192))
@@ -1328,11 +1338,10 @@ mod tests {
         assert_eq!(manifest["icons"][1]["sizes"], "512x512");
         assert_eq!(png_dimensions(ICON_192), (192, 192));
         assert_eq!(png_dimensions(ICON_512), (512, 512));
-        assert!(!SERVICE_WORKER.contains("/api/"));
-        assert!(SERVICE_WORKER.contains("jukebox-shell-v6"));
+        assert!(SERVICE_WORKER.contains("jukebox-shell-v7"));
         assert!(SERVICE_WORKER.contains("'/player-core.js'"));
         assert!(SERVICE_WORKER.contains("new Request(path, { cache: 'reload' })"));
-        assert!(SERVICE_WORKER.contains("new Request(event.request, { cache: 'reload' })"));
+        assert!(SERVICE_WORKER.contains("cachedAudioResponse"));
         assert!(SERVICE_WORKER.contains("self.skipWaiting()"));
         for view in ["tracks", "albums", "artists"] {
             assert!(INDEX_HTML.contains(&format!("data-view=\"{view}\"")));

@@ -361,6 +361,29 @@ dialog {
   color: var(--text);
   overflow-y: auto;
   overscroll-behavior: contain;
+  border-radius: 18px 18px 0 0;
+}
+#sheet-handle {
+  height: 20px;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  cursor: grab;
+}
+#sheet-handle span {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+#sheet-handle:active {
+  cursor: grabbing;
+}
+@media (prefers-reduced-motion: reduce) {
+  html,
+  dialog {
+    scroll-behavior: auto;
+  }
 }
 dialog::backdrop {
   background: var(--canvas);
@@ -422,8 +445,9 @@ dialog::backdrop {
 }
 #seek {
   width: 100%;
-  height: 30px;
-  margin: 0;
+  height: 54px;
+  margin: -12px 0;
+  touch-action: none;
   accent-color: var(--primary-hover);
   cursor: pointer;
   appearance: none;
@@ -464,7 +488,7 @@ dialog::backdrop {
     margin-bottom: 12px;
   }
   .large-art {
-    max-width: clamp(120px, calc(100dvh - 330px), 100%);
+    max-width: clamp(120px, calc(100dvh - 350px), 100%);
     margin-bottom: 16px;
   }
   .full-copy strong {
