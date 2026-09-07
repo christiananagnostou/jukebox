@@ -68,6 +68,7 @@ The product direction remains local-first: a fast native catalog, dependable pla
 | [064](064-compilation-album-identity.md)           | Preserve compilation album identity and route-local search          | P1       | S      | 055        | DONE   |
 | [067](067-mobile-player.md)                        | Mobile PWA browsing and artwork-led playback                        | P1       | M      | 059        | DONE   |
 | [068](068-mobile-interactions-cache.md)            | Smooth player interactions and bounded offline caching              | P1       | M      | 067        | DONE   |
+| [070](070-qwik-mobile.md)                          | Migrate the private mobile player to a statically embedded Qwik app | P1       | L      | 068        | DONE   |
 
 Plans 007-010 are deliberately independent and may be delivered as separate PRs. Plan 011 follows plans 007 and 008 because it extends the router fixture and must inherit proven mutation/failure semantics. Plans 012-016 deliver the native refresh pipeline in persistence, discovery, preparation, atomic apply, and orchestration layers. Plan 017 adds bounded watcher scheduling and recovery over that authoritative full refresh. Plan 018 adopts the service in Settings, and plan 019 makes the 100,000-track performance targets executable.
 

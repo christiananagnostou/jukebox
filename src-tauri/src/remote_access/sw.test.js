@@ -34,16 +34,39 @@ beforeEach(async () => {
   stores = new Map()
   network = vi.fn()
   vi.stubGlobal('fetch', network)
-  vi.stubGlobal('caches', { open: async (name) => store(name) })
+  vi.stubGlobal('caches', {
+    open: async (name) => store(name),
+    keys: async () => [...stores.keys()],
+    delete: async (name) => stores.delete(name),
+  })
   vi.stubGlobal('self', {
     location: { origin },
     addEventListener: (name, handler) => (handlers[name] = handler),
+    clients: { claim: async () => {} },
   })
   await import('./sw.js')
 })
 afterEach(() => vi.unstubAllGlobals())
 
 describe('private player service worker', () => {
+  it('retains one previous shell and serves its lazy modules to an already-open tab', async () => {
+    await store('jukebox-shell-oldest').put('/build/old.js', new Response('obsolete'))
+    await store('jukebox-shell-previous').put('/build/previous.js', new Response('previous'))
+    store('jukebox-shell-development')
+    store('unrelated-app')
+    let activation
+    handlers.activate({
+      waitUntil: (value) => {
+        activation = value
+      },
+    })
+    await activation
+    expect(stores.has('jukebox-shell-oldest')).toBe(false)
+    expect(stores.has('jukebox-shell-previous')).toBe(true)
+    expect(stores.has('unrelated-app')).toBe(true)
+    expect(await (await request('/build/previous.js')).text()).toBe('previous')
+    expect(network).not.toHaveBeenCalled()
+  })
   it('caches visited catalog pages and marks fallback data as offline', async () => {
     network.mockResolvedValueOnce(Response.json({ items: ['Album'], revision: 2 }))
     expect((await request('/api/albums')).headers.has('x-jukebox-offline')).toBe(false)

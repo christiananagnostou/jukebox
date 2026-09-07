@@ -30,7 +30,7 @@ spacing:
 ## Overview
 
 This document covers only the private browser player in
-`src-tauri/src/remote_access/`. The desktop app remains the incumbent visual
+`src/mobile/`, with its CSS in `src-tauri/src/remote_access/app.css`. The desktop app remains the incumbent visual
 authority; this document does not redefine its layout or components.
 
 Use familiar music-app patterns: browse a library, keep playback within reach,
@@ -98,6 +98,10 @@ transport controls. Use consistent outlined SVG icons.
   dragging anywhere in that target previews position and commits on release.
 - Saving a song offline is explicit and removable. Keep storage bounded and
   communicate download failures without interrupting playback.
+- The Now Playing heading doubles as the status for exceptional states such as
+  buffering or interrupted playback. Normal playback and pause keep "Now playing"
+  without redundant status text. Longer explanations and recovery actions appear
+  directly below the heading only when needed; never add another Play button.
 - Queue access opens and focuses the queue section. Rows support playback and
   removal; clearing the queue is a separate action.
 - Artwork failures reveal the icon fallback. Loading, empty, playback failure,
@@ -114,3 +118,12 @@ transport controls. Use consistent outlined SVG icons.
 - Don't add decorative panels, invented music features, or a separate mobile
   brand identity as part of routine refinement.
 - Don't treat repeated artwork in synthetic QA fixtures as production content.
+
+## Implementation boundaries
+
+Qwik owns every rendered mobile screen and reactive display field. Typed library
+and player controllers own HTTP requests, queue transitions, media events and
+cache actions; they do not render DOM. A small native gesture bridge starts audio
+synchronously and handles pointer capture and dialog motion. The persistent
+audio element stays outside changing library views. Keep this boundary when
+adding screens so navigation cannot restart playback.
