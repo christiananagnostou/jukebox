@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jukebox-shell-v5'
+const CACHE_NAME = 'jukebox-shell-v6'
 const SHELL_PATHS = new Set([
   '/',
   '/app.css',

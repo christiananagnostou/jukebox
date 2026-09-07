@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#111827" />
+    <meta name="theme-color" content="#17171f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,53 +14,118 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <h1>Jukebox</h1>
-        <nav aria-label="Library views">
-          <button type="button" data-view="tracks" aria-pressed="true">Tracks</button>
-          <button type="button" data-view="albums" aria-pressed="false">Albums</button>
-          <button type="button" data-view="artists" aria-pressed="false">Artists</button>
-        </nav>
+    <main id="library">
+      <header class="library-header">
+        <div class="heading-row">
+          <h1>Jukebox</h1>
+          <span class="library-caption">Your music, everywhere.</span>
+        </div>
         <form id="search-form" role="search">
-          <input id="search" type="search" placeholder="Search title, artist, or album" aria-label="Search library" />
-          <button type="submit">Search</button>
+          <span data-icon="search" aria-hidden="true"></span>
+          <input id="search" type="search" placeholder="Search your library" aria-label="Search library" />
+          <button class="icon-button" type="submit" aria-label="Search">
+            <span data-icon="arrow" aria-hidden="true"></span>
+          </button>
         </form>
         <div id="context" hidden>
-          <button id="back" type="button">Back</button>
-          <strong id="context-label"></strong>
+          <button id="back" class="icon-button" type="button" aria-label="Back">
+            <span data-icon="back" aria-hidden="true"></span></button
+          ><strong id="context-label"></strong>
         </div>
-        <div class="status-row">
-          <p id="status" role="status">Loading library…</p>
-          <button id="library-retry" class="quiet-action" type="button" hidden>Retry</button>
+        <div class="section-heading">
+          <h2 id="view-title">Songs</h2>
+          <div class="status-row">
+            <p id="status" role="status">Loading library…</p>
+            <button id="library-retry" class="quiet-action" type="button" hidden>Retry</button>
+          </div>
         </div>
       </header>
       <section id="items" aria-label="Tracks"></section>
       <button id="load-more" type="button" hidden>Load more</button>
     </main>
-    <footer>
-      <details id="queue-panel">
-        <summary>
-          <span id="queue-summary-label">Upcoming</span>
-          <span id="queue-count">Queue empty</span>
-        </summary>
-        <div id="queue-content">
-          <div id="queue-items" aria-label="Playback queue"></div>
-          <button id="clear-queue" class="quiet-action danger-action" type="button" hidden>Clear queue</button>
+    <footer class="bottom-dock">
+      <section id="mini-player" aria-label="Player">
+        <button id="open-player" type="button" aria-label="Open Now Playing" aria-haspopup="dialog">
+          <span id="mini-art" class="artwork"></span
+          ><span class="playing-copy"
+            ><strong id="mini-title">Nothing playing</strong><span id="mini-detail">Choose a song to begin</span></span
+          >
+        </button>
+        <button class="icon-button" data-transport="toggle" type="button" aria-label="Play" disabled>
+          <span data-icon="play" aria-hidden="true"></span>
+        </button>
+        <button class="icon-button" data-transport="next" type="button" aria-label="Next track" disabled>
+          <span data-icon="next" aria-hidden="true"></span>
+        </button>
+        <progress id="mini-progress" value="0" max="100" aria-label="Track progress"></progress>
+      </section>
+      <nav aria-label="Library views">
+        <button type="button" data-view="tracks" aria-pressed="true">
+          <span data-icon="music" aria-hidden="true"></span>Songs
+        </button>
+        <button type="button" data-view="albums" aria-pressed="false">
+          <span data-icon="album" aria-hidden="true"></span>Albums
+        </button>
+        <button type="button" data-view="artists" aria-pressed="false">
+          <span data-icon="artist" aria-hidden="true"></span>Artists
+        </button>
+      </nav>
+    </footer>
+    <dialog id="now-playing-panel" aria-labelledby="player-heading">
+      <div class="player-screen">
+        <div class="player-heading">
+          <button id="close-player" class="icon-button" type="button" aria-label="Close Now Playing">
+            <span data-icon="down" aria-hidden="true"></span>
+          </button>
+          <h2 id="player-heading">Now playing</h2>
+          <button id="show-queue" class="icon-button" type="button" aria-label="Show queue">
+            <span data-icon="queue" aria-hidden="true"></span>
+          </button>
         </div>
-      </details>
-      <section class="player-card" aria-label="Player">
-        <div class="playing-copy" aria-live="polite">
-          <strong id="now-playing">Nothing playing</strong>
-          <span id="now-playing-detail">Choose a track to begin.</span>
+        <div id="now-art" class="artwork large-art"></div>
+        <div class="playing-copy full-copy" aria-live="polite">
+          <strong id="now-playing">Nothing playing</strong
+          ><button id="now-artist" class="text-link" type="button"></button
+          ><button id="now-playing-detail" class="text-link" type="button">Choose a song to begin</button>
+        </div>
+        <div class="seek-control">
+          <input
+            id="seek"
+            type="range"
+            min="0"
+            max="100"
+            value="0"
+            step="0.1"
+            aria-label="Playback position"
+            disabled
+          />
+          <div class="time-labels"><span id="elapsed">0:00</span><span id="duration">0:00</span></div>
+        </div>
+        <div class="transport" aria-label="Playback controls">
+          <button class="icon-button" data-transport="previous" type="button" aria-label="Previous track" disabled>
+            <span data-icon="previous" aria-hidden="true"></span>
+          </button>
+          <button class="icon-button primary-play" data-transport="toggle" type="button" aria-label="Play" disabled>
+            <span data-icon="play" aria-hidden="true"></span>
+          </button>
+          <button class="icon-button" data-transport="next" type="button" aria-label="Next track" disabled>
+            <span data-icon="next" aria-hidden="true"></span>
+          </button>
         </div>
         <div class="playback-feedback">
-          <p id="playback-status" role="status">Queue empty.</p>
+          <p id="playback-status" role="status">Choose a song from your library.</p>
           <div id="playback-actions"></div>
         </div>
-        <audio id="player" controls preload="metadata"></audio>
-      </section>
-    </footer>
+        <details id="queue-panel">
+          <summary><span>Up next</span><span id="queue-count">Queue empty</span></summary>
+          <div id="queue-content">
+            <div id="queue-items" aria-label="Playback queue"></div>
+            <button id="clear-queue" class="quiet-action danger-action" type="button" hidden>Clear queue</button>
+          </div>
+        </details>
+      </div>
+    </dialog>
+    <audio id="player" preload="metadata"></audio>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
