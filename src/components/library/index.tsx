@@ -1,100 +1,201 @@
-import { $, component$, useComputed$, useContext } from '@builder.io/qwik'
+import {
+  $,
+  component$,
+  useComputed$,
+  useContext,
+  useContextProvider,
+  useSignal,
+  useStore,
+  useVisibleTask$,
+} from '@builder.io/qwik'
 import type { ListItemStyle, Store } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
 import { LibraryRow } from '~/components/library/LibraryRow'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
-import { StoreContext } from '../../routes/layout'
-import { StoreActionsContext } from '../../routes/layout'
+import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import { librarySongAt } from '~/services/library-client'
+import { bindColumnResize } from './column-resize'
+import {
+  COLUMN_STORAGE_KEY,
+  MAX_COLUMN_WIDTH,
+  SONG_COLUMNS,
+  SongColumnsContext,
+  columnLayout,
+  columnPreferences,
+} from './columns'
 
-const RowHeight = 30
-const RowStyle = 'w-full text-sm grid grid-cols-[22px_1fr_1fr_1fr_120px_120px_120px_120px_70px] text-left items-center'
-
-type SortField = 'title' | 'artist' | 'album' | 'track' | 'hertz' | 'date' | 'date-added' | 'fave'
-
-const ButtonConfigs: { label: string; type: SortField }[] = [
-  { label: 'Title', type: 'title' },
-  { label: 'Artist', type: 'artist' },
-  { label: 'Album', type: 'album' },
-  { label: 'Track', type: 'track' },
-  { label: 'Hertz', type: 'hertz' },
-  { label: 'Date', type: 'date' },
-  { label: 'Date Added', type: 'date-added' },
-  { label: 'Fave', type: 'fave' },
-]
-
-const SortButton = component$(({ label, type, store }: { label: string; type: SortField; store: Store }) => {
-  const handleClick = $(() => {
-    const ascending = `${type}-asc` as Store['sorting']
-    const descending = `${type}-desc` as Store['sorting']
-    store.sorting = store.sorting === ascending ? descending : ascending
-  })
-
-  const isSorting = useComputed$(() => store.sorting === `${type}-desc` || store.sorting === `${type}-asc`)
-
-  return (
-    <button
-      class={`not-nth-[2]:border-l border-gray-700 truncate h-full flex items-center justify-between px-2 relative ${
-        isSorting.value ? 'text-yellow-500' : ''
-      }`}
-      onClick$={handleClick}
-    >
-      {label}
-      {store.sorting === `${type}-desc` && <ArrowDown />}
-      {store.sorting === `${type}-asc` && <ArrowUp />}
-    </button>
-  )
-})
+const ROW_HEIGHT = 30
 
 export default component$(() => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
+  const preferences = useStore(columnPreferences())
+  useContextProvider(SongColumnsContext, preferences)
+  const root = useSignal<HTMLElement>()
+  const menu = useSignal<HTMLDetailsElement>()
+  const preferenceError = useSignal('')
+  const visible = useComputed$(() => SONG_COLUMNS.filter((column) => preferences[column.id].visible))
+  const save = $(() => {
+    try {
+      localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(preferences))
+      preferenceError.value = ''
+    } catch {
+      preferenceError.value = 'Column changes apply now, but could not be saved on this device.'
+    }
+  })
+
+  useVisibleTask$(({ cleanup }) => {
+    try {
+      Object.assign(preferences, columnPreferences(JSON.parse(localStorage.getItem(COLUMN_STORAGE_KEY) || 'null')))
+    } catch {
+      preferenceError.value = 'Saved columns could not be loaded. Default columns are shown.'
+    }
+    if (!root.value) return
+    const document = root.value.ownerDocument
+    cleanup(
+      bindColumnResize(root.value, (id, width) => {
+        preferences[id].width = width
+        void save()
+      })
+    )
+    const dismiss = (event: PointerEvent) => {
+      if (menu.value?.open && !menu.value.contains(event.target as Node)) menu.value.open = false
+    }
+    const escape = (event: KeyboardEvent) => {
+      if ((event.target as Element).closest('.songs-column-menu, .songs-header')) event.stopPropagation()
+      if (event.key === 'Escape' && menu.value?.open) {
+        event.stopPropagation()
+        menu.value.open = false
+        menu.value.querySelector('summary')?.focus()
+      }
+    }
+    root.value.addEventListener('keydown', escape)
+    document.addEventListener('pointerdown', dismiss)
+    cleanup(() => {
+      root.value?.removeEventListener('keydown', escape)
+      document.removeEventListener('pointerdown', dismiss)
+    })
+  })
 
   return (
-    <section class="min-h-0 w-full flex flex-col flex-1">
-      <div
-        class={`${RowStyle} border-b border-gray-700`}
-        style={{ height: RowHeight + 'px', paddingRight: 'var(--scrollbar-width)' }}
-      >
-        <span />
-
-        {ButtonConfigs.map((config, index) => (
-          <SortButton key={index} label={config.label} type={config.type} store={store} />
-        ))}
+    <section class="songs-library" ref={root} style={columnLayout(preferences)} aria-label="Songs">
+      <div class="songs-toolbar">
+        <h1>Songs</h1>
+        <details class="songs-column-menu" ref={menu}>
+          <summary>Columns</summary>
+          <div class="songs-column-options">
+            {SONG_COLUMNS.map((column) => (
+              <label key={column.id}>
+                <input
+                  type="checkbox"
+                  checked={preferences[column.id].visible}
+                  disabled={column.id === 'title'}
+                  onChange$={(_, element) => {
+                    preferences[column.id].visible = element.checked
+                    if (!element.checked && store.sorting.startsWith(`${column.id}-`)) store.sorting = 'default'
+                    void save()
+                  }}
+                />
+                {column.label}
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick$={() => {
+                Object.assign(preferences, columnPreferences())
+                if (!SONG_COLUMNS.some((column) => column.visible && store.sorting.startsWith(`${column.id}-`)))
+                  store.sorting = 'default'
+                void save()
+              }}
+            >
+              Reset columns
+            </button>
+          </div>
+        </details>
       </div>
-
-      <div class="min-h-0 flex-1">
-        <VirtualList
-          numItems={store.libraryCatalog.total}
-          itemHeight={RowHeight}
-          onRangeChange={storeActions.requestLibraryRange}
-          scrollToRow={store.libraryView.cursorIdx}
-          renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-            const song = librarySongAt(store.libraryCatalog, index)
-            if (!song) {
-              return <div class={`${RowStyle} text-slate-700`} style={{ ...style, height: RowHeight + 'px' }} />
-            }
-            return (
-              <LibraryRow
-                key={song.id}
-                index={index}
-                song={song}
-                style={{ ...style, height: RowHeight + 'px' }}
-                classes={RowStyle}
-              />
-            )
-          })}
-        >
-          <div
-            class="bg-gray-800 w-full transition-[top] ease-in-out absolute left-0 -z-10"
-            style={{
-              top: store.libraryView.cursorIdx * RowHeight + 'px',
-              height: RowHeight,
-            }}
-          />
-        </VirtualList>
+      {preferenceError.value && (
+        <p role="status" class="songs-preference-error">
+          {preferenceError.value}
+        </p>
+      )}
+      <div class="songs-horizontal-scroll">
+        <div class="songs-table" role="table" aria-label="Music library" aria-rowcount={store.libraryCatalog.total + 1}>
+          <div class="songs-grid songs-header" role="row" aria-rowindex={1}>
+            <span role="columnheader" aria-label="Playback" />
+            {visible.value.map((column) => (
+              <div
+                key={column.id}
+                class="songs-column-heading"
+                role="columnheader"
+                aria-sort={
+                  store.sorting === `${column.id}-asc`
+                    ? 'ascending'
+                    : store.sorting === `${column.id}-desc`
+                      ? 'descending'
+                      : 'none'
+                }
+              >
+                {column.id === 'duration' ? (
+                  <span class="songs-column-label">{column.label}</span>
+                ) : (
+                  <button
+                    type="button"
+                    class="songs-column-label"
+                    onClick$={() => {
+                      const ascending = `${column.id}-asc` as Store['sorting']
+                      store.sorting =
+                        store.sorting === ascending ? (`${column.id}-desc` as Store['sorting']) : ascending
+                    }}
+                  >
+                    <span>{column.label}</span>
+                    {store.sorting === `${column.id}-desc` && <ArrowDown />}
+                    {store.sorting === `${column.id}-asc` && <ArrowUp />}
+                  </button>
+                )}
+                <span
+                  role="separator"
+                  tabIndex={0}
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${column.label} column`}
+                  aria-valuemin={column.min}
+                  aria-valuemax={MAX_COLUMN_WIDTH}
+                  aria-valuenow={preferences[column.id].width}
+                  data-column-resize={column.id}
+                  class="songs-column-resize"
+                  title="Drag to resize. Arrow keys adjust width. Double-click to reset."
+                />
+              </div>
+            ))}
+          </div>
+          <div class="min-h-0 flex-1" role="rowgroup">
+            <VirtualList
+              numItems={store.libraryCatalog.total}
+              itemHeight={ROW_HEIGHT}
+              onRangeChange={storeActions.requestLibraryRange}
+              scrollToRow={store.libraryView.cursorIdx}
+              renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
+                const song = librarySongAt(store.libraryCatalog, index)
+                if (!song) return <div class="songs-grid" style={{ ...style, height: `${ROW_HEIGHT}px` }} />
+                return (
+                  <LibraryRow
+                    key={song.id}
+                    index={index}
+                    song={song}
+                    style={{ ...style, height: `${ROW_HEIGHT}px` }}
+                    classes="songs-grid songs-row"
+                  />
+                )
+              })}
+            />
+          </div>
+        </div>
       </div>
+      {store.libraryCatalog.total === 0 && store.libraryCatalog.status === 'ready' && (
+        <p class="songs-empty">
+          {store.searchTerm ? 'No songs match your search.' : 'Import music to start your library.'}
+        </p>
+      )}
     </section>
   )
 })

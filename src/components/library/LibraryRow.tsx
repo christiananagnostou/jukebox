@@ -7,6 +7,7 @@ import { updateFavoriteRating } from '~/services/library-db'
 import { trackMetadataDestinations } from '~/services/library-destination'
 import { StoreActionsContext, StoreContext } from '~/routes/layout'
 import MetadataLink from './MetadataLink'
+import { SONG_COLUMNS, SongColumnsContext, songDuration } from './columns'
 import { SoundBars } from '../Shared/SoundBars'
 import { Star0 } from '../svg/Star0'
 import { Star1 } from '../svg/Star1'
@@ -29,10 +30,14 @@ export interface LibraryRowProps {
 export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, classes }) => {
   const store = useContext(StoreContext)
   const storeActions = useContext(StoreActionsContext)
+  const preferences = useContext(SongColumnsContext)
+  const columns = useComputed$(() =>
+    SONG_COLUMNS.filter((column) => preferences[column.id].visible).map((column) => column.id)
+  )
 
   const isPlaying = useComputed$(() => store.playback.current?.id === song.id)
   const nextRating = useComputed$(() => ((song.favorRating + 1) % 3) as Song['favorRating'])
-  const destinations = trackMetadataDestinations(song)
+  const destinations = useComputed$(() => trackMetadataDestinations(song))
 
   const playTrack = $(async () => {
     void invoke('record_playback_client_event', { event: 'activation_requested' }).catch(() => undefined)
@@ -64,63 +69,70 @@ export const LibraryRow = component$<LibraryRowProps>(({ index, song, style, cla
 
   return (
     <div
-      key={song.title}
+      role="row"
+      aria-rowindex={index + 2}
+      data-selected={store.libraryView.cursorIdx === index ? 'true' : undefined}
+      data-playing={isPlaying.value ? 'true' : undefined}
       style={style}
-      class={
-        classes +
-        ` hover:bg-[rgba(0,0,0,.15)]
-        ${isPlaying.value && '!bg-gray-700'}`
-      }
+      class={classes}
     >
-      <SoundBars show={isPlaying.value} />
-
-      <button
-        type="button"
-        class="relative truncate pl-1 text-left hover:text-white focus-visible:text-white"
-        aria-label={`Play ${song.title} by ${song.artist || 'Unknown artist'}`}
-        onClick$={playTrack}
-      >
-        {song.title}
-      </button>
-
-      {destinations.artist ? (
-        <MetadataLink destination={destinations.artist} class="truncate pl-2" title={`Open ${song.artist}`}>
-          {song.artist}
-        </MetadataLink>
-      ) : (
-        <span class="truncate pl-2">{song.artist}</span>
-      )}
-
-      {destinations.album ? (
-        <MetadataLink destination={destinations.album} class="truncate pl-2" title={`Open ${song.album}`}>
-          {song.album}
-        </MetadataLink>
-      ) : (
-        <span class="truncate pl-2">{song.album}</span>
-      )}
-
-      <span class="truncate pl-2">{song.trackNumber}</span>
-
-      <span class="truncate pl-2">{song.sampleRate}</span>
-
-      <span class="truncate pl-2">{song.date}</span>
-
-      <span class="truncate pl-2">{formatDateAdded(song.dateAdded)}</span>
-
-      <span class="truncate pl-2 flex align-center">
-        <button
-          aria-label={`Set favorite rating to ${nextRating.value}`}
-          title={`Favorite rating: ${song.favorRating}`}
-          onClick$={(event) => {
-            event.stopPropagation()
-            handleFavorClick(nextRating.value)
-          }}
-        >
-          {song.favorRating === 0 && <Star0 />}
-          {song.favorRating === 1 && <Star1 />}
-          {song.favorRating === 2 && <Star2 />}
-        </button>
+      <span role="cell">
+        <SoundBars show={isPlaying.value} />
       </span>
+      {columns.value.map((column) => (
+        <span key={column} role="cell" class="songs-cell" data-column={column}>
+          {column === 'title' && (
+            <button
+              type="button"
+              class="songs-title"
+              title={song.title}
+              aria-label={`Play ${song.title} by ${song.artist || 'Unknown artist'}`}
+              onClick$={playTrack}
+            >
+              {song.title}
+            </button>
+          )}
+
+          {column === 'artist' &&
+            (destinations.value.artist ? (
+              <MetadataLink destination={destinations.value.artist} class="truncate" title={`Open ${song.artist}`}>
+                {song.artist}
+              </MetadataLink>
+            ) : (
+              <span class="truncate">{song.artist || '-'}</span>
+            ))}
+
+          {column === 'album' &&
+            (destinations.value.album ? (
+              <MetadataLink destination={destinations.value.album} class="truncate" title={`Open ${song.album}`}>
+                {song.album}
+              </MetadataLink>
+            ) : (
+              <span class="truncate">{song.album || '-'}</span>
+            ))}
+          {column === 'duration' && songDuration(song.duration)}
+          {column === 'track' && (song.trackNumber || '-')}
+          {column === 'hertz' && (song.sampleRate || '-')}
+          {column === 'date' && (song.date || '-')}
+          {column === 'date-added' && formatDateAdded(song.dateAdded)}
+          {column === 'fave' && (
+            <button
+              type="button"
+              class="songs-favorite"
+              aria-label={`Set favorite rating to ${nextRating.value}`}
+              title={`Favorite rating: ${song.favorRating}`}
+              onClick$={(event) => {
+                event.stopPropagation()
+                handleFavorClick(nextRating.value)
+              }}
+            >
+              {song.favorRating === 0 && <Star0 />}
+              {song.favorRating === 1 && <Star1 />}
+              {song.favorRating === 2 && <Star2 />}
+            </button>
+          )}
+        </span>
+      ))}
     </div>
   )
 })
