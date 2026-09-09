@@ -106,6 +106,23 @@ describe('playback drawer state', () => {
     expect(screen.querySelector('.playback-upcoming-title')?.textContent).toBe('Amarantine')
   })
 
+  it('updates volume throughout a drag without waiting for a change event', async () => {
+    const { render, screen, userEvent } = await createDOM()
+    await render(<Harness />)
+
+    const slider = screen.querySelector<HTMLInputElement>('[aria-label="Volume"]')!
+    const readout = screen.querySelector('[aria-label="Reset volume to 100 percent"]')!
+
+    for (const volume of [25, 0, 64, 100]) {
+      slider.value = String(volume)
+      await userEvent(slider, 'input')
+
+      expect(readout.textContent).toBe(String(volume))
+      expect(slider.getAttribute('aria-valuetext')).toBe(`${volume} percent`)
+      expect(slider.getAttribute('style')).toContain(`--range-progress: ${volume}%`)
+    }
+  })
+
   it('resets volume from the numeric control', async () => {
     const { render, screen, userEvent } = await createDOM()
     await render(<Harness />)
