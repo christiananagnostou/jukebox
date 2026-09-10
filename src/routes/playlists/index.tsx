@@ -23,6 +23,7 @@ import {
   PLAYLIST_FORM_CONTROL_CLASS as INPUT_CLASS,
 } from '~/components/playlists/styles'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import { type BuiltInCollectionKind, resolvePlaybackTracks } from '~/services/library-client'
 import { pickM3uExport, pickM3uImport, type M3uImportPreview, type M3uImportResult } from '~/services/m3u-client'
 import {
@@ -417,395 +418,395 @@ export default component$(() => {
   const selectedStatus = useComputed$(() => entries.error || state.error)
 
   return (
-    <section class="grid min-h-0 flex-1 grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
-      <aside class="flex min-h-0 flex-col border-r border-gray-700" aria-label="Playlists">
-        <div class="border-b border-gray-700 p-3">
-          <h1 class="mb-3 text-lg">Playlists</h1>
-          <form preventdefault:submit onSubmit$={createPlaylistRecord} class="flex gap-2">
-            <label class="sr-only" for="new-playlist-name">
-              New playlist name
-            </label>
-            <input
-              id="new-playlist-name"
-              class={`${INPUT_CLASS} flex-1`}
-              value={state.createName}
-              maxLength={200}
-              placeholder="New playlist"
-              onInput$={(_, input) => (state.createName = input.value)}
-              onFocus$={() => (store.isTyping = true)}
-              onBlur$={() => (store.isTyping = false)}
-            />
-            <button class={BUTTON_CLASS} type="submit" disabled={!state.createName.trim() || busy.value}>
-              Create
-            </button>
-          </form>
-          <button
-            class={`${BUTTON_CLASS} mt-2 w-full`}
-            type="button"
-            onClick$={beginSmartPlaylist}
-            disabled={busy.value}
-          >
-            New smart playlist
-          </button>
-          <button
-            class={`${BUTTON_CLASS} mt-2 w-full`}
-            type="button"
-            onClick$={beginM3uImport}
-            disabled={busy.value || Boolean(state.importPreview)}
-          >
-            {state.action === 'import-picker' ? 'Opening…' : 'Import M3U playlist'}
-          </button>
-          {!state.selectedId && !state.selectedBuiltIn && !state.smartCreating && !state.importPreview && (
-            <div class="mt-2 min-h-4 text-xs" aria-live="polite">
-              {state.error ? (
-                <span role="alert" class="text-red-300">
-                  {state.error}
-                </span>
-              ) : (
-                <span class="text-slate-400">{state.notice}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <details class="playlist-section border-b border-gray-700" open>
-          <summary class="playlist-section-summary">
-            <span>Built-in playlists</span>
-            <span class="playlist-section-chevron" aria-hidden="true">
-              ›
-            </span>
-          </summary>
-          <div class="flex flex-col p-2" aria-label="Built-in collections">
-            {BUILT_IN_COLLECTIONS.map((collection) => {
-              const selected = collection.kind === state.selectedBuiltIn
-              return (
-                <button
-                  key={collection.kind}
-                  class={`min-h-10 px-2 text-left text-sm hover:bg-gray-800 ${selected ? 'bg-gray-700' : ''}`}
-                  disabled={busy.value}
-                  onClick$={() => selectBuiltIn(collection.kind)}
-                  aria-current={selected ? 'page' : undefined}
-                >
-                  {collection.label}
-                </button>
-              )
-            })}
+    <section class="desktop-page">
+      <PageToolbar title="Playlists">
+        <details class="page-toolbar-menu">
+          <summary>New playlist</summary>
+          <div class="page-toolbar-menu-options">
+            <form preventdefault:submit onSubmit$={createPlaylistRecord} class="flex gap-2">
+              <label class="sr-only" for="new-playlist-name">
+                New playlist name
+              </label>
+              <input
+                id="new-playlist-name"
+                class={`${INPUT_CLASS} flex-1`}
+                value={state.createName}
+                maxLength={200}
+                placeholder="New playlist"
+                onInput$={(_, input) => (state.createName = input.value)}
+                onFocus$={() => (store.isTyping = true)}
+                onBlur$={() => (store.isTyping = false)}
+              />
+              <button class={BUTTON_CLASS} type="submit" disabled={!state.createName.trim() || busy.value}>
+                Create
+              </button>
+            </form>
           </div>
         </details>
-
-        <details class="playlist-section playlist-section-grow" open>
-          <summary class="playlist-section-summary">
-            <span>Your playlists</span>
-            <span class="playlist-section-count">{playlists.total.toLocaleString()}</span>
-            <span class="playlist-section-chevron" aria-hidden="true">
-              ›
-            </span>
-          </summary>
-          <div class="relative min-h-0 flex-1">
-            {playlists.status === 'ready' && playlists.total === 0 && (
-              <p class="p-4 text-sm leading-relaxed text-slate-400">Create a playlist to collect tracks for later.</p>
-            )}
-            {playlists.error && (
-              <p role="alert" class="m-3 border border-red-900 bg-red-950 p-3 text-sm text-red-200">
-                {playlists.error}
-              </p>
-            )}
-            <VirtualList
-              numItems={playlists.total}
-              itemHeight={PLAYLIST_ROW_HEIGHT}
-              onRangeChange={$((startIndex, endIndex) => playlistPager.value?.ensureRange(startIndex, endIndex))}
-              renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-                const playlist = playlistAt(playlists, index)
-                if (!playlist)
-                  return <div class="bg-gray-900" style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }} />
-                const selected = playlist.id === state.selectedId
-                return (
-                  <button
-                    key={playlist.id}
-                    class={`flex w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-gray-800 ${
-                      selected ? 'bg-gray-700' : ''
-                    }`}
-                    style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }}
-                    onClick$={() => selectPlaylist(playlist)}
-                    disabled={busy.value}
-                    aria-current={selected ? 'page' : undefined}
-                  >
-                    <span class="truncate">{playlist.name}</span>
-                    <span class="text-xs tabular-nums text-slate-500">
-                      {playlist.kind === 'smart' ? 'Smart' : playlist.entryCount}
-                    </span>
-                  </button>
-                )
-              })}
-            />
-          </div>
-        </details>
-      </aside>
-
-      <div class="flex min-h-0 min-w-0 flex-col">
-        {state.importPreview ? (
-          <M3uImportView
-            preview={state.importPreview}
-            onApplied$={m3uImportApplied}
-            onBusyChange$={m3uImportBusyChanged}
-            onDiscarded$={m3uImportDiscarded}
-          />
-        ) : state.selectedBuiltIn ? (
-          <BuiltInCollectionView kind={state.selectedBuiltIn} />
-        ) : state.smartCreating ? (
-          <SmartPlaylistView
-            onCreated$={smartPlaylistCreated}
-            onUpdated$={smartPlaylistUpdated}
-            onDeleted$={smartPlaylistDeleted}
-          />
-        ) : !state.selectedId ? (
-          <div class="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400">
-            <div>
-              <p class="text-base text-slate-300">Select a playlist</p>
-              <p class="mt-2">Choose one from the list or create a new collection.</p>
-            </div>
-          </div>
-        ) : state.selectedKind === 'smart' ? (
-          <SmartPlaylistView
-            playlistId={state.selectedId}
-            onCreated$={smartPlaylistCreated}
-            onUpdated$={smartPlaylistUpdated}
-            onDeleted$={smartPlaylistDeleted}
-          />
-        ) : (
-          <>
-            <header class="border-b border-gray-700 p-4">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <h2 class="truncate text-xl">{state.selectedName}</h2>
-                  <p class="mt-1 text-xs text-slate-500">
-                    {entries.total} {entries.total === 1 ? 'entry' : 'entries'}
-                  </p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    class={BUTTON_CLASS}
-                    onClick$={addCurrentTrack}
-                    disabled={!store.playback.current || busy.value}
-                    title={store.playback.current ? `Add ${store.playback.current.title}` : 'Play a track first'}
-                  >
-                    Add current track
-                  </button>
-                  <button class={BUTTON_CLASS} onClick$={exportPlaylistRecord} disabled={busy.value}>
-                    {state.action === 'export' ? 'Exporting…' : 'Export M3U8'}
-                  </button>
-                  <button
-                    class={BUTTON_CLASS}
-                    onClick$={() => {
-                      state.renameName = state.selectedName
-                      state.editing = !state.editing
-                      state.duplicating = false
-                      state.confirmDelete = false
-                    }}
-                    disabled={busy.value}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    class={BUTTON_CLASS}
-                    onClick$={() => {
-                      state.duplicateName = `${state.selectedName} copy`
-                      state.duplicating = !state.duplicating
-                      state.editing = false
-                      state.confirmDelete = false
-                    }}
-                    disabled={busy.value}
-                  >
-                    Duplicate
-                  </button>
-                  <button
-                    class={`${BUTTON_CLASS} border-red-900 text-red-300`}
-                    onClick$={() => {
-                      state.confirmDelete = !state.confirmDelete
-                      state.editing = false
-                      state.duplicating = false
-                    }}
-                    disabled={busy.value}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              {state.editing && (
-                <form preventdefault:submit onSubmit$={renamePlaylistRecord} class="mt-3 flex max-w-lg gap-2">
-                  <label class="sr-only" for="rename-playlist">
-                    Playlist name
-                  </label>
-                  <input
-                    id="rename-playlist"
-                    class={`${INPUT_CLASS} flex-1`}
-                    value={state.renameName}
-                    maxLength={200}
-                    onInput$={(_, input) => (state.renameName = input.value)}
-                    onFocus$={() => (store.isTyping = true)}
-                    onBlur$={() => (store.isTyping = false)}
-                  />
-                  <button class={BUTTON_CLASS} type="submit" disabled={!state.renameName.trim() || busy.value}>
-                    Save
-                  </button>
-                  <button
-                    class={BUTTON_CLASS}
-                    type="button"
-                    onClick$={() => (state.editing = false)}
-                    disabled={busy.value}
-                  >
-                    Cancel
-                  </button>
-                </form>
-              )}
-
-              {state.duplicating && (
-                <form preventdefault:submit onSubmit$={duplicatePlaylistRecord} class="mt-3 flex max-w-lg gap-2">
-                  <label class="sr-only" for="duplicate-playlist-name">
-                    Duplicate playlist name
-                  </label>
-                  <input
-                    id="duplicate-playlist-name"
-                    class={`${INPUT_CLASS} flex-1`}
-                    value={state.duplicateName}
-                    maxLength={200}
-                    onInput$={(_, input) => (state.duplicateName = input.value)}
-                    onFocus$={() => (store.isTyping = true)}
-                    onBlur$={() => (store.isTyping = false)}
-                  />
-                  <button class={BUTTON_CLASS} type="submit" disabled={!state.duplicateName.trim() || busy.value}>
-                    Create copy
-                  </button>
-                  <button
-                    class={BUTTON_CLASS}
-                    type="button"
-                    onClick$={() => (state.duplicating = false)}
-                    disabled={busy.value}
-                  >
-                    Cancel
-                  </button>
-                </form>
-              )}
-
-              {state.confirmDelete && (
-                <div class="mt-3 flex flex-wrap items-center gap-3 border border-red-900 bg-red-950 px-3 py-2 text-sm">
-                  <span>Delete this playlist and its entries?</span>
-                  <button
-                    class={`${BUTTON_CLASS} border-red-600 text-red-200`}
-                    onClick$={deletePlaylistRecord}
-                    disabled={busy.value}
-                  >
-                    Confirm delete
-                  </button>
-                  <button class={BUTTON_CLASS} onClick$={() => (state.confirmDelete = false)} disabled={busy.value}>
-                    Cancel
-                  </button>
-                </div>
-              )}
-
-              <div class="mt-3 min-h-4 text-xs" aria-live="polite">
-                {selectedStatus.value ? (
+        <button class="page-toolbar-button" type="button" onClick$={beginSmartPlaylist} disabled={busy.value}>
+          New smart playlist
+        </button>
+        <button
+          class="page-toolbar-button"
+          type="button"
+          onClick$={beginM3uImport}
+          disabled={busy.value || Boolean(state.importPreview)}
+        >
+          {state.action === 'import-picker' ? 'Opening…' : 'Import M3U playlist'}
+        </button>
+      </PageToolbar>
+      <div class="grid min-h-0 flex-1 grid-cols-[minmax(180px,240px)_minmax(0,1fr)]">
+        <aside class="flex min-h-0 flex-col border-r border-gray-700" aria-label="Playlists">
+          <div>
+            {!state.selectedId && !state.selectedBuiltIn && !state.smartCreating && !state.importPreview && (
+              <div class="mt-2 min-h-4 text-xs" aria-live="polite">
+                {state.error ? (
                   <span role="alert" class="text-red-300">
-                    {selectedStatus.value}
+                    {state.error}
                   </span>
                 ) : (
                   <span class="text-slate-400">{state.notice}</span>
                 )}
               </div>
-            </header>
+            )}
+          </div>
 
-            <div
-              class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_200px] border-b border-gray-700 text-xs text-slate-400"
-              style={{ minHeight: '30px', paddingRight: 'var(--scrollbar-width)' }}
-            >
-              <span class="flex items-center px-2">#</span>
-              <span class="flex items-center border-l border-gray-700 px-3">Title</span>
-              <span class="flex items-center border-l border-gray-700 px-3">Artist</span>
-              <span class="flex items-center border-l border-gray-700 px-3">Album</span>
-              <span class="flex items-center border-l border-gray-700 px-3">Status / actions</span>
+          <details class="playlist-section border-b border-gray-700" open>
+            <summary class="playlist-section-summary">
+              <span>Built-in playlists</span>
+              <span class="playlist-section-chevron" aria-hidden="true">
+                ›
+              </span>
+            </summary>
+            <div class="flex flex-col p-2" aria-label="Built-in collections">
+              {BUILT_IN_COLLECTIONS.map((collection) => {
+                const selected = collection.kind === state.selectedBuiltIn
+                return (
+                  <button
+                    key={collection.kind}
+                    class={`min-h-10 px-2 text-left text-sm hover:bg-gray-800 ${selected ? 'bg-gray-700' : ''}`}
+                    disabled={busy.value}
+                    onClick$={() => selectBuiltIn(collection.kind)}
+                    aria-current={selected ? 'page' : undefined}
+                  >
+                    {collection.label}
+                  </button>
+                )
+              })}
             </div>
+          </details>
 
+          <details class="playlist-section playlist-section-grow" open>
+            <summary class="playlist-section-summary">
+              <span>Your playlists</span>
+              <span class="playlist-section-count">{playlists.total.toLocaleString()}</span>
+              <span class="playlist-section-chevron" aria-hidden="true">
+                ›
+              </span>
+            </summary>
             <div class="relative min-h-0 flex-1">
-              {entries.status === 'ready' && entries.total === 0 && (
-                <div class="grid h-full place-items-center p-8 text-center text-sm text-slate-400">
-                  <div>
-                    <p class="text-slate-300">This playlist is empty.</p>
-                    <p class="mt-2">Play a library track, then choose Add current track.</p>
-                  </div>
-                </div>
+              {playlists.status === 'ready' && playlists.total === 0 && (
+                <p class="p-4 text-sm leading-relaxed text-slate-400">Create a playlist to collect tracks for later.</p>
+              )}
+              {playlists.error && (
+                <p role="alert" class="m-3 border border-red-900 bg-red-950 p-3 text-sm text-red-200">
+                  {playlists.error}
+                </p>
               )}
               <VirtualList
-                numItems={entries.total}
-                itemHeight={ENTRY_ROW_HEIGHT}
-                onRangeChange={$((startIndex, endIndex) => entryPager.value?.ensureRange(startIndex, endIndex))}
+                numItems={playlists.total}
+                itemHeight={PLAYLIST_ROW_HEIGHT}
+                onRangeChange={$((startIndex, endIndex) => playlistPager.value?.ensureRange(startIndex, endIndex))}
                 renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
-                  const entry = playlistEntryAt(entries, index)
-                  if (!entry) return <div class="bg-gray-900" style={{ ...style, height: `${ENTRY_ROW_HEIGHT}px` }} />
-                  const available = entry.availability === 'available'
+                  const playlist = playlistAt(playlists, index)
+                  if (!playlist)
+                    return <div class="bg-gray-900" style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }} />
+                  const selected = playlist.id === state.selectedId
                   return (
-                    <div
-                      key={entry.id}
-                      class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_200px] border-b border-gray-800 text-sm"
-                      style={{ ...style, height: `${ENTRY_ROW_HEIGHT}px` }}
+                    <button
+                      key={playlist.id}
+                      class={`flex w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-gray-800 ${
+                        selected ? 'bg-gray-700' : ''
+                      }`}
+                      style={{ ...style, height: `${PLAYLIST_ROW_HEIGHT}px` }}
+                      onClick$={() => selectPlaylist(playlist)}
+                      disabled={busy.value}
+                      aria-current={selected ? 'page' : undefined}
                     >
-                      <span class="flex items-center px-2 tabular-nums text-slate-500">{index + 1}</span>
-                      <button
-                        class="flex min-w-0 items-center border-l border-gray-800 px-3 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-slate-500"
-                        onClick$={() => playEntry(index)}
-                        disabled={!available}
-                        aria-label={
-                          available
-                            ? `Play ${entry.title} by ${entry.artist || 'Unknown artist'}`
-                            : `${entry.title} is ${entry.availability}`
-                        }
-                      >
-                        <span class="truncate">{entry.title || '-'}</span>
-                      </button>
-                      <TrackMetadataCells artist={entry.artist} album={entry.album} />
-                      <span class="flex items-center justify-between gap-2 border-l border-gray-800 px-2">
-                        <span class={available ? 'text-slate-500' : 'text-amber-300'}>
-                          {available ? 'Ready' : entry.availability === 'missing' ? 'Missing' : 'Offline'}
-                        </span>
-                        <span class="flex items-center gap-2">
-                          <button
-                            class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
-                            onClick$={() => moveEntry(entry, 'up')}
-                            disabled={busy.value || index === 0}
-                            aria-label={`Move ${entry.title} up`}
-                          >
-                            Up
-                          </button>
-                          <button
-                            class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
-                            onClick$={() => moveEntry(entry, 'down')}
-                            disabled={busy.value || index === entries.total - 1}
-                            aria-label={`Move ${entry.title} down`}
-                          >
-                            Down
-                          </button>
-                          <button
-                            class="px-1 py-2 text-xs text-slate-400 hover:text-red-300 disabled:opacity-40"
-                            onClick$={() => removeEntry(entry)}
-                            disabled={busy.value}
-                            aria-label={`Remove ${entry.title} from ${state.selectedName}`}
-                            title="Remove entry"
-                          >
-                            Remove
-                          </button>
-                        </span>
+                      <span class="truncate">{playlist.name}</span>
+                      <span class="text-xs tabular-nums text-slate-500">
+                        {playlist.kind === 'smart' ? 'Smart' : playlist.entryCount}
                       </span>
-                    </div>
+                    </button>
                   )
                 })}
               />
             </div>
-            <p class="sr-only">
-              Playlist entries load in pages of {PLAYLIST_ENTRY_PAGE_SIZE}; missing tracks remain visible but cannot be
-              played.
-            </p>
-          </>
-        )}
+          </details>
+        </aside>
+
+        <div class="flex min-h-0 min-w-0 flex-col">
+          {state.importPreview ? (
+            <M3uImportView
+              preview={state.importPreview}
+              onApplied$={m3uImportApplied}
+              onBusyChange$={m3uImportBusyChanged}
+              onDiscarded$={m3uImportDiscarded}
+            />
+          ) : state.selectedBuiltIn ? (
+            <BuiltInCollectionView kind={state.selectedBuiltIn} />
+          ) : state.smartCreating ? (
+            <SmartPlaylistView
+              onCreated$={smartPlaylistCreated}
+              onUpdated$={smartPlaylistUpdated}
+              onDeleted$={smartPlaylistDeleted}
+            />
+          ) : !state.selectedId ? (
+            <div class="grid flex-1 place-items-center p-8 text-center text-sm text-slate-400">
+              <div>
+                <p class="text-base text-slate-300">Select a playlist</p>
+                <p class="mt-2">Choose one from the list or create a new collection.</p>
+              </div>
+            </div>
+          ) : state.selectedKind === 'smart' ? (
+            <SmartPlaylistView
+              playlistId={state.selectedId}
+              onCreated$={smartPlaylistCreated}
+              onUpdated$={smartPlaylistUpdated}
+              onDeleted$={smartPlaylistDeleted}
+            />
+          ) : (
+            <>
+              <PageToolbar title={state.selectedName} secondary>
+                <span class="tabular-nums">{entries.total} entries</span>
+                <details class="page-toolbar-menu">
+                  <summary>Actions</summary>
+                  <div class="page-toolbar-menu-options">
+                    <button
+                      class={BUTTON_CLASS}
+                      onClick$={addCurrentTrack}
+                      disabled={!store.playback.current || busy.value}
+                      title={store.playback.current ? `Add ${store.playback.current.title}` : 'Play a track first'}
+                    >
+                      Add current track
+                    </button>
+                    <button class={BUTTON_CLASS} onClick$={exportPlaylistRecord} disabled={busy.value}>
+                      {state.action === 'export' ? 'Exporting…' : 'Export M3U8'}
+                    </button>
+                    <button
+                      class={BUTTON_CLASS}
+                      onClick$={() => {
+                        state.renameName = state.selectedName
+                        state.editing = !state.editing
+                        state.duplicating = false
+                        state.confirmDelete = false
+                      }}
+                      disabled={busy.value}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      class={BUTTON_CLASS}
+                      onClick$={() => {
+                        state.duplicateName = `${state.selectedName} copy`
+                        state.duplicating = !state.duplicating
+                        state.editing = false
+                        state.confirmDelete = false
+                      }}
+                      disabled={busy.value}
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      class={`${BUTTON_CLASS} border-red-900 text-red-300`}
+                      onClick$={() => {
+                        state.confirmDelete = !state.confirmDelete
+                        state.editing = false
+                        state.duplicating = false
+                      }}
+                      disabled={busy.value}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </details>
+              </PageToolbar>
+              <div class="playlist-detail-status">
+                {state.editing && (
+                  <form preventdefault:submit onSubmit$={renamePlaylistRecord} class="mt-3 flex max-w-lg gap-2">
+                    <label class="sr-only" for="rename-playlist">
+                      Playlist name
+                    </label>
+                    <input
+                      id="rename-playlist"
+                      class={`${INPUT_CLASS} flex-1`}
+                      value={state.renameName}
+                      maxLength={200}
+                      onInput$={(_, input) => (state.renameName = input.value)}
+                      onFocus$={() => (store.isTyping = true)}
+                      onBlur$={() => (store.isTyping = false)}
+                    />
+                    <button class={BUTTON_CLASS} type="submit" disabled={!state.renameName.trim() || busy.value}>
+                      Save
+                    </button>
+                    <button
+                      class={BUTTON_CLASS}
+                      type="button"
+                      onClick$={() => (state.editing = false)}
+                      disabled={busy.value}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
+
+                {state.duplicating && (
+                  <form preventdefault:submit onSubmit$={duplicatePlaylistRecord} class="mt-3 flex max-w-lg gap-2">
+                    <label class="sr-only" for="duplicate-playlist-name">
+                      Duplicate playlist name
+                    </label>
+                    <input
+                      id="duplicate-playlist-name"
+                      class={`${INPUT_CLASS} flex-1`}
+                      value={state.duplicateName}
+                      maxLength={200}
+                      onInput$={(_, input) => (state.duplicateName = input.value)}
+                      onFocus$={() => (store.isTyping = true)}
+                      onBlur$={() => (store.isTyping = false)}
+                    />
+                    <button class={BUTTON_CLASS} type="submit" disabled={!state.duplicateName.trim() || busy.value}>
+                      Create copy
+                    </button>
+                    <button
+                      class={BUTTON_CLASS}
+                      type="button"
+                      onClick$={() => (state.duplicating = false)}
+                      disabled={busy.value}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
+
+                {state.confirmDelete && (
+                  <div class="mt-3 flex flex-wrap items-center gap-3 border border-red-900 bg-red-950 px-3 py-2 text-sm">
+                    <span>Delete this playlist and its entries?</span>
+                    <button
+                      class={`${BUTTON_CLASS} border-red-600 text-red-200`}
+                      onClick$={deletePlaylistRecord}
+                      disabled={busy.value}
+                    >
+                      Confirm delete
+                    </button>
+                    <button class={BUTTON_CLASS} onClick$={() => (state.confirmDelete = false)} disabled={busy.value}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                <div class="mt-3 min-h-4 text-xs" aria-live="polite">
+                  {selectedStatus.value ? (
+                    <span role="alert" class="text-red-300">
+                      {selectedStatus.value}
+                    </span>
+                  ) : (
+                    <span class="text-slate-400">{state.notice}</span>
+                  )}
+                </div>
+              </div>
+
+              <div
+                class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_200px] border-b border-gray-700 text-xs text-slate-400"
+                style={{ minHeight: '30px', paddingRight: 'var(--scrollbar-width)' }}
+              >
+                <span class="flex items-center px-2">#</span>
+                <span class="flex items-center border-l border-gray-700 px-3">Title</span>
+                <span class="flex items-center border-l border-gray-700 px-3">Artist</span>
+                <span class="flex items-center border-l border-gray-700 px-3">Album</span>
+                <span class="flex items-center border-l border-gray-700 px-3">Status / actions</span>
+              </div>
+
+              <div class="relative min-h-0 flex-1">
+                {entries.status === 'ready' && entries.total === 0 && (
+                  <div class="grid h-full place-items-center p-8 text-center text-sm text-slate-400">
+                    <div>
+                      <p class="text-slate-300">This playlist is empty.</p>
+                      <p class="mt-2">Play a library track, then choose Add current track.</p>
+                    </div>
+                  </div>
+                )}
+                <VirtualList
+                  numItems={entries.total}
+                  itemHeight={ENTRY_ROW_HEIGHT}
+                  onRangeChange={$((startIndex, endIndex) => entryPager.value?.ensureRange(startIndex, endIndex))}
+                  renderItem={component$(({ index, style }: { index: number; style: ListItemStyle }) => {
+                    const entry = playlistEntryAt(entries, index)
+                    if (!entry) return <div class="bg-gray-900" style={{ ...style, height: `${ENTRY_ROW_HEIGHT}px` }} />
+                    const available = entry.availability === 'available'
+                    return (
+                      <div
+                        key={entry.id}
+                        class="grid grid-cols-[48px_minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_200px] border-b border-gray-800 text-sm"
+                        style={{ ...style, height: `${ENTRY_ROW_HEIGHT}px` }}
+                      >
+                        <span class="flex items-center px-2 tabular-nums text-slate-500">{index + 1}</span>
+                        <button
+                          class="flex min-w-0 items-center border-l border-gray-800 px-3 text-left hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-slate-500"
+                          onClick$={() => playEntry(index)}
+                          disabled={!available}
+                          aria-label={
+                            available
+                              ? `Play ${entry.title} by ${entry.artist || 'Unknown artist'}`
+                              : `${entry.title} is ${entry.availability}`
+                          }
+                        >
+                          <span class="truncate">{entry.title || '-'}</span>
+                        </button>
+                        <TrackMetadataCells artist={entry.artist} album={entry.album} />
+                        <span class="flex items-center justify-between gap-2 border-l border-gray-800 px-2">
+                          <span class={available ? 'text-slate-500' : 'text-amber-300'}>
+                            {available ? 'Ready' : entry.availability === 'missing' ? 'Missing' : 'Offline'}
+                          </span>
+                          <span class="flex items-center gap-2">
+                            <button
+                              class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
+                              onClick$={() => moveEntry(entry, 'up')}
+                              disabled={busy.value || index === 0}
+                              aria-label={`Move ${entry.title} up`}
+                            >
+                              Up
+                            </button>
+                            <button
+                              class="px-1 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-30"
+                              onClick$={() => moveEntry(entry, 'down')}
+                              disabled={busy.value || index === entries.total - 1}
+                              aria-label={`Move ${entry.title} down`}
+                            >
+                              Down
+                            </button>
+                            <button
+                              class="px-1 py-2 text-xs text-slate-400 hover:text-red-300 disabled:opacity-40"
+                              onClick$={() => removeEntry(entry)}
+                              disabled={busy.value}
+                              aria-label={`Remove ${entry.title} from ${state.selectedName}`}
+                              title="Remove entry"
+                            >
+                              Remove
+                            </button>
+                          </span>
+                        </span>
+                      </div>
+                    )
+                  })}
+                />
+              </div>
+              <p class="sr-only">
+                Playlist entries load in pages of {PLAYLIST_ENTRY_PAGE_SIZE}; missing tracks remain visible but cannot
+                be played.
+              </p>
+            </>
+          )}
+        </div>
       </div>
     </section>
   )

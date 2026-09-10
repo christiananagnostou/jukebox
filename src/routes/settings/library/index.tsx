@@ -174,32 +174,25 @@ export default component$(() => {
     <SettingsShell
       current="library"
       title="Library settings"
+      hasActions
       description="Control the folders Jukebox watches and the local catalog built from them."
     >
+      <div q:slot="actions" class="page-toolbar-menu-list">
+        <button type="button" onClick$={chooseMusicFolder} disabled={isBusy.value}>
+          Add folder
+        </button>
+        <button type="button" onClick$={restoreDefaultFolder} disabled={isBusy.value}>
+          Add system music folder
+        </button>
+        <Link href="/import/">Import music</Link>
+      </div>
       <section class="settings-control-group" aria-labelledby="music-folders-heading">
         <header class="settings-group-header">
           <div>
             <h2 id="music-folders-heading">Music folders</h2>
             <p>Enabled folders are indexed natively and watched for changes.</p>
           </div>
-          <Link class="workspace-link" href="/import/">
-            Import music
-          </Link>
         </header>
-
-        <div class="settings-action-row">
-          <button class="workspace-primary-action" type="button" onClick$={chooseMusicFolder} disabled={isBusy.value}>
-            Add folder
-          </button>
-          <button
-            class="workspace-secondary-action"
-            type="button"
-            onClick$={restoreDefaultFolder}
-            disabled={isBusy.value}
-          >
-            Add system music folder
-          </button>
-        </div>
 
         {state.error && (
           <p class="settings-message" data-tone="error" role="alert">

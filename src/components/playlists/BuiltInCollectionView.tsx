@@ -13,6 +13,7 @@ import {
 import type { ListItemStyle } from '~/App'
 import TrackMetadataCells from '~/components/library/TrackMetadataCells'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import {
   builtInCollectionItemAt,
   builtInCollectionPlaybackAt,
@@ -70,22 +71,19 @@ export default component$((props: { kind: BuiltInCollectionKind }) => {
 
   return (
     <section class="flex min-h-0 flex-1 flex-col" aria-label={definition.label}>
-      <header class="border-b border-gray-700 p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <h2 class="truncate text-xl">{definition.label}</h2>
-            <p class="mt-1 text-xs text-slate-400">{definition.description}</p>
-          </div>
-          <p class="text-xs tabular-nums text-slate-500">
-            {catalog.total} {catalog.total === 1 ? 'track' : 'tracks'} · Read-only
-          </p>
-        </div>
+      <PageToolbar title={definition.label} secondary>
+        <p class="text-xs tabular-nums text-slate-500">
+          {catalog.total} {catalog.total === 1 ? 'track' : 'tracks'} · Read-only
+        </p>
+      </PageToolbar>
+      <div class="playlist-detail-status">
+        <p class="text-xs text-slate-400">{definition.description}</p>
         {(catalog.error || state.playbackError) && (
           <p class="mt-3 text-xs text-red-300" role="alert">
             {catalog.error || state.playbackError}
           </p>
         )}
-      </header>
+      </div>
 
       <div
         class={`${GRID_CLASS} min-h-[30px] border-b border-gray-700 text-xs text-slate-400`}

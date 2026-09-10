@@ -14,6 +14,7 @@ import {
 import type { ListItemStyle } from '~/App'
 import TrackMetadataCells from '~/components/library/TrackMetadataCells'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import { listLibraryRoots, type LibraryRoot } from '~/services/library-refresh'
 import type { PlaylistSummary } from '~/services/playlist-client'
 import {
@@ -261,44 +262,40 @@ export default component$((props: SmartPlaylistViewProps) => {
 
   return (
     <section class="flex min-h-0 flex-1 flex-col" aria-label={props.playlistId ? state.name : 'New smart playlist'}>
-      <header class="border-b border-gray-700 p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <h2 class="truncate text-xl">{props.playlistId ? state.name || 'Smart playlist' : 'New smart playlist'}</h2>
-            <p class="mt-1 text-xs text-slate-400">
-              {props.playlistId
-                ? `${catalog.total} ${catalog.total === 1 ? 'matching track' : 'matching tracks'}`
-                : 'Build a live collection from indexed library and listening-history rules.'}
-            </p>
+      <PageToolbar title={props.playlistId ? state.name || 'Smart playlist' : 'New smart playlist'} secondary>
+        {props.playlistId && (
+          <div class="flex flex-wrap gap-2">
+            <button
+              class={BUTTON_CLASS}
+              onClick$={() => {
+                state.editorOpen = !state.editorOpen
+                state.confirmDelete = false
+              }}
+              disabled={busy.value || !state.loaded}
+              aria-expanded={state.editorOpen}
+            >
+              {state.editorOpen ? 'Close editor' : 'Edit rules'}
+            </button>
+            <button
+              class={`${BUTTON_CLASS} border-red-900 text-red-300`}
+              onClick$={() => {
+                state.confirmDelete = !state.confirmDelete
+                state.editorOpen = false
+              }}
+              disabled={busy.value || !state.loaded}
+              aria-expanded={state.confirmDelete}
+            >
+              Delete
+            </button>
           </div>
-          {props.playlistId && (
-            <div class="flex flex-wrap gap-2">
-              <button
-                class={BUTTON_CLASS}
-                onClick$={() => {
-                  state.editorOpen = !state.editorOpen
-                  state.confirmDelete = false
-                }}
-                disabled={busy.value || !state.loaded}
-                aria-expanded={state.editorOpen}
-              >
-                {state.editorOpen ? 'Close editor' : 'Edit rules'}
-              </button>
-              <button
-                class={`${BUTTON_CLASS} border-red-900 text-red-300`}
-                onClick$={() => {
-                  state.confirmDelete = !state.confirmDelete
-                  state.editorOpen = false
-                }}
-                disabled={busy.value || !state.loaded}
-                aria-expanded={state.confirmDelete}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
-
+        )}
+      </PageToolbar>
+      <div class="playlist-detail-status">
+        <p class="text-xs text-slate-400">
+          {props.playlistId
+            ? `${catalog.total} matching tracks`
+            : 'Build a live collection from indexed library and listening-history rules.'}
+        </p>
         {state.confirmDelete && (
           <div class="mt-3 flex flex-wrap items-center gap-3 border border-red-900 bg-red-950 px-3 py-2 text-sm">
             <span>Delete this smart playlist? Library tracks and history will not be changed.</span>
@@ -320,7 +317,7 @@ export default component$((props: SmartPlaylistViewProps) => {
             <span class="text-slate-400">{state.notice}</span>
           )}
         </div>
-      </header>
+      </div>
 
       {state.editorOpen && (
         <form

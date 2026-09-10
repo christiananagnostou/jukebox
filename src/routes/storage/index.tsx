@@ -13,6 +13,8 @@ import {
 import type { ListItemStyle } from '~/App'
 import { SoundBars } from '~/components/Shared/SoundBars'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
+import { Link } from '@builder.io/qwik-city'
 import { ClosedFolder } from '~/components/svg/ClosedFolder'
 import { OpenFolder } from '~/components/svg/OpenFolder'
 import { useStorageOpenNode, useStorageOpenParent, useStoragePlayNode } from '~/hooks/useStoragePage'
@@ -80,34 +82,36 @@ export default component$(() => {
 
   return (
     <section class="min-h-0 w-full flex flex-col flex-1 relative">
-      <div class="flex h-[30px] shrink-0 items-center gap-1 border-b border-gray-700 px-2 text-sm">
-        {store.storageView.rootId === null ? (
-          <span class="text-gray-400">Folders</span>
-        ) : (
-          <>
-            <button class="text-gray-400 hover:text-white" onClick$={openParent} aria-label="Go up one folder">
-              Up
-            </button>
-            <span class="text-gray-600">/</span>
-            <button class="max-w-48 truncate hover:text-white" onClick$={() => openBreadcrumb(-1)}>
-              {store.storageView.rootName}
-            </button>
-            {segments.value.map((segment, index) => (
-              <span class="contents" key={`${segment}-${index}`}>
-                <span class="text-gray-600">/</span>
-                <button class="max-w-48 truncate hover:text-white" onClick$={() => openBreadcrumb(index)}>
-                  {segment}
-                </button>
-              </span>
-            ))}
-            {store.storageView.rootDisplayPath && !store.storageView.parent && (
-              <span class="ml-auto max-w-[40%] truncate text-xs text-gray-500">
-                {store.storageView.rootDisplayPath}
-              </span>
-            )}
-          </>
-        )}
-      </div>
+      <PageToolbar title="Folders">
+        <div class="page-toolbar-strip">
+          {store.storageView.rootId === null ? (
+            <Link href="/settings/library/">Manage folders</Link>
+          ) : (
+            <>
+              <button class="text-gray-400 hover:text-white" onClick$={openParent} aria-label="Go up one folder">
+                Up
+              </button>
+              <span class="text-gray-600">/</span>
+              <button class="max-w-48 truncate hover:text-white" onClick$={() => openBreadcrumb(-1)}>
+                {store.storageView.rootName}
+              </button>
+              {segments.value.map((segment, index) => (
+                <span class="contents" key={`${segment}-${index}`}>
+                  <span class="text-gray-600">/</span>
+                  <button class="max-w-48 truncate hover:text-white" onClick$={() => openBreadcrumb(index)}>
+                    {segment}
+                  </button>
+                </span>
+              ))}
+              {store.storageView.rootDisplayPath && !store.storageView.parent && (
+                <span class="ml-auto max-w-[40%] truncate text-xs text-gray-500">
+                  {store.storageView.rootDisplayPath}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </PageToolbar>
 
       {store.storageView.nodes.error && (
         <p class="absolute inset-x-4 top-12 z-10 border border-red-900 bg-gray-950 p-3 text-sm text-red-300">

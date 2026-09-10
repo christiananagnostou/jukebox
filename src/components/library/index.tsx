@@ -10,6 +10,7 @@ import {
 } from '@builder.io/qwik'
 import type { ListItemStyle, Store } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import { LibraryRow } from '~/components/library/LibraryRow'
 import { ArrowDown } from '~/components/svg/ArrowDown'
 import { ArrowUp } from '~/components/svg/ArrowUp'
@@ -33,7 +34,6 @@ export default component$(() => {
   const preferences = useStore(columnPreferences())
   useContextProvider(SongColumnsContext, preferences)
   const root = useSignal<HTMLElement>()
-  const menu = useSignal<HTMLDetailsElement>()
   const preferenceError = useSignal('')
   const visible = useComputed$(() => SONG_COLUMNS.filter((column) => preferences[column.id].visible))
   const save = $(() => {
@@ -52,37 +52,18 @@ export default component$(() => {
       preferenceError.value = 'Saved columns could not be loaded. Default columns are shown.'
     }
     if (!root.value) return
-    const document = root.value.ownerDocument
     cleanup(
       bindColumnResize(root.value, (id, width) => {
         preferences[id].width = width
         void save()
       })
     )
-    const dismiss = (event: PointerEvent) => {
-      if (menu.value?.open && !menu.value.contains(event.target as Node)) menu.value.open = false
-    }
-    const escape = (event: KeyboardEvent) => {
-      if ((event.target as Element).closest('.songs-column-menu, .songs-header')) event.stopPropagation()
-      if (event.key === 'Escape' && menu.value?.open) {
-        event.stopPropagation()
-        menu.value.open = false
-        menu.value.querySelector('summary')?.focus()
-      }
-    }
-    root.value.addEventListener('keydown', escape)
-    document.addEventListener('pointerdown', dismiss)
-    cleanup(() => {
-      root.value?.removeEventListener('keydown', escape)
-      document.removeEventListener('pointerdown', dismiss)
-    })
   })
 
   return (
     <section class="songs-library" ref={root} style={columnLayout(preferences)} aria-label="Songs">
-      <div class="songs-toolbar">
-        <h1>Songs</h1>
-        <details class="songs-column-menu" ref={menu}>
+      <PageToolbar title="Songs">
+        <details class="songs-column-menu">
           <summary>Columns</summary>
           <div class="songs-column-options">
             {SONG_COLUMNS.map((column) => (
@@ -113,7 +94,7 @@ export default component$(() => {
             </button>
           </div>
         </details>
-      </div>
+      </PageToolbar>
       {preferenceError.value && (
         <p role="status" class="songs-preference-error">
           {preferenceError.value}
@@ -121,7 +102,7 @@ export default component$(() => {
       )}
       <div class="songs-horizontal-scroll">
         <div class="songs-table" role="table" aria-label="Music library" aria-rowcount={store.libraryCatalog.total + 1}>
-          <div class="songs-grid songs-header" role="row" aria-rowindex={1}>
+          <div class="songs-grid songs-header" role="row" aria-rowindex={1} stoppropagation:keydown>
             <span role="columnheader" aria-label="Playback" />
             {visible.value.map((column) => (
               <div

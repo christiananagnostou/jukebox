@@ -13,6 +13,7 @@ import {
 
 import type { ListItemStyle } from '~/App'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import {
   applyM3uImport,
   m3uIssueAt,
@@ -31,7 +32,7 @@ import {
 } from '~/services/m3u-workflow'
 import { getErrorMessage } from '~/utils/Errors'
 import { StoreContext } from '~/routes/layout'
-import { PLAYLIST_BUTTON_CLASS as BUTTON_CLASS, PLAYLIST_FORM_CONTROL_CLASS as INPUT_CLASS } from './styles'
+import { PLAYLIST_FORM_CONTROL_CLASS as INPUT_CLASS } from './styles'
 
 const ISSUE_ROW_HEIGHT = 44
 interface M3uImportViewProps {
@@ -120,14 +121,22 @@ export default component$((props: M3uImportViewProps) => {
 
   return (
     <section class="flex min-h-0 flex-1 flex-col" aria-label="Review playlist import">
-      <header class="border-b border-gray-700 p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 class="text-xl">Review playlist import</h2>
-            <p class="mt-1 text-xs text-slate-400">Nothing is created until you apply this reviewed import.</p>
-          </div>
-          <span class="text-xs text-slate-500">M3U / M3U8</span>
+      <PageToolbar title="Review playlist import" secondary>
+        <div class="page-toolbar-strip">
+          <button
+            type="submit"
+            form="review-playlist-import"
+            disabled={!canApplyM3uImport(props.preview, state.name) || busy.value}
+          >
+            {state.action === 'apply' ? 'Importing…' : `Import ${props.preview.matchedEntries} tracks`}
+          </button>
+          <button type="button" onClick$={discardImport} disabled={busy.value}>
+            Discard
+          </button>
         </div>
+      </PageToolbar>
+      <div class="playlist-detail-status">
+        <p class="text-xs text-slate-400">Nothing is created until you apply this reviewed import.</p>
 
         <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
           {m3uPreviewStats(props.preview).map((stat) => (
@@ -140,7 +149,12 @@ export default component$((props: M3uImportViewProps) => {
           ))}
         </div>
 
-        <form preventdefault:submit onSubmit$={applyImport} class="mt-4 flex max-w-2xl flex-wrap items-end gap-2">
+        <form
+          id="review-playlist-import"
+          preventdefault:submit
+          onSubmit$={applyImport}
+          class="mt-4 flex max-w-2xl flex-wrap items-end gap-2"
+        >
           <label class="grid min-w-[240px] flex-1 gap-1 text-xs text-slate-400">
             New playlist name
             <input
@@ -153,16 +167,6 @@ export default component$((props: M3uImportViewProps) => {
               onBlur$={() => (store.isTyping = false)}
             />
           </label>
-          <button
-            class={`${BUTTON_CLASS} playlist-primary-action`}
-            type="submit"
-            disabled={!canApplyM3uImport(props.preview, state.name) || busy.value}
-          >
-            {state.action === 'apply' ? 'Importing…' : `Import ${props.preview.matchedEntries} tracks`}
-          </button>
-          <button class={BUTTON_CLASS} type="button" onClick$={discardImport} disabled={busy.value}>
-            Discard
-          </button>
         </form>
 
         <div class="mt-3 min-h-4 text-xs" aria-live="polite">
@@ -179,7 +183,7 @@ export default component$((props: M3uImportViewProps) => {
             <span class="text-slate-400">Every entry is ready to import.</span>
           )}
         </div>
-      </header>
+      </div>
 
       {issueCount.value ? (
         <>

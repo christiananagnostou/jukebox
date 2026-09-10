@@ -16,6 +16,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import type { LibraryCatalogState, ListItemStyle, Song } from '~/App'
 import MetadataLink from '~/components/library/MetadataLink'
 import VirtualList from '~/components/Shared/VirtualList'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import { SoundBars } from '~/components/Shared/SoundBars'
 import { MusicNote } from '~/components/svg/MusicNote'
 import {
@@ -117,6 +118,16 @@ export default component$<FocusedCollectionViewProps>((props) => {
 
   return (
     <section class="focused-collection" data-kind={props.destination.kind}>
+      <PageToolbar title={label.value}>
+        <div class="page-toolbar-strip">
+          <Link href={props.destination.kind === 'album' ? '/albums/' : '/artists/'}>
+            {props.destination.kind === 'album' ? 'All albums' : 'All artists'}
+          </Link>
+          <button type="button" disabled={!catalog.total} onClick$={() => playAt(0)}>
+            Play
+          </button>
+        </div>
+      </PageToolbar>
       <header class="focused-collection-header">
         {props.destination.kind === 'album' && (
           <div class="focused-collection-art" aria-hidden="true">
@@ -149,7 +160,6 @@ export default component$<FocusedCollectionViewProps>((props) => {
             )}
           </nav>
 
-          <h1 title={label.value}>{label.value}</h1>
           {props.destination.kind === 'album' &&
             (artistHref.value ? (
               <Link class="focused-collection-artist" href={artistHref.value}>
@@ -164,10 +174,6 @@ export default component$<FocusedCollectionViewProps>((props) => {
               : `${catalog.total.toLocaleString()} ${catalog.total === 1 ? 'track' : 'tracks'}`}
           </p>
         </div>
-
-        <button type="button" class="focused-collection-play" disabled={!catalog.total} onClick$={() => playAt(0)}>
-          Play
-        </button>
       </header>
 
       {(catalog.error || actionError.value) && (

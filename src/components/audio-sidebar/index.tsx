@@ -13,7 +13,7 @@ export default component$(() => {
         store.playback.current || store.playback.queue.length || store.playback.canUndoQueueEdit ? 'true' : 'false'
       }
     >
-      <div class="mt-[29px] flex h-full flex-col border-t border-slate-700/80">
+      <div class="panel-top-spacer flex h-full flex-col border-t border-slate-700/80">
         <Player />
 
         <Queue />

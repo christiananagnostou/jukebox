@@ -16,6 +16,7 @@
   --body-bg-solid: rgb(23, 23, 31);
   --modal-background: rgba(0, 0, 0, 0.5);
   --scrollbar-width: 8px;
+  --panel-toolbar-height: 30px;
 }
 
 html {
@@ -52,7 +53,7 @@ body {
   overflow: hidden;
   display: flex;
   position: relative;
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -229,25 +230,13 @@ body {
   color: var(--app-text);
 }
 
-.songs-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-}
-
-.songs-toolbar h1 {
-  font-size: 1.125rem;
-  font-weight: 600;
-}
 .songs-column-menu {
   position: relative;
   font-size: 0.8125rem;
 }
 .songs-column-menu summary {
   cursor: pointer;
-  padding: 0.5rem 0.75rem;
+  padding: 0.25rem 0.5rem;
   border-radius: 4px;
   color: var(--app-text-muted);
 }
@@ -470,8 +459,8 @@ body {
 
 .focused-collection-header {
   display: grid;
-  min-height: 136px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 88px;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: end;
   gap: 1rem;
   border-bottom: 1px solid var(--app-border);
@@ -480,14 +469,14 @@ body {
 }
 
 .focused-collection[data-kind='artist'] .focused-collection-header {
-  min-height: 104px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .focused-collection-art {
   display: grid;
-  width: 112px;
-  height: 112px;
+  width: 64px;
+  height: 64px;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--app-border);
@@ -543,7 +532,6 @@ body {
 .focused-collection-notice a:focus-visible,
 .focused-collection-empty a:focus-visible,
 .focused-collection-invalid a:focus-visible,
-.focused-collection-play:focus-visible,
 .focused-track-play:focus-visible {
   outline: 2px solid var(--app-focus-ring);
   outline-offset: 2px;
@@ -553,16 +541,6 @@ body {
   overflow: hidden;
   color: var(--app-text-muted);
   text-overflow: ellipsis;
-}
-
-.focused-collection h1 {
-  overflow: hidden;
-  color: var(--app-text);
-  font-size: clamp(1.5rem, 3vw, 2.25rem);
-  font-weight: 500;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .focused-collection-artist {
@@ -580,27 +558,6 @@ body {
   color: var(--focused-muted);
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
-}
-
-.focused-collection-play {
-  min-width: 72px;
-  min-height: 38px;
-  border: 1px solid var(--app-accent);
-  border-radius: 0.25rem;
-  padding: 0.5rem 1rem;
-  color: var(--body-bg-solid);
-  background: var(--app-accent-strong);
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.focused-collection-play:hover:not(:disabled) {
-  background: var(--focused-accent-hover);
-}
-
-.focused-collection-play:disabled {
-  cursor: not-allowed;
-  opacity: 0.35;
 }
 
 .focused-collection-notice {
@@ -795,7 +752,7 @@ select.app-form-control {
   min-height: 82px;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 29px;
+  margin-top: calc(var(--panel-toolbar-height) - 1px);
   padding: 0.875rem 1rem;
   border-top: 1px solid var(--nav-border);
   border-bottom: 1px solid var(--nav-border);
@@ -976,30 +933,6 @@ select.app-form-control {
   overflow-y: auto;
   padding: clamp(1rem, 2.5vw, 2rem);
   color: var(--workspace-text);
-}
-
-.workspace-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 2rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--workspace-border);
-}
-
-.workspace-header h1 {
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.1;
-}
-
-.workspace-header p {
-  max-width: 42rem;
-  margin-top: 0.625rem;
-  color: var(--workspace-text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.55;
 }
 
 .workspace-link,
@@ -1780,7 +1713,6 @@ select.app-form-control {
 }
 
 @media (max-width: 820px) {
-  .workspace-header,
   .import-summary {
     align-items: stretch;
     flex-direction: column;
@@ -2175,6 +2107,165 @@ select.app-form-control {
 
 *::-webkit-scrollbar {
   width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+html,
+.app-shell,
+.app-shell * {
+  overscroll-behavior: none;
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--body-bg-solid);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--secondary) var(--body-bg-solid);
+  }
+}
+
+.desktop-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.page-toolbar {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex: 0 0 var(--panel-toolbar-height);
+  min-width: 0;
+  height: var(--panel-toolbar-height);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--body-bg-solid);
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+.page-toolbar :is(h1, h2) {
+  min-width: 0;
+  flex: 0 1 auto;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--app-text);
+}
+.page-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+}
+.desktop-page > .page-toolbar {
+  /* Page-level menus must cover toolbars inside a selected collection below. */
+  z-index: 10;
+}
+.page-toolbar-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  height: 100%;
+}
+.page-toolbar :is(button, a, summary) {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+.page-toolbar :is(button, a):not(.settings-switch) {
+  min-height: 24px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+}
+.page-toolbar :is(button, a):hover:not(:disabled) {
+  color: var(--app-accent-strong);
+  background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+}
+.page-toolbar :is(button, a, summary, input):focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: -2px;
+}
+.page-toolbar button:disabled {
+  opacity: 0.5;
+}
+.page-toolbar .settings-section-nav {
+  padding: 0;
+  border: 0;
+  height: 100%;
+  align-items: center;
+}
+.page-toolbar .settings-section-nav a {
+  color: var(--app-text-muted);
+}
+.page-toolbar .settings-section-nav a[aria-current='page'] {
+  color: var(--app-accent-strong);
+  background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+}
+.page-toolbar .workspace-link {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-muted);
+}
+.page-intro {
+  margin: 0 0 1rem;
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.panel-top-spacer {
+  margin-top: calc(var(--panel-toolbar-height) - 1px);
+}
+.page-toolbar-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.page-toolbar-menu summary {
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.page-toolbar-menu-options {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  max-width: min(360px, 70vw);
+  padding: 0.5rem;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background: var(--body-bg-solid);
+}
+.page-toolbar-menu-options > button,
+.page-toolbar-menu-list > :is(button, a) {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+}
+.page-toolbar-menu-options input {
+  min-width: 0;
+}
+.playlist-detail-status {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--app-border);
+  flex-shrink: 0;
 }
 
 *::-webkit-scrollbar-track {
