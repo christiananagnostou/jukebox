@@ -13,8 +13,7 @@ import {
 import type { ListItemStyle, Song } from '~/App'
 import { SoundBars } from '~/components/Shared/SoundBars'
 import VirtualList from '~/components/Shared/VirtualList'
-import { ArrowDown } from '~/components/svg/ArrowDown'
-import { ArrowUp } from '~/components/svg/ArrowUp'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import {
   aggregateItemAt,
   AGGREGATE_PAGE_SIZE,
@@ -150,6 +149,14 @@ export default component$(() => {
 
   return (
     <section class="min-h-0 w-full flex flex-col flex-1 relative">
+      <PageToolbar title="Artists">
+        <button
+          type="button"
+          onClick$={() => (store.sorting = store.sorting === 'artist-desc' ? 'artist-asc' : 'artist-desc')}
+        >
+          {store.sorting === 'artist-desc' ? 'Sort A to Z' : 'Sort Z to A'}
+        </button>
+      </PageToolbar>
       {error.value && (
         <p class="absolute inset-x-4 top-10 z-10 border border-red-900 bg-gray-950 p-3 text-sm text-red-300">
           {error.value}
@@ -159,15 +166,12 @@ export default component$(() => {
         class="w-full text-sm grid grid-cols-[1fr_1fr_1fr] text-left items-center border-b border-gray-700"
         style={{ height: ROW_HEIGHT + 'px' }}
       >
-        <button
+        <span
           class="truncate h-full flex items-center justify-between px-2 relative"
-          onClick$={() => (store.sorting = store.sorting === 'artist-asc' ? 'artist-desc' : 'artist-asc')}
           style={{ paddingRight: 'var(--scrollbar-width)' }}
         >
           Artists
-          {store.sorting === 'artist-desc' && <ArrowDown />}
-          {store.sorting === 'artist-asc' && <ArrowUp />}
-        </button>
+        </span>
         <div
           class="border-l border-gray-700 truncate h-full flex items-center px-2"
           style={{ paddingRight: 'var(--scrollbar-width)' }}

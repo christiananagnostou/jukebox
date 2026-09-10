@@ -75,6 +75,8 @@ export const KEYBOARD_COMMAND_GROUPS: readonly KeyboardCommandGroup[] = [
       { key: '/', command: 'Focus search' },
       { key: '?', command: 'Show or hide shortcuts' },
       { key: 'Escape', command: 'Close shortcuts' },
+      { key: '← →', command: 'Resize focused song column' },
+      { key: 'Home', command: 'Reset focused column width' },
     ],
   },
 ]

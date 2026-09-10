@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { computeVirtualRange, scrollTopForVirtualRow } from './VirtualList'
 
 describe('computeVirtualRange', () => {
+  it('bounds rendered rows independently of library size', () => {
+    for (const count of [10_000, 100_000, 1_000_000]) {
+      const range = computeVirtualRange(150_000, 900, 30, count, 10)
+      expect(range.endIndex - range.startIndex + 1).toBe(51)
+    }
+  })
   it('requests only the visible window and overscan', () => {
     expect(computeVirtualRange(300, 300, 30, 10_000, 10)).toEqual({
       startIndex: 0,

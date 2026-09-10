@@ -272,7 +272,7 @@ export default component$(() => {
             class="playback-range w-full"
             data-muted={store.playback.muted ? 'true' : 'false'}
             style={`--range-progress: ${store.playback.volumePercent}%`}
-            onChange$={(_, element) => storeActions.setVolumePercent(Number(element.value))}
+            onInput$={(_, element) => storeActions.setVolumePercent(Number(element.value))}
           />
           <button
             type="button"

@@ -2,6 +2,7 @@ import { $, component$, useContext, useStore, useVisibleTask$ } from '@builder.i
 import { Link, type DocumentHead } from '@builder.io/qwik-city'
 
 import MetadataLink from '~/components/library/MetadataLink'
+import { PageToolbar } from '~/components/Shared/PageToolbar'
 import type { BuiltInCollectionItem, BuiltInCollectionKind } from '~/services/library-client'
 import { queryBuiltInCollection } from '~/services/library-client'
 import { trackMetadataDestinations } from '~/services/library-destination'
@@ -96,83 +97,84 @@ export default component$(() => {
   })
 
   return (
-    <section class="workspace-page" aria-labelledby="listen-heading">
-      <header class="workspace-header">
-        <div>
-          <h1 id="listen-heading">Listen</h1>
-          <p>Choose from useful views of the music already on this device.</p>
-        </div>
+    <section class="desktop-page" aria-labelledby="listen-heading">
+      <PageToolbar title="Listen" id="listen-heading">
         <Link class="workspace-link" href="/songs/">
           Browse all songs
         </Link>
-      </header>
+      </PageToolbar>
+      <div class="workspace-page">
+        {state.error && (
+          <p class="workspace-error" role="alert">
+            {state.error}
+          </p>
+        )}
 
-      {state.error && (
-        <p class="workspace-error" role="alert">
-          {state.error}
-        </p>
-      )}
+        <div class="workspace-collection-grid">
+          {COLLECTIONS.map((definition) => {
+            const preview = state.collections[definition.kind]
+            return (
+              <section
+                class="workspace-collection"
+                key={definition.kind}
+                aria-labelledby={`${definition.kind}-heading`}
+              >
+                <header>
+                  <div>
+                    <h2 id={`${definition.kind}-heading`}>{definition.label}</h2>
+                    <p>{preview.total ? `${preview.total.toLocaleString()} tracks` : 'Local collection'}</p>
+                  </div>
+                </header>
 
-      <div class="workspace-collection-grid">
-        {COLLECTIONS.map((definition) => {
-          const preview = state.collections[definition.kind]
-          return (
-            <section class="workspace-collection" key={definition.kind} aria-labelledby={`${definition.kind}-heading`}>
-              <header>
-                <div>
-                  <h2 id={`${definition.kind}-heading`}>{definition.label}</h2>
-                  <p>{preview.total ? `${preview.total.toLocaleString()} tracks` : 'Local collection'}</p>
-                </div>
-              </header>
-
-              {preview.status === 'loading' ? (
-                <p class="workspace-collection-empty">Loading…</p>
-              ) : preview.error ? (
-                <p class="workspace-collection-empty" role="alert">
-                  {preview.error}
-                </p>
-              ) : preview.items.length ? (
-                <ol>
-                  {preview.items.map((item, index) => {
-                    const artistDestination = trackMetadataDestinations(item.track).artist
-                    return (
-                      <li key={`${definition.kind}:${item.track.id}`}>
-                        <div class="workspace-track-row">
-                          <span class="workspace-row-number">{index + 1}</span>
-                          <span class="min-w-0 flex-1 text-left">
-                            <button
-                              type="button"
-                              class="workspace-track-play block w-full truncate text-left"
-                              onClick$={() => playPreview(definition.kind, index)}
-                              title={`Play ${item.track.title}`}
-                            >
-                              {item.track.title}
-                            </button>
-                            {artistDestination ? (
-                              <MetadataLink
-                                destination={artistDestination}
-                                class="workspace-track-artist mt-1 block truncate"
+                {preview.status === 'loading' ? (
+                  <p class="workspace-collection-empty">Loading…</p>
+                ) : preview.error ? (
+                  <p class="workspace-collection-empty" role="alert">
+                    {preview.error}
+                  </p>
+                ) : preview.items.length ? (
+                  <ol>
+                    {preview.items.map((item, index) => {
+                      const artistDestination = trackMetadataDestinations(item.track).artist
+                      return (
+                        <li key={`${definition.kind}:${item.track.id}`}>
+                          <div class="workspace-track-row">
+                            <span class="workspace-row-number">{index + 1}</span>
+                            <span class="min-w-0 flex-1 text-left">
+                              <button
+                                type="button"
+                                class="workspace-track-play block w-full truncate text-left"
+                                onClick$={() => playPreview(definition.kind, index)}
+                                title={`Play ${item.track.title}`}
                               >
-                                {item.track.artist}
-                              </MetadataLink>
-                            ) : (
-                              <span class="workspace-track-artist mt-1 block truncate">Unknown artist</span>
+                                {item.track.title}
+                              </button>
+                              {artistDestination ? (
+                                <MetadataLink
+                                  destination={artistDestination}
+                                  class="workspace-track-artist mt-1 block truncate"
+                                >
+                                  {item.track.artist}
+                                </MetadataLink>
+                              ) : (
+                                <span class="workspace-track-artist mt-1 block truncate">Unknown artist</span>
+                              )}
+                            </span>
+                            {definition.kind === 'most_played' && (
+                              <span class="workspace-row-meta">{item.playCount} plays</span>
                             )}
-                          </span>
-                          {definition.kind === 'most_played' && (
-                            <span class="workspace-row-meta">{item.playCount} plays</span>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ol>
-              ) : (
-                <p class="workspace-collection-empty">{definition.emptyMessage}</p>
-              )}
-            </section>
-          )
-        })}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ol>
+                ) : (
+                  <p class="workspace-collection-empty">{definition.emptyMessage}</p>
+                )}
+              </section>
+            )
+          })}
+        </div>
       </div>
     </section>
   )

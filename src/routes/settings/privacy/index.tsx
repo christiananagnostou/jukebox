@@ -52,8 +52,17 @@ export default component$(() => {
     <SettingsShell
       current="privacy"
       title="Privacy & diagnostics"
+      hasActions
       description="Review the small amount of local activity data Jukebox keeps and troubleshoot without exposing music paths."
     >
+      <div q:slot="actions" class="page-toolbar-menu-list">
+        <button type="button" disabled={Boolean(state.diagnosticsAction)} onClick$={() => runDiagnosticsAction('copy')}>
+          {state.diagnosticsAction === 'copy' ? 'Copying…' : 'Copy summary'}
+        </button>
+        <button type="button" disabled={Boolean(state.diagnosticsAction)} onClick$={() => runDiagnosticsAction('open')}>
+          {state.diagnosticsAction === 'open' ? 'Opening…' : 'Open diagnostics folder'}
+        </button>
+      </div>
       <section class="settings-control-group" aria-labelledby="listening-history-heading">
         <header>
           <h2 id="listening-history-heading">Listening history</h2>
@@ -109,25 +118,6 @@ export default component$(() => {
             network addresses.
           </p>
         </header>
-
-        <div class="settings-action-row">
-          <button
-            class="workspace-secondary-action"
-            type="button"
-            disabled={Boolean(state.diagnosticsAction)}
-            onClick$={() => runDiagnosticsAction('copy')}
-          >
-            {state.diagnosticsAction === 'copy' ? 'Copying…' : 'Copy summary'}
-          </button>
-          <button
-            class="workspace-secondary-action"
-            type="button"
-            disabled={Boolean(state.diagnosticsAction)}
-            onClick$={() => runDiagnosticsAction('open')}
-          >
-            {state.diagnosticsAction === 'open' ? 'Opening…' : 'Open diagnostics folder'}
-          </button>
-        </div>
 
         {state.diagnosticsMessage && (
           <p class="settings-message" data-tone="success" aria-live="polite">
